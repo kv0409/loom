@@ -26,12 +26,20 @@
       "denyByDefault": true,
       "allowedCommands": [
         "loom .*",
-        "git (status|log|diff|show|blame).*",
-        "ls.*",
-        "cat.*",
-        "find.*",
-        "head.*",
-        "tail.*"
+        "git .*",
+        "ls .*",
+        "ls",
+        "cat .*",
+        "find .*",
+        "head .*",
+        "tail .*",
+        "grep .*",
+        "rg .*",
+        "wc .*",
+        "file .*",
+        "stat .*",
+        "tree .*",
+        "echo .*"
       ],
       "deniedCommands": [
         ".*>.*",
