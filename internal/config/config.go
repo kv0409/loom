@@ -16,17 +16,20 @@ import (
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
-// DeriveSessionName returns "loom-<sanitized-basename>-<short-hash>" for the given absolute directory path.
-func DeriveSessionName(absDir string) string {
-	base := filepath.Base(absDir)
-	name := strings.ToLower(unsafeChars.ReplaceAllString(base, "-"))
+// SanitizeBasename returns a lowercased, tmux-safe version of the directory basename.
+func SanitizeBasename(absDir string) string {
+	name := strings.ToLower(unsafeChars.ReplaceAllString(filepath.Base(absDir), "-"))
 	name = strings.Trim(name, "-")
 	if name == "" {
 		name = "default"
 	}
+	return name
+}
+
+// DeriveSessionName returns "loom-<sanitized-basename>-<short-hash>" for the given absolute directory path.
+func DeriveSessionName(absDir string) string {
 	h := sha256.Sum256([]byte(absDir))
-	shortHash := hex.EncodeToString(h[:])[:8]
-	return "loom-" + name + "-" + shortHash
+	return "loom-" + SanitizeBasename(absDir) + "-" + hex.EncodeToString(h[:])[:8]
 }
 
 type Config struct {

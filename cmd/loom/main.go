@@ -492,6 +492,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
 	cfg.Tmux.SessionName = config.DeriveSessionName(wd)
+	cfg.Project = config.SanitizeBasename(wd)
 	if err := config.Save(".loom", cfg); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
