@@ -10,9 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/daemon"
+	"github.com/karanagi/loom/internal/dashboard"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
@@ -67,7 +69,11 @@ func main() {
 	statusCmd.GroupID = "lifecycle"
 
 	// --- Dashboard ---
-	dashCmd := stub("dash", "Launch TUI dashboard")
+	dashCmd := &cobra.Command{
+		Use:   "dash",
+		Short: "Launch TUI dashboard",
+		RunE:  runDash,
+	}
 
 	// --- Task ---
 	taskCmd := &cobra.Command{
@@ -348,6 +354,17 @@ func stub(use, short string) *cobra.Command {
 		Short: short,
 		Run:   func(cmd *cobra.Command, args []string) { fmt.Println("not implemented yet") },
 	}
+}
+
+func runDash(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	m := dashboard.New(root)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err = p.Run()
+	return err
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
