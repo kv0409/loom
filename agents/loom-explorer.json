@@ -56,5 +56,7 @@
     ]
   },
   "prompt": "file://prompts/loom-explorer.md",
-  "resources": []
+  "resources": [
+    "file://README.md"
+  ]
 }

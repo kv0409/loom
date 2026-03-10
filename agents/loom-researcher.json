@@ -62,5 +62,7 @@
     ]
   },
   "prompt": "file://prompts/loom-researcher.md",
-  "resources": []
+  "resources": [
+    "file://README.md"
+  ]
 }

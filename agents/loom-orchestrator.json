@@ -74,5 +74,9 @@
     ]
   },
   "prompt": "file://prompts/loom-orchestrator.md",
-  "resources": []
+  "resources": [
+    "file://README.md",
+    "file://docs/ARCHITECTURE.md",
+    "file://.kiro/steering/**/*.md"
+  ]
 }

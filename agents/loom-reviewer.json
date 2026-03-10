@@ -66,5 +66,9 @@
     ]
   },
   "prompt": "file://prompts/loom-reviewer.md",
-  "resources": []
+  "resources": [
+    "file://README.md",
+    "file://docs/ARCHITECTURE.md",
+    "file://.kiro/steering/**/*.md"
+  ]
 }
