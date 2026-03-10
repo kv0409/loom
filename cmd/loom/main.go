@@ -387,6 +387,12 @@ func main() {
 	mcpServerCmd.Flags().String("agent-id", "", "Agent ID for this MCP server instance (falls back to LOOM_AGENT_ID env var)")
 	mcpServerCmd.Flags().String("loom-root", "", "Path to .loom directory (auto-detected if omitted)")
 
+	mergesCmd := &cobra.Command{
+		Use:   "merges",
+		Short: "Show merge queue status",
+		RunE:  runMerges,
+	}
+
 	root.AddCommand(
 		initCmd,
 		startCmd, stopCmd, restartCmd, statusCmd,
@@ -397,7 +403,7 @@ func main() {
 		spawnCmd,
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
-		gcCmd, exportCmd, mcpServerCmd,
+		gcCmd, exportCmd, mcpServerCmd, mergesCmd,
 	)
 
 	if err := root.Execute(); err != nil {
@@ -1943,4 +1949,54 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Mail: %d undelivered\n", undelivered)
 	return nil
+}
+
+func runMerges(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	wts, err := worktree.List(root)
+	if err != nil {
+		return err
+	}
+	if len(wts) == 0 {
+		fmt.Println("No worktrees in merge queue")
+		return nil
+	}
+
+	issues, _ := issue.List(root, issue.ListOpts{All: true})
+	issueByWT := map[string]*issue.Issue{}
+	for _, iss := range issues {
+		if iss.Worktree != "" {
+			issueByWT[iss.Worktree] = iss
+		}
+	}
+
+	fmt.Printf("%-30s %-30s %-12s %s\n", "WORKTREE", "BRANCH", "ISSUE", "STAGE")
+	fmt.Println(strings.Repeat("─", 80))
+	for _, wt := range wts {
+		issueID := "—"
+		stage := "ready"
+		if iss, ok := issueByWT[wt.Name]; ok {
+			issueID = iss.ID
+			switch iss.Status {
+			case "in-progress":
+				stage = "building"
+			case "review":
+				stage = "review"
+			case "done":
+				stage = "merged"
+			}
+		}
+		fmt.Printf("%-30s %-30s %-12s %s\n", truncStr(wt.Name, 30), truncStr(wt.Branch, 30), issueID, stage)
+	}
+	return nil
+}
+
+func truncStr(s string, n int) string {
+	if len(s) > n {
+		return s[:n-3] + "..."
+	}
+	return s
 }

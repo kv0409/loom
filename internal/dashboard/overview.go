@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/karanagi/loom/internal/issue"
 )
 
 func (m Model) renderOverview() string {
@@ -47,6 +48,35 @@ func (m Model) renderOverview() string {
 	}
 	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
+	// Merge queue
+	issueByWT := map[string]*issue.Issue{}
+	for _, iss := range m.data.issues {
+		if iss.Worktree != "" {
+			issueByWT[iss.Worktree] = iss
+		}
+	}
+	mqContent := ""
+	for _, wt := range m.data.worktrees {
+		stage := "ready"
+		issueStatus := ""
+		if iss, ok := issueByWT[wt.Name]; ok {
+			issueStatus = iss.Status
+			switch iss.Status {
+			case "in-progress":
+				stage = "building"
+			case "review":
+				stage = "review"
+			case "done":
+				stage = "merged"
+			}
+		}
+		mqContent += fmt.Sprintf("  %-22s %-22s %s\n", truncate(wt.Name, 22), truncate(wt.Branch, 22), statusStyle(issueStatus).Render(stage))
+	}
+	if mqContent == "" {
+		mqContent = "  (none)\n"
+	}
+	mqPanel := panel("MERGE QUEUE", mqContent, colW)
+
 	// Mail
 	mailContent := ""
 	limit := min(len(m.data.messages), 5)
@@ -79,7 +109,7 @@ func (m Model) renderOverview() string {
 	}
 	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
 
-	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
+	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, mqPanel, memPanel)
 	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)

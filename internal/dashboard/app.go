@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -26,9 +27,12 @@ const (
 	viewMemory
 	viewActivity
 	viewLogs
+	viewWorktrees
+	viewDiff
+	viewKanban
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees, viewKanban}
 
 type data struct {
 	agents    []*agent.Agent
@@ -42,13 +46,17 @@ type data struct {
 }
 
 type Model struct {
-	loomRoot  string
-	view      view
-	data      data
-	cursor    int
-	width     int
-	height    int
-	logFilter int // 0=all, 1..N=index into agents
+	loomRoot         string
+	view             view
+	data             data
+	cursor           int
+	width            int
+	height           int
+	logFilter        int // 0=all, 1..N=index into agents
+	nudgeMode        bool
+	nudgeInput       string
+	selectedWorktree int
+	diffContent      string
 }
 
 type tickMsg time.Time
@@ -119,20 +127,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Nudge mode captures all input
+	if m.nudgeMode {
+		switch msg.String() {
+		case "enter":
+			if m.cursor < len(m.data.agents) && m.nudgeInput != "" {
+				a := m.data.agents[m.cursor]
+				exec.Command("loom", "nudge", a.ID, m.nudgeInput).Run()
+			}
+			m.nudgeMode = false
+			m.nudgeInput = ""
+		case "esc":
+			m.nudgeMode = false
+			m.nudgeInput = ""
+		case "backspace":
+			if len(m.nudgeInput) > 0 {
+				m.nudgeInput = m.nudgeInput[:len(m.nudgeInput)-1]
+			}
+		default:
+			if len(msg.String()) == 1 || msg.String() == " " {
+				m.nudgeInput += msg.String()
+			}
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "esc":
-		if m.view == viewAgentDetail || m.view == viewIssueDetail {
-			if m.view == viewAgentDetail {
-				m.view = viewAgents
-			} else {
-				m.view = viewIssues
-			}
-		} else {
+		switch m.view {
+		case viewAgentDetail:
+			m.view = viewAgents
+			m.cursor = 0
+		case viewIssueDetail:
+			m.view = viewIssues
+			m.cursor = 0
+		case viewDiff:
+			m.view = viewWorktrees
+			m.cursor = m.selectedWorktree
+		default:
 			m.view = viewOverview
+			m.cursor = 0
 		}
-		m.cursor = 0
 		return m, nil
 	case "a":
 		m.view = viewAgents
@@ -148,6 +185,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "d":
 		m.view = viewMemory
+		m.cursor = 0
+		return m, nil
+	case "w":
+		m.view = viewWorktrees
 		m.cursor = 0
 		return m, nil
 	case "t":
@@ -166,6 +207,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+	case "n":
+		if m.view == viewAgents && len(m.data.agents) > 0 {
+			m.nudgeMode = true
+			m.nudgeInput = ""
+			return m, nil
+		}
+	case "x":
+		if m.view == viewAgents && m.cursor < len(m.data.agents) {
+			a := m.data.agents[m.cursor]
+			exec.Command("loom", "kill", a.ID).Run()
+			return m, nil
+		}
 	case "tab":
 		m.view = nextView(m.view)
 		m.cursor = 0
@@ -173,6 +226,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "j", "down":
 		m.cursor++
 		m.clampCursor()
+		return m, nil
+	case "b":
+		m.view = viewKanban
+		m.cursor = 0
 		return m, nil
 	case "k", "up":
 		m.cursor--
@@ -192,9 +249,25 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if len(m.data.agents) > 0 {
 			m.view = viewAgentDetail
 		}
+	case viewAgentDetail:
+		if m.cursor < len(m.data.agents) {
+			a := m.data.agents[m.cursor]
+			c := exec.Command("loom", "attach", a.ID)
+			c.Stdin = os.Stdin
+			c.Stdout = os.Stdout
+			c.Stderr = os.Stderr
+			return m, tea.ExecProcess(c, func(err error) tea.Msg { return nil })
+		}
 	case viewIssues:
 		if len(m.data.issues) > 0 {
 			m.view = viewIssueDetail
+		}
+	case viewWorktrees:
+		if m.cursor < len(m.data.worktrees) {
+			m.selectedWorktree = m.cursor
+			m.diffContent = fetchDiff(m.data.worktrees[m.cursor].Path)
+			m.view = viewDiff
+			m.cursor = 0
 		}
 	}
 	return m, nil
@@ -220,6 +293,13 @@ func (m Model) listLen() int {
 		return len(m.data.messages)
 	case viewMemory:
 		return len(m.data.memories)
+	case viewWorktrees:
+		return len(m.data.worktrees)
+	case viewDiff:
+		lines := len(splitLines(m.diffContent))
+		if lines > 0 {
+			return lines
+		}
 	}
 	return 0
 }
@@ -254,8 +334,29 @@ func (m Model) View() string {
 		content = m.renderActivity()
 	case viewLogs:
 		content = m.renderLogs()
+	case viewWorktrees:
+		content = m.renderWorktrees()
+	case viewDiff:
+		content = m.renderDiff()
+	case viewKanban:
+		content = m.renderKanban()
 	}
 
-	help := helpStyle.Render(" [a]gents [i]ssues [m]ail [d]ecisions [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit")
+	help := m.helpBar()
+	if m.nudgeMode {
+		agentName := ""
+		if m.cursor < len(m.data.agents) {
+			agentName = m.data.agents[m.cursor].ID
+		}
+		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█  [Enter]send [Esc]cancel", agentName, m.nudgeInput))
+	}
 	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
+}
+
+func (m Model) helpBar() string {
+	base := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit"
+	if m.view == viewAgents {
+		base += " | [n]udge [x]kill [Enter]attach"
+	}
+	return helpStyle.Render(base)
 }
