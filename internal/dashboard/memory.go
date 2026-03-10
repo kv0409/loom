@@ -8,9 +8,8 @@ import (
 )
 
 func (m Model) renderMemory() string {
-	s := headerStyle.Render(fmt.Sprintf("MEMORY (%d entries)", len(m.data.memories))) + "\n\n"
-	s += fmt.Sprintf("  %-10s %-12s %-36s %s\n", "ID", "TYPE", "TITLE", "BY")
-	s += "  " + strings.Repeat("─", 70) + "\n"
+	content := fmt.Sprintf("  %-10s %-12s %-36s %s\n", "ID", "TYPE", "TITLE", "BY")
+	content += "  " + strings.Repeat("─", 68) + "\n"
 
 	for i, e := range m.data.memories {
 		line := fmt.Sprintf("  %-10s %-12s %-36s %s",
@@ -18,7 +17,8 @@ func (m Model) renderMemory() string {
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		}
-		s += line + "\n"
+		content += line + "\n"
 	}
-	return s
+
+	return panel(fmt.Sprintf("MEMORY (%d entries)", len(m.data.memories)), content, m.width-2)
 }

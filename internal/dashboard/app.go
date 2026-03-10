@@ -229,6 +229,6 @@ func (m Model) View() string {
 		content = m.renderMemory()
 	}
 
-	help := helpStyle.Render("[a]gents [i]ssues [m]ail [d]ecisions [Tab]cycle [Esc]back [q]uit")
-	return fmt.Sprintf("%s\n\n%s\n\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
+	help := helpStyle.Render(" [a]gents [i]ssues [m]ail [d]ecisions [Tab]cycle [Esc]back [q]uit")
+	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
 }

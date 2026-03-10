@@ -6,9 +6,8 @@ import (
 )
 
 func (m Model) renderMail() string {
-	s := headerStyle.Render(fmt.Sprintf("MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)) + "\n\n"
-	s += fmt.Sprintf("  %-8s %-14s %-8s %s\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
-	s += "  " + strings.Repeat("─", 70) + "\n"
+	content := fmt.Sprintf("  %-8s %-14s %-8s %s\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
+	content += "  " + strings.Repeat("─", 68) + "\n"
 
 	for i, msg := range m.data.messages {
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
@@ -17,7 +16,8 @@ func (m Model) renderMail() string {
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		}
-		s += line + "\n"
+		content += line + "\n"
 	}
-	return s
+
+	return panel(fmt.Sprintf("MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread), content, m.width-2)
 }
