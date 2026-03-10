@@ -1679,7 +1679,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Spawn orchestrator
 	_, err = agent.Spawn(root, agent.SpawnOpts{
-		Role: "orchestrator",
+		Role:         "orchestrator",
+		ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
 	})
 	if err != nil {
 		daemon.ReleaseLock(root)
