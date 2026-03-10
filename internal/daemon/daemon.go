@@ -46,7 +46,12 @@ func (d *Daemon) Stop() {
 }
 
 func (d *Daemon) watchIssues() {
+	// Seed with existing issues so we only notify about NEW ones
 	notified := make(map[string]bool)
+	existing, _ := issue.List(d.LoomRoot, issue.ListOpts{All: true})
+	for _, iss := range existing {
+		notified[iss.ID] = true
+	}
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
