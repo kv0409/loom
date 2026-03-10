@@ -240,6 +240,15 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	if err != nil {
 		return err
 	}
+	// Cascade: kill or warn children first
+	children, _ := listChildren(loomRoot, id)
+	for _, child := range children {
+		if childSafeToKill(loomRoot, child) {
+			Kill(loomRoot, child.ID, cleanupWorktree)
+		} else {
+			tmux.SendKeys(child.TmuxTarget, "[LOOM] Shutdown")
+		}
+	}
 	if a.TmuxTarget != "" {
 		tmux.KillWindow(a.TmuxTarget)
 	}
@@ -247,6 +256,50 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 		worktree.Remove(loomRoot, a.WorktreeName)
 	}
 	return Deregister(loomRoot, id)
+}
+
+func listChildren(loomRoot, parentID string) ([]*Agent, error) {
+	all, err := List(loomRoot)
+	if err != nil {
+		return nil, err
+	}
+	var children []*Agent
+	for _, a := range all {
+		if a.SpawnedBy == parentID {
+			children = append(children, a)
+		}
+	}
+	return children, nil
+}
+
+func childSafeToKill(loomRoot string, a *Agent) bool {
+	// Check pane is idle (last non-empty line looks like a shell prompt)
+	if a.TmuxTarget != "" {
+		output, err := tmux.CapturePane(a.TmuxTarget)
+		if err == nil && !paneIsIdle(output) {
+			return false
+		}
+	}
+	// Check worktree is clean
+	if a.WorktreeName != "" {
+		wtPath := filepath.Join(loomRoot, "worktrees", a.WorktreeName)
+		stats, err := worktree.DiffStatsFor(wtPath)
+		if err == nil && stats.FilesChanged > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func paneIsIdle(output string) bool {
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return strings.HasSuffix(line, "$") || strings.HasSuffix(line, "%") || strings.HasSuffix(line, "#")
+		}
+	}
+	return true // empty pane is idle
 }
 
 func RenderPrompt(loomRoot string, agent *Agent, extraContext map[string]string) (string, error) {
