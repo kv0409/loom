@@ -38,6 +38,7 @@ type data struct {
 	agents    []*agent.Agent
 	issues    []*issue.Issue
 	worktrees []*worktree.Worktree
+	diffStats map[string]*worktree.DiffStats
 	messages  []*mail.Message
 	memories  []*memory.Entry
 	unread    int
@@ -80,6 +81,12 @@ func (m Model) refresh() tea.Cmd {
 		d.agents, _ = agent.List(root)
 		d.issues, _ = issue.List(root, issue.ListOpts{All: true})
 		d.worktrees, _ = worktree.List(root)
+		d.diffStats = make(map[string]*worktree.DiffStats)
+		for _, wt := range d.worktrees {
+			if ds, err := worktree.DiffStatsFor(wt.Path); err == nil {
+				d.diffStats[wt.Name] = ds
+			}
+		}
 		d.messages, _ = mail.Log(root, mail.LogOpts{})
 		d.memories, _ = memory.List(root, memory.ListOpts{})
 		d.unread = countUnread(root)

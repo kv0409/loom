@@ -161,6 +161,9 @@ func Show(loomRoot string, name string) (*Worktree, *DiffStats, error) {
 	return wt, stats, nil
 }
 
+// DiffStatsFor returns diff stats for a worktree path.
+func DiffStatsFor(wtPath string) (*DiffStats, error) { return diffStats(wtPath) }
+
 func diffStats(wtPath string) (*DiffStats, error) {
 	cmd := exec.Command("git", "diff", "--stat", "HEAD")
 	cmd.Dir = wtPath

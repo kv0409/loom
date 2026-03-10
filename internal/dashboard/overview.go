@@ -3,87 +3,64 @@ package dashboard
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/issue"
 )
 
 func (m Model) renderOverview() string {
 	colW := max((m.width-4)/2, 30)
 
-	// Agent counts by status
-	counts := map[string]int{}
-	for _, a := range m.data.agents {
-		counts[a.Status]++
-	}
+	// Agent table: ID, role, status, heartbeat ago
 	agentContent := ""
-	for _, s := range []string{"active", "idle", "blocked", "dead"} {
-		if c := counts[s]; c > 0 {
-			agentContent += fmt.Sprintf("  %s %s %d\n", statusIndicator(s), statusStyle(s).Render(fmt.Sprintf("%-8s", s)), c)
-		}
+	for _, a := range m.data.agents {
+		ago := timeAgo(a.Heartbeat)
+		agentContent += fmt.Sprintf("  %s %-18s %-12s %s\n",
+			statusIndicator(a.Status), truncate(a.ID, 18), a.Role, idleStyle.Render(ago))
+	}
+	if agentContent == "" {
+		agentContent = "  (none)\n"
 	}
 	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
-	// Issue counts by status
-	issueCounts := map[string]int{}
-	for _, iss := range m.data.issues {
-		issueCounts[iss.Status]++
-	}
+	// Issues: non-done, showing ID, title, status, assignee
 	issueContent := ""
-	for _, s := range []string{"open", "assigned", "in-progress", "blocked", "review", "done"} {
-		if c := issueCounts[s]; c > 0 {
-			bar := strings.Repeat("█", min(c, 20))
-			issueContent += fmt.Sprintf("  %s %s %s %d\n", statusIndicator(s), statusStyle(s).Render(fmt.Sprintf("%-12s", s)), bar, c)
+	issueCount := 0
+	for _, iss := range m.data.issues {
+		if iss.Status == "done" {
+			continue
 		}
+		issueCount++
+		assignee := iss.Assignee
+		if assignee == "" {
+			assignee = "-"
+		}
+		issueContent += fmt.Sprintf("  %s %-12s %-20s %s %s\n",
+			statusIndicator(iss.Status), iss.ID, truncate(iss.Title, 20),
+			statusStyle(iss.Status).Render(fmt.Sprintf("%-11s", iss.Status)), idleStyle.Render(assignee))
 	}
-	issuePanel := panel(fmt.Sprintf("ISSUES (%d)", len(m.data.issues)), issueContent, colW)
+	if issueContent == "" {
+		issueContent = "  (none)\n"
+	}
+	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", issueCount), issueContent, colW)
 
-	// Worktrees
+	// Worktrees with DiffStats
 	wtContent := ""
 	for _, wt := range m.data.worktrees {
-		wtContent += fmt.Sprintf("  %s  %s\n", wt.Name, idleStyle.Render(wt.Agent))
+		diffStr := ""
+		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
+			diffStr = fmt.Sprintf(" %df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
+		}
+		wtContent += fmt.Sprintf("  %s  %-14s %s%s\n",
+			truncate(wt.Name, 22), idleStyle.Render(truncate(wt.Agent, 14)),
+			idleStyle.Render(truncate(wt.Branch, 20)), activeStyle.Render(diffStr))
 	}
 	if wtContent == "" {
 		wtContent = "  (none)\n"
 	}
 	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
-	// Merge queue
-	issueByWT := map[string]*issue.Issue{}
-	for _, iss := range m.data.issues {
-		if iss.Worktree != "" {
-			issueByWT[iss.Worktree] = iss
-		}
-	}
-	mqContent := ""
-	for _, wt := range m.data.worktrees {
-		stage := "pending"
-		issueStatus := ""
-		if iss, ok := issueByWT[wt.Name]; ok {
-			issueStatus = iss.Status
-			switch iss.Status {
-			case "open":
-				stage = "pending"
-			case "assigned":
-				stage = "assigned"
-			case "in-progress":
-				stage = "building"
-			case "blocked":
-				stage = "blocked"
-			case "review":
-				stage = "review"
-			case "done":
-				stage = "merged"
-			}
-		}
-		mqContent += fmt.Sprintf("  %-22s %-22s %s\n", truncate(wt.Name, 22), truncate(wt.Branch, 22), statusStyle(issueStatus).Render(stage))
-	}
-	if mqContent == "" {
-		mqContent = "  (none)\n"
-	}
-	mqPanel := panel("MERGE QUEUE", mqContent, colW)
-
-	// Mail
+	// Mail (kept as-is)
 	mailContent := ""
 	limit := min(len(m.data.messages), 5)
 	for _, msg := range m.data.messages[:limit] {
@@ -96,7 +73,7 @@ func (m Model) renderOverview() string {
 	}
 	mailPanel := panel(fmt.Sprintf("MAIL (%d unread)", m.data.unread), mailContent, colW)
 
-	// Memory
+	// Memory (kept as-is)
 	memCounts := map[string]int{}
 	for _, e := range m.data.memories {
 		memCounts[e.Type]++
@@ -115,10 +92,25 @@ func (m Model) renderOverview() string {
 	}
 	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
 
-	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, mqPanel, memPanel)
+	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
 	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+}
+
+func timeAgo(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
 }
 
 func truncate(s string, n int) string {
