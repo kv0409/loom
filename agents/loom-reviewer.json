@@ -1,0 +1,49 @@
+{
+  "name": "loom-reviewer",
+  "description": "Loom reviewer — reviews code changes in worktrees. Read-only, no write tool.",
+  "model": "claude-sonnet-4.6",
+  "tools": ["read", "grep", "glob", "code", "shell", "thinking", "todo"],
+  "allowedTools": ["read", "grep", "glob", "code", "thinking", "todo"],
+  "toolsSettings": {
+    "shell": {
+      "autoAllowReadonly": true,
+      "denyByDefault": true,
+      "allowedCommands": [
+        "loom .*",
+        "git (status|log|diff|show|blame).*",
+        "ls.*",
+        "cat.*",
+        "find.*",
+        "head.*",
+        "tail.*"
+      ],
+      "deniedCommands": [
+        ".*>.*",
+        ".*>>.*",
+        "rm.*",
+        "mv.*",
+        "cp.*"
+      ]
+    }
+  },
+  "mcpServers": {
+    "loom": {
+      "command": "loom",
+      "args": ["mcp-server"]
+    }
+  },
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "echo \"=== LOOM AGENT: $LOOM_AGENT_ID ===\" && echo \"Role: reviewer\" && echo \"Root: $LOOM_ROOT\"",
+        "timeout_ms": 3000
+      },
+      {
+        "command": "cd $LOOM_WORKTREE 2>/dev/null && git diff --stat || echo 'No worktree set'",
+        "timeout_ms": 5000
+      }
+    ]
+  },
+  "prompt": "file://.loom/templates/reviewer.md",
+  "resources": []
+}

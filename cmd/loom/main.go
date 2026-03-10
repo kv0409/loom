@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/karanagi/loom/agents"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/daemon"
@@ -355,9 +356,8 @@ func main() {
 		Short: "Start MCP server (stdio transport)",
 		RunE:  runMCPServer,
 	}
-	mcpServerCmd.Flags().String("agent-id", "", "Agent ID for this MCP server instance (required)")
+	mcpServerCmd.Flags().String("agent-id", "", "Agent ID for this MCP server instance (falls back to LOOM_AGENT_ID env var)")
 	mcpServerCmd.Flags().String("loom-root", "", "Path to .loom directory (auto-detected if omitted)")
-	mcpServerCmd.MarkFlagRequired("agent-id")
 
 	root.AddCommand(
 		initCmd,
@@ -472,8 +472,53 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Install kiro-cli agent definitions
+	if err := os.MkdirAll(".kiro/agents", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/agents: %w", err)
+	}
+	agentEntries, err := fs.ReadDir(agents.AgentsFS, ".")
+	if err != nil {
+		return fmt.Errorf("reading embedded agents: %w", err)
+	}
+	for _, e := range agentEntries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(agents.AgentsFS, e.Name())
+		if err != nil {
+			return fmt.Errorf("reading agent %s: %w", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(".kiro/agents", e.Name()), data, 0644); err != nil {
+			return fmt.Errorf("writing agent %s: %w", e.Name(), err)
+		}
+	}
+
+	// Install hooks
+	if err := os.MkdirAll(".kiro/hooks", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/hooks: %w", err)
+	}
+	hookEntries, err := fs.ReadDir(agents.AgentsFS, "hooks")
+	if err != nil {
+		return fmt.Errorf("reading embedded hooks: %w", err)
+	}
+	for _, e := range hookEntries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(agents.AgentsFS, "hooks/"+e.Name())
+		if err != nil {
+			return fmt.Errorf("reading hook %s: %w", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(".kiro/hooks", e.Name()), data, 0755); err != nil {
+			return fmt.Errorf("writing hook %s: %w", e.Name(), err)
+		}
+	}
+
 	// Update .gitignore
 	if err := appendToGitignore(".loom/"); err != nil {
+		return fmt.Errorf("updating .gitignore: %w", err)
+	}
+	if err := appendToGitignore(".kiro/"); err != nil {
 		return fmt.Errorf("updating .gitignore: %w", err)
 	}
 
@@ -1504,7 +1549,13 @@ func runLog(cmd *cobra.Command, args []string) error {
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
 	agentID, _ := cmd.Flags().GetString("agent-id")
+	if agentID == "" {
+		agentID = os.Getenv("LOOM_AGENT_ID")
+	}
 	root, _ := cmd.Flags().GetString("loom-root")
+	if root == "" {
+		root = os.Getenv("LOOM_ROOT")
+	}
 	if root == "" {
 		var err error
 		root, err = config.FindLoomRoot()

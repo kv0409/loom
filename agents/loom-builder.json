@@ -1,0 +1,52 @@
+{
+  "name": "loom-builder",
+  "description": "Loom builder — implements code changes in an isolated worktree. Most restricted writer agent.",
+  "model": "claude-sonnet-4.6",
+  "tools": ["read", "write", "grep", "glob", "code", "shell", "todo"],
+  "allowedTools": ["read", "grep", "glob", "code", "todo"],
+  "toolsSettings": {
+    "shell": {
+      "autoAllowReadonly": true,
+      "allowedCommands": [
+        "loom .*",
+        "git (status|log|diff|add|commit).*",
+        "npm .*",
+        "go .*",
+        "make .*",
+        "python.*"
+      ],
+      "deniedCommands": [
+        "git push.*",
+        "git checkout (main|master).*",
+        "rm -rf.*"
+      ]
+    }
+  },
+  "mcpServers": {
+    "loom": {
+      "command": "loom",
+      "args": ["mcp-server"]
+    }
+  },
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "echo \"=== LOOM AGENT: $LOOM_AGENT_ID ===\" && echo \"Role: builder\" && echo \"Root: $LOOM_ROOT\" && echo \"Worktree: $LOOM_WORKTREE\"",
+        "timeout_ms": 3000
+      },
+      {
+        "command": "loom issue list --assignee $LOOM_AGENT_ID 2>/dev/null || echo 'No assigned issues'",
+        "timeout_ms": 5000
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "write",
+        "command": ".kiro/hooks/loom-worktree-guard.sh",
+        "description": "Block writes outside assigned worktree"
+      }
+    ]
+  },
+  "prompt": "file://.loom/templates/builder.md",
+  "resources": []
+}

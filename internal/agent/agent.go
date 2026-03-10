@@ -168,17 +168,46 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		Save(loomRoot, agent)
 	}
 
-	kiroCmd := cfg.Kiro.Command + " " + cfg.Kiro.DefaultMode
+	// Build kiro-cli command with --agent flag
+	agentName := "loom-" + opts.Role
+	projectRoot := filepath.Dir(loomRoot)
+
+	envPrefix := fmt.Sprintf("LOOM_AGENT_ID=%s LOOM_ROOT=%s LOOM_PROJECT_ROOT=%s LOOM_ROLE=%s",
+		id, loomRoot, projectRoot, opts.Role)
+	if agent.WorktreeName != "" {
+		wtPath := filepath.Join(loomRoot, "worktrees", agent.WorktreeName)
+		envPrefix += fmt.Sprintf(" LOOM_WORKTREE=%s", wtPath)
+	}
+	if opts.SpawnedBy != "" {
+		envPrefix += fmt.Sprintf(" LOOM_PARENT_AGENT=%s", opts.SpawnedBy)
+	}
+
+	// For builders, cd into worktree before launching kiro-cli
+	var kiroCmd string
+	if opts.Role == "builder" && agent.WorktreeName != "" {
+		wtPath := filepath.Join(loomRoot, "worktrees", agent.WorktreeName)
+		kiroCmd = fmt.Sprintf("cd %s && %s %s %s --agent %s", wtPath, envPrefix, cfg.Kiro.Command, cfg.Kiro.DefaultMode, agentName)
+	} else {
+		kiroCmd = fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, cfg.Kiro.DefaultMode, agentName)
+	}
+
 	if err := tmux.RunInPane(target, kiroCmd); err != nil {
 		Kill(loomRoot, id, true)
 		return nil, fmt.Errorf("starting kiro: %w", err)
 	}
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 
-	prompt, err := RenderPrompt(loomRoot, agent, opts.ExtraContext)
-	if err == nil && prompt != "" {
-		tmux.RunInPane(target, prompt)
+	// Send task as first user message (system prompt comes from agent definition)
+	if len(opts.AssignedIssues) > 0 {
+		taskMsg := fmt.Sprintf("Your assigned issues: %s. Read them with `loom issue show <id>` and begin work.",
+			strings.Join(opts.AssignedIssues, ", "))
+		if opts.ExtraContext != nil {
+			if task, ok := opts.ExtraContext["task"]; ok {
+				taskMsg = task
+			}
+		}
+		tmux.RunInPane(target, taskMsg)
 	}
 
 	agent.Status = "active"
