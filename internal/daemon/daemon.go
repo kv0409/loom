@@ -121,7 +121,6 @@ func (d *Daemon) watchMail() {
 }
 
 func (d *Daemon) watchHeartbeats() {
-	timeout := time.Duration(d.Config.Limits.HeartbeatTimeoutSeconds) * time.Second
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.HeartbeatIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -137,22 +136,23 @@ func (d *Daemon) watchHeartbeats() {
 				if a.Status == "dead" || a.Status == "done" {
 					continue
 				}
-				if time.Since(a.Heartbeat) <= timeout {
-					continue
+				// Check if tmux pane is still alive instead of relying on heartbeats
+				_, err := tmux.CapturePane(a.TmuxTarget)
+				if err != nil {
+					// Pane is gone — agent is truly dead
+					a.Status = "dead"
+					agent.Save(d.LoomRoot, a)
+					parentID := a.SpawnedBy
+					if parentID == "" {
+						continue
+					}
+					parent, err := agent.Load(d.LoomRoot, parentID)
+					if err != nil || parent.TmuxTarget == "" {
+						continue
+					}
+					msg := "[LOOM] Agent " + a.ID + " is dead (tmux pane gone)"
+					tmux.RunInPane(parent.TmuxTarget, msg)
 				}
-				a.Status = "dead"
-				agent.Save(d.LoomRoot, a)
-				// Notify parent
-				parentID := a.SpawnedBy
-				if parentID == "" {
-					continue
-				}
-				parent, err := agent.Load(d.LoomRoot, parentID)
-				if err != nil || parent.TmuxTarget == "" {
-					continue
-				}
-				msg := "[LOOM] Agent " + a.ID + " is dead (heartbeat timeout)"
-				tmux.RunInPane(parent.TmuxTarget, msg)
 			}
 		}
 	}

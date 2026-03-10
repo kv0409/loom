@@ -33,6 +33,18 @@ func Create(loomRoot string, issueID string, slug string, agent string) (*Worktr
 	name := "loom-" + issueID + "-" + slug
 	branch := "loom/" + issueID + "-" + slug
 	wtPath := filepath.Join(".loom", "worktrees", name)
+	absPath := filepath.Join(projectRoot(loomRoot), wtPath)
+
+	// Reuse existing worktree for the same issue
+	if _, err := os.Stat(absPath); err == nil {
+		return &Worktree{
+			Name:   name,
+			Path:   absPath,
+			Branch: branch,
+			Agent:  agent,
+			Issue:  issueID,
+		}, nil
+	}
 
 	cmd := exec.Command("git", "worktree", "add", wtPath, "-b", branch)
 	cmd.Dir = projectRoot(loomRoot)
@@ -42,7 +54,7 @@ func Create(loomRoot string, issueID string, slug string, agent string) (*Worktr
 
 	return &Worktree{
 		Name:   name,
-		Path:   filepath.Join(projectRoot(loomRoot), wtPath),
+		Path:   absPath,
 		Branch: branch,
 		Agent:  agent,
 		Issue:  issueID,
