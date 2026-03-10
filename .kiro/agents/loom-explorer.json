@@ -1,6 +1,6 @@
 {
   "name": "loom-explorer",
-  "description": "Loom explorer \u2014 read-only codebase exploration and analysis.",
+  "description": "Loom explorer — read-only codebase exploration and analysis.",
   "model": "claude-haiku-4.5",
   "tools": [
     "read",
@@ -58,6 +58,14 @@
       {
         "command": ".kiro/hooks/loom-stop-hook.sh",
         "timeout_ms": 5000
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "shell",
+        "command": "loom agent heartbeat 2>/dev/null",
+        "description": "Heartbeat on tool use",
+        "timeout_ms": 2000
       }
     ]
   },

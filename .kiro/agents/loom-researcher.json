@@ -1,6 +1,6 @@
 {
   "name": "loom-researcher",
-  "description": "Loom researcher \u2014 external research via web search and fetch. No code writing.",
+  "description": "Loom researcher — external research via web search and fetch. No code writing.",
   "model": "claude-sonnet-4.6",
   "tools": [
     "read",
@@ -64,6 +64,14 @@
       {
         "command": ".kiro/hooks/loom-stop-hook.sh",
         "timeout_ms": 5000
+      }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "shell",
+        "command": "loom agent heartbeat 2>/dev/null",
+        "description": "Heartbeat on tool use",
+        "timeout_ms": 2000
       }
     ]
   },

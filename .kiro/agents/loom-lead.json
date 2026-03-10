@@ -73,6 +73,14 @@
         "command": ".kiro/hooks/loom-stop-hook.sh",
         "timeout_ms": 5000
       }
+    ],
+    "preToolUse": [
+      {
+        "matcher": "shell",
+        "command": "loom agent heartbeat 2>/dev/null",
+        "description": "Heartbeat on tool use",
+        "timeout_ms": 2000
+      }
     ]
   },
   "prompt": "file://prompts/loom-lead.md",

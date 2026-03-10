@@ -1,6 +1,6 @@
 {
   "name": "loom-builder",
-  "description": "Loom builder \u2014 implements code changes in an isolated worktree. Most restricted writer agent.",
+  "description": "Loom builder — implements code changes in an isolated worktree. Most restricted writer agent.",
   "model": "claude-opus-4.6",
   "tools": [
     "read",
@@ -69,6 +69,12 @@
         "matcher": "write",
         "command": ".kiro/hooks/loom-worktree-guard.sh",
         "description": "Block writes outside assigned worktree"
+      },
+      {
+        "matcher": "shell",
+        "command": "loom agent heartbeat 2>/dev/null",
+        "description": "Heartbeat on tool use",
+        "timeout_ms": 2000
       }
     ],
     "stop": [
