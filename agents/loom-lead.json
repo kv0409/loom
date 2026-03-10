@@ -1,7 +1,7 @@
 {
   "name": "loom-lead",
-  "description": "Loom lead \u2014 coordinates builders, merges worktrees, reports to orchestrator.",
-  "model": "claude-sonnet-4.6",
+  "description": "Loom lead — coordinates builders, merges worktrees, reports to orchestrator.",
+  "model": "claude-opus-4.6",
   "tools": [
     "read",
     "grep",

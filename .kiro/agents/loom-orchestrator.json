@@ -1,7 +1,7 @@
 {
   "name": "loom-orchestrator",
-  "description": "Loom orchestrator \u2014 receives issues, decomposes work, spawns leads. Never writes code.",
-  "model": "claude-sonnet-4.6",
+  "description": "Loom orchestrator — receives issues, decomposes work, spawns leads. Never writes code.",
+  "model": "claude-opus-4.6",
   "tools": [
     "read",
     "grep",
