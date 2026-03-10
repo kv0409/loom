@@ -8,11 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
@@ -104,16 +106,45 @@ func main() {
 	issueCmd.AddCommand(issueCreateCmd, issueListCmd, issueShowCmd, issueUpdateCmd, issueCloseCmd)
 
 	// --- Agents ---
-	agentsCmd := stub("agents", "List all agents")
+	agentsCmd := &cobra.Command{
+		Use:   "agents",
+		Short: "List all agents",
+		RunE:  runAgents,
+	}
 	agentCmd := &cobra.Command{Use: "agent", Short: "Agent management"}
-	agentCmd.AddCommand(stub("show", "Show agent detail"))
+	agentShowCmd := &cobra.Command{
+		Use:   "show <name>",
+		Short: "Show agent detail",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runAgentShow,
+	}
+	agentHeartbeatCmd := &cobra.Command{
+		Use:    "heartbeat",
+		Short:  "Update agent heartbeat",
+		Hidden: true,
+		RunE:   runAgentHeartbeat,
+	}
+	agentCmd.AddCommand(agentShowCmd, agentHeartbeatCmd)
 
-	attachCmd := stub("attach", "Attach to agent tmux pane")
-	attachCmd.Use = "attach <name>"
-	nudgeCmd := stub("nudge", "Send message to agent")
-	nudgeCmd.Use = "nudge <name> <message>"
-	killCmd := stub("kill", "Force-stop an agent")
-	killCmd.Use = "kill <name>"
+	attachCmd := &cobra.Command{
+		Use:   "attach <name>",
+		Short: "Attach to agent tmux pane",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runAttach,
+	}
+	nudgeCmd := &cobra.Command{
+		Use:   "nudge <name> <message>",
+		Short: "Send message to agent",
+		Args:  cobra.ExactArgs(2),
+		RunE:  runNudge,
+	}
+	killCmd := &cobra.Command{
+		Use:   "kill <name>",
+		Short: "Force-stop an agent",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runKill,
+	}
+	killCmd.Flags().Bool("cleanup", false, "Also remove worktree")
 
 	// --- Mail ---
 	mailCmd := &cobra.Command{Use: "mail", Short: "Async mail system"}
@@ -1037,4 +1068,132 @@ func runLockCheck(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Issue:    %s\n", l.Issue)
 	fmt.Printf("Acquired: %s\n", l.AcquiredAt.Format("2006-01-02 15:04:05"))
 	return nil
+}
+
+func runAgents(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	agents, err := agent.List(root)
+	if err != nil {
+		return err
+	}
+	if len(agents) == 0 {
+		fmt.Println("No agents")
+		return nil
+	}
+	fmt.Printf("%-16s %-12s %-10s %-25s %-15s %s\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
+	for _, a := range agents {
+		wt := "—"
+		if a.WorktreeName != "" {
+			wt = a.WorktreeName
+		}
+		issues := "—"
+		if len(a.AssignedIssues) > 0 {
+			issues = strings.Join(a.AssignedIssues, ",")
+		}
+		hb := relativeTime(a.Heartbeat)
+		fmt.Printf("%-16s %-12s %-10s %-25s %-15s %s\n", a.ID, a.Role, a.Status, wt, issues, hb)
+	}
+	return nil
+}
+
+func runAgentShow(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	a, err := agent.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("ID:          %s\n", a.ID)
+	fmt.Printf("Role:        %s\n", a.Role)
+	fmt.Printf("Status:      %s\n", a.Status)
+	fmt.Printf("PID:         %d\n", a.PID)
+	fmt.Printf("Tmux Target: %s\n", a.TmuxTarget)
+	fmt.Printf("Spawned By:  %s\n", a.SpawnedBy)
+	fmt.Printf("Spawned At:  %s\n", a.SpawnedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Heartbeat:   %s (%s)\n", a.Heartbeat.Format("2006-01-02 15:04:05"), relativeTime(a.Heartbeat))
+	if len(a.AssignedIssues) > 0 {
+		fmt.Printf("Issues:      %s\n", strings.Join(a.AssignedIssues, ", "))
+	}
+	if a.WorktreeName != "" {
+		fmt.Printf("Worktree:    %s\n", a.WorktreeName)
+	}
+	fmt.Printf("Kiro Mode:   %s\n", a.Config.KiroMode)
+	fmt.Printf("MCP Enabled: %v\n", a.Config.MCPEnabled)
+	return nil
+}
+
+func runAgentHeartbeat(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	id := os.Getenv("LOOM_AGENT_ID")
+	if id == "" {
+		return fmt.Errorf("LOOM_AGENT_ID not set")
+	}
+	return agent.UpdateHeartbeat(root, id)
+}
+
+func runAttach(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	a, err := agent.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	return tmux.AttachSession(a.TmuxTarget)
+}
+
+func runNudge(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	a, err := agent.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	msg := "[LOOM] Nudge: " + args[1]
+	if err := tmux.RunInPane(a.TmuxTarget, msg); err != nil {
+		return err
+	}
+	fmt.Printf("Nudged %s\n", args[0])
+	return nil
+}
+
+func runKill(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	cleanup, _ := cmd.Flags().GetBool("cleanup")
+	if err := agent.Kill(root, args[0], cleanup); err != nil {
+		return err
+	}
+	fmt.Printf("Killed %s\n", args[0])
+	return nil
+}
+
+func relativeTime(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
