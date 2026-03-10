@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/karanagi/loom/internal/config"
+	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -46,13 +47,56 @@ func main() {
 
 	// --- Issues ---
 	issueCmd := &cobra.Command{Use: "issue", Short: "Issue tracker"}
-	issueCmd.AddCommand(
-		stub("create", "Create a new issue"),
-		stub("list", "List issues"),
-		stub("show", "Show issue detail"),
-		stub("update", "Update an issue"),
-		stub("close", "Close an issue"),
-	)
+
+	issueCreateCmd := &cobra.Command{
+		Use:   "create <title>",
+		Short: "Create a new issue",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runIssueCreate,
+	}
+	issueCreateCmd.Flags().String("type", "task", "Issue type: epic|task|bug|spike")
+	issueCreateCmd.Flags().String("priority", "normal", "Priority: critical|high|normal|low")
+	issueCreateCmd.Flags().String("parent", "", "Parent issue ID")
+	issueCreateCmd.Flags().StringP("description", "d", "", "Description")
+	issueCreateCmd.Flags().String("depends-on", "", "Comma-separated dependency IDs")
+
+	issueListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List issues",
+		RunE:  runIssueList,
+	}
+	issueListCmd.Flags().String("status", "", "Filter by status")
+	issueListCmd.Flags().String("assignee", "", "Filter by assignee")
+	issueListCmd.Flags().String("type", "", "Filter by type")
+	issueListCmd.Flags().Bool("all", false, "Include closed/cancelled")
+	issueListCmd.Flags().Bool("tree", false, "Show parent/child hierarchy")
+
+	issueShowCmd := &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show issue detail",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runIssueShow,
+	}
+
+	issueUpdateCmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runIssueUpdate,
+	}
+	issueUpdateCmd.Flags().String("status", "", "New status")
+	issueUpdateCmd.Flags().String("priority", "", "New priority")
+	issueUpdateCmd.Flags().String("assignee", "", "New assignee")
+
+	issueCloseCmd := &cobra.Command{
+		Use:   "close <id>",
+		Short: "Close an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runIssueClose,
+	}
+	issueCloseCmd.Flags().String("reason", "", "Close reason")
+
+	issueCmd.AddCommand(issueCreateCmd, issueListCmd, issueShowCmd, issueUpdateCmd, issueCloseCmd)
 
 	// --- Agents ---
 	agentsCmd := stub("agents", "List all agents")
@@ -278,4 +322,244 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	return config.Set(root, args[0], args[1])
+}
+
+func runIssueCreate(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	typ, _ := cmd.Flags().GetString("type")
+	priority, _ := cmd.Flags().GetString("priority")
+	parent, _ := cmd.Flags().GetString("parent")
+	desc, _ := cmd.Flags().GetString("description")
+	depsStr, _ := cmd.Flags().GetString("depends-on")
+
+	var deps []string
+	if depsStr != "" {
+		for _, d := range strings.Split(depsStr, ",") {
+			if t := strings.TrimSpace(d); t != "" {
+				deps = append(deps, t)
+			}
+		}
+	}
+
+	iss, err := issue.Create(root, args[0], issue.CreateOpts{
+		Type:        typ,
+		Priority:    priority,
+		Parent:      parent,
+		Description: desc,
+		DependsOn:   deps,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Created %s: %s\n", iss.ID, iss.Title)
+	return nil
+}
+
+func runIssueList(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	status, _ := cmd.Flags().GetString("status")
+	assignee, _ := cmd.Flags().GetString("assignee")
+	typ, _ := cmd.Flags().GetString("type")
+	all, _ := cmd.Flags().GetBool("all")
+	tree, _ := cmd.Flags().GetBool("tree")
+
+	issues, err := issue.List(root, issue.ListOpts{
+		Status: status, Assignee: assignee, Type: typ, All: all,
+	})
+	if err != nil {
+		return err
+	}
+
+	if tree {
+		printTree(issues)
+		return nil
+	}
+
+	fmt.Printf("%-12s %-8s %-14s %-40s %s\n", "ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
+	for _, iss := range issues {
+		title := iss.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Printf("%-12s %-8s %-14s %-40s %s\n", iss.ID, iss.Type, iss.Status, title, iss.Assignee)
+	}
+	return nil
+}
+
+func printTree(issues []*issue.Issue) {
+	byID := make(map[string]*issue.Issue)
+	for _, iss := range issues {
+		byID[iss.ID] = iss
+	}
+
+	// Find roots (no parent or parent not in set)
+	var roots []*issue.Issue
+	for _, iss := range issues {
+		if iss.Parent == "" || byID[iss.Parent] == nil {
+			roots = append(roots, iss)
+		}
+	}
+
+	for _, r := range roots {
+		printNode(r, byID, "")
+	}
+}
+
+func printNode(iss *issue.Issue, byID map[string]*issue.Issue, prefix string) {
+	assignee := ""
+	if iss.Assignee != "" {
+		assignee = " (" + iss.Assignee + ")"
+	}
+	fmt.Printf("%s%s [%s] [%s] %s%s\n", prefix, iss.ID, iss.Type, iss.Status, iss.Title, assignee)
+
+	// Print dependency info
+	for _, dep := range iss.DependsOn {
+		connector := "    └── "
+		if prefix != "" {
+			connector = prefix + "    └── "
+		}
+		fmt.Printf("%sdepends on: %s\n", connector, dep)
+	}
+
+	// Print children
+	for i, childID := range iss.Children {
+		child, ok := byID[childID]
+		if !ok {
+			continue
+		}
+		isLast := i == len(iss.Children)-1
+		connector := "├── "
+		childPrefix := "│   "
+		if isLast {
+			connector = "└── "
+			childPrefix = "    "
+		}
+		printNodeChild(child, byID, prefix+connector, prefix+childPrefix)
+	}
+}
+
+func printNodeChild(iss *issue.Issue, byID map[string]*issue.Issue, linePrefix, childPrefix string) {
+	assignee := ""
+	if iss.Assignee != "" {
+		assignee = " (" + iss.Assignee + ")"
+	}
+	fmt.Printf("%s%s [%s] [%s] %s%s\n", linePrefix, iss.ID, iss.Type, iss.Status, iss.Title, assignee)
+
+	for _, dep := range iss.DependsOn {
+		fmt.Printf("%s└── depends on: %s\n", childPrefix, dep)
+	}
+
+	for i, childID := range iss.Children {
+		child, ok := byID[childID]
+		if !ok {
+			continue
+		}
+		isLast := i == len(iss.Children)-1
+		connector := "├── "
+		nextPrefix := "│   "
+		if isLast {
+			connector = "└── "
+			nextPrefix = "    "
+		}
+		printNodeChild(child, byID, childPrefix+connector, childPrefix+nextPrefix)
+	}
+}
+
+func runIssueShow(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	iss, err := issue.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("ID:          %s\n", iss.ID)
+	fmt.Printf("Title:       %s\n", iss.Title)
+	fmt.Printf("Type:        %s\n", iss.Type)
+	fmt.Printf("Status:      %s\n", iss.Status)
+	fmt.Printf("Priority:    %s\n", iss.Priority)
+	if iss.Description != "" {
+		fmt.Printf("Description: %s\n", iss.Description)
+	}
+	if iss.Assignee != "" {
+		fmt.Printf("Assignee:    %s\n", iss.Assignee)
+	}
+	if iss.Parent != "" {
+		fmt.Printf("Parent:      %s\n", iss.Parent)
+	}
+	if len(iss.DependsOn) > 0 {
+		fmt.Printf("Depends On:  %s\n", strings.Join(iss.DependsOn, ", "))
+	}
+	if len(iss.Children) > 0 {
+		fmt.Printf("Children:    %s\n", strings.Join(iss.Children, ", "))
+	}
+	if iss.Worktree != "" {
+		fmt.Printf("Worktree:    %s\n", iss.Worktree)
+	}
+	fmt.Printf("Created By:  %s\n", iss.CreatedBy)
+	fmt.Printf("Created At:  %s\n", iss.CreatedAt.Format("2006-01-02 15:04:05"))
+	fmt.Printf("Updated At:  %s\n", iss.UpdatedAt.Format("2006-01-02 15:04:05"))
+	if iss.ClosedAt != nil {
+		fmt.Printf("Closed At:   %s\n", iss.ClosedAt.Format("2006-01-02 15:04:05"))
+	}
+	if iss.CloseReason != "" {
+		fmt.Printf("Close Reason: %s\n", iss.CloseReason)
+	}
+
+	if len(iss.History) > 0 {
+		fmt.Println("\nHistory:")
+		for _, h := range iss.History {
+			detail := ""
+			if h.Detail != "" {
+				detail = " — " + h.Detail
+			}
+			fmt.Printf("  %s  %s  %s%s\n", h.At.Format("2006-01-02 15:04:05"), h.By, h.Action, detail)
+		}
+	}
+	return nil
+}
+
+func runIssueUpdate(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	status, _ := cmd.Flags().GetString("status")
+	priority, _ := cmd.Flags().GetString("priority")
+	assignee, _ := cmd.Flags().GetString("assignee")
+
+	if status == "" && priority == "" && assignee == "" {
+		return fmt.Errorf("at least one of --status, --priority, or --assignee is required")
+	}
+
+	_, err = issue.Update(root, args[0], issue.UpdateOpts{
+		Status: status, Priority: priority, Assignee: assignee,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Updated %s\n", args[0])
+	return nil
+}
+
+func runIssueClose(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	reason, _ := cmd.Flags().GetString("reason")
+	_, err = issue.Close(root, args[0], reason)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Closed %s\n", args[0])
+	return nil
 }
