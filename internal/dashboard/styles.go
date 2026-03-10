@@ -10,6 +10,7 @@ var (
 	green  = lipgloss.Color("2")
 	yellow = lipgloss.Color("3")
 	red    = lipgloss.Color("1")
+	cyan   = lipgloss.Color("6")
 	gray   = lipgloss.Color("8")
 	white  = lipgloss.Color("15")
 
@@ -17,6 +18,7 @@ var (
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(white)
 	activeStyle   = lipgloss.NewStyle().Foreground(green)
 	blockedStyle  = lipgloss.NewStyle().Foreground(yellow)
+	reviewStyle   = lipgloss.NewStyle().Foreground(cyan)
 	deadStyle     = lipgloss.NewStyle().Foreground(red)
 	idleStyle     = lipgloss.NewStyle().Foreground(gray)
 	selectedStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
@@ -26,10 +28,12 @@ var (
 
 func statusStyle(status string) lipgloss.Style {
 	switch status {
-	case "active", "in-progress", "done":
+	case "active", "in-progress", "assigned", "done":
 		return activeStyle
 	case "blocked":
 		return blockedStyle
+	case "review":
+		return reviewStyle
 	case "dead", "error", "cancelled":
 		return deadStyle
 	default:
@@ -41,9 +45,11 @@ func statusIndicator(status string) string {
 	switch status {
 	case "blocked":
 		return blockedStyle.Render("⚠")
+	case "review":
+		return reviewStyle.Render("⚠")
 	case "dead", "error", "cancelled":
 		return deadStyle.Render("●")
-	case "active", "in-progress", "done":
+	case "active", "in-progress", "assigned", "done":
 		return activeStyle.Render("●")
 	default:
 		return idleStyle.Render("●")
