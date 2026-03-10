@@ -62,6 +62,6 @@
       }
     ]
   },
-  "prompt": "file://.loom/templates/reviewer.md",
+  "prompt": "file://prompts/loom-reviewer.md",
   "resources": []
 }

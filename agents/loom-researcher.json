@@ -52,6 +52,6 @@
       }
     ]
   },
-  "prompt": "file://.loom/templates/researcher.md",
+  "prompt": "file://prompts/loom-researcher.md",
   "resources": []
 }

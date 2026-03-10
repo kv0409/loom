@@ -68,6 +68,6 @@
       }
     ]
   },
-  "prompt": "file://.loom/templates/orchestrator.md",
+  "prompt": "file://prompts/loom-orchestrator.md",
   "resources": []
 }

@@ -490,6 +490,24 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err := os.MkdirAll(".kiro/agents", 0755); err != nil {
 		return fmt.Errorf("creating .kiro/agents: %w", err)
 	}
+	// Copy prompt templates to .kiro/agents/prompts/ (where kiro-cli resolves file:// URIs)
+	if err := os.MkdirAll(".kiro/agents/prompts", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/agents/prompts: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		data, err := fs.ReadFile(templates.TemplatesFS, e.Name())
+		if err != nil {
+			continue
+		}
+		role := strings.TrimSuffix(e.Name(), ".md")
+		promptName := "loom-" + role + ".md"
+		if err := os.WriteFile(filepath.Join(".kiro/agents/prompts", promptName), data, 0644); err != nil {
+			return fmt.Errorf("writing prompt %s: %w", promptName, err)
+		}
+	}
 	agentEntries, err := fs.ReadDir(agents.AgentsFS, ".")
 	if err != nil {
 		return fmt.Errorf("reading embedded agents: %w", err)

@@ -67,6 +67,6 @@
       }
     ]
   },
-  "prompt": "file://.loom/templates/lead.md",
+  "prompt": "file://prompts/loom-lead.md",
   "resources": []
 }
