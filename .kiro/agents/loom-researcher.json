@@ -23,16 +23,25 @@
   "toolsSettings": {
     "shell": {
       "autoAllowReadonly": true,
-      "denyByDefault": true,
       "allowedCommands": [
-        "loom .*"
+        ".*"
       ],
       "deniedCommands": [
-        ".*>.*",
-        ".*>>.*",
-        "rm.*",
-        "mv.*",
-        "cp.*"
+        "rm -rf /.*",
+        "rm -rf ~.*",
+        "rm -rf \\*",
+        "git push.*",
+        "git push --force.*",
+        "git reset --hard.*",
+        "git clean -fdx.*",
+        "chmod -R 777.*",
+        "sudo .*",
+        "shutdown.*",
+        "reboot.*",
+        "kill -9 -1",
+        "killall.*",
+        "mkfs.*",
+        "dd if=.*"
       ]
     }
   },
