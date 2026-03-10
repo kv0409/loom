@@ -1,0 +1,73 @@
+{
+  "name": "loom-orchestrator",
+  "description": "Loom orchestrator — receives issues, decomposes work, spawns leads. Never writes code.",
+  "model": "claude-sonnet-4.6",
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "shell",
+    "thinking",
+    "todo"
+  ],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "thinking",
+    "todo",
+    "@loom/loom_*"
+  ],
+  "toolsSettings": {
+    "shell": {
+      "autoAllowReadonly": true,
+      "allowedCommands": [
+        "loom .*",
+        "git (status|log|diff|show|branch)( .*)?",
+        "ls( .*)?",
+        "cat( .*)?",
+        "find( .*)?",
+        "head( .*)?",
+        "tail( .*)?"
+      ],
+      "deniedCommands": [
+        "rm .*",
+        "git (push|checkout|commit|merge|rebase).*",
+        ".*>.*",
+        ".*>>.*"
+      ]
+    }
+  },
+  "mcpServers": {
+    "loom": {
+      "command": "loom",
+      "args": [
+        "mcp-server"
+      ]
+    }
+  },
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "echo \"=== LOOM AGENT: $LOOM_AGENT_ID ===\" && echo \"Role: orchestrator\" && echo \"Root: $LOOM_ROOT\"",
+        "timeout_ms": 3000
+      },
+      {
+        "command": "loom issue list 2>/dev/null || echo 'No issues yet'",
+        "timeout_ms": 5000
+      },
+      {
+        "command": "loom agents 2>/dev/null || echo 'No agents yet'",
+        "timeout_ms": 5000
+      },
+      {
+        "command": "loom memory list 2>/dev/null || echo 'No memory entries yet'",
+        "timeout_ms": 5000
+      }
+    ]
+  },
+  "prompt": "file://prompts/loom-orchestrator.md",
+  "resources": []
+}

@@ -1,0 +1,59 @@
+{
+  "name": "loom-explorer",
+  "description": "Loom explorer — read-only codebase exploration and analysis.",
+  "model": "claude-sonnet-4.6",
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "shell",
+    "thinking"
+  ],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "thinking",
+    "@loom/loom_*"
+  ],
+  "toolsSettings": {
+    "shell": {
+      "autoAllowReadonly": true,
+      "denyByDefault": true,
+      "allowedCommands": [
+        "loom .*",
+        "git (status|log|diff|show|blame).*",
+        "ls.*",
+        "cat.*",
+        "find.*",
+        "head.*",
+        "tail.*",
+        "tree.*",
+        "wc.*"
+      ],
+      "deniedCommands": [
+        ".*>.*",
+        ".*>>.*",
+        "rm.*",
+        "mv.*",
+        "cp.*"
+      ]
+    }
+  },
+  "hooks": {
+    "agentSpawn": [
+      {
+        "command": "echo \"=== LOOM AGENT: $LOOM_AGENT_ID ===\" && echo \"Role: explorer\" && echo \"Root: $LOOM_ROOT\"",
+        "timeout_ms": 3000
+      },
+      {
+        "command": "tree -L 3 -I 'node_modules|.git|dist|build|vendor' --dirsfirst 2>/dev/null || find . -maxdepth 3 -type d | head -50",
+        "timeout_ms": 5000
+      }
+    ]
+  },
+  "prompt": "file://prompts/loom-explorer.md",
+  "resources": []
+}

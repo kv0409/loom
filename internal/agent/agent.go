@@ -203,7 +203,13 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		kiroBase += fmt.Sprintf(" '%s'", escaped)
 	}
 	// Always run from project root so kiro-cli finds .kiro/agents/
-	kiroCmd = kiroBase
+	// Builders cd into worktree (agent configs are committed to git, so worktrees have them)
+	if opts.Role == "builder" && agent.WorktreeName != "" {
+		wtPath := filepath.Join(loomRoot, "worktrees", agent.WorktreeName)
+		kiroCmd = fmt.Sprintf("cd %s && %s", wtPath, kiroBase)
+	} else {
+		kiroCmd = kiroBase
+	}
 
 	if err := tmux.RunInPane(target, kiroCmd); err != nil {
 		Kill(loomRoot, id, true)

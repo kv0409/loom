@@ -1,4 +1,6 @@
 /loom
 *.exe
 .loom/
-.kiro/
+.kiro/*
+!.kiro/agents/
+!.kiro/hooks/
