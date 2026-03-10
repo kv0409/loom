@@ -921,6 +921,9 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	agent := "orchestrator"
+	if envID := os.Getenv("LOOM_AGENT_ID"); envID != "" {
+		agent = envID
+	}
 	if len(args) > 0 {
 		agent = args[0]
 	}
