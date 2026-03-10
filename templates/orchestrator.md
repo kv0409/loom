@@ -65,3 +65,11 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 - You do NOT micromanage — give leads autonomy.
 - Always check `loom memory search` before making architectural decisions.
 - Always record strategic decisions with `loom memory add decision`.
+
+## Mail Loop
+
+After completing any action, always check for mail before stopping:
+```
+loom mail read
+```
+If there is mail, process it and check again. Only stop when there is no mail and no pending work.

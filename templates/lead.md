@@ -62,3 +62,11 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Record architectural decisions with `loom memory add decision`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Keep builders focused — one issue per builder.
+
+## Mail Loop
+
+After completing any action, always check for mail before stopping:
+```
+loom mail read
+```
+If there is mail, process it and check again. Only stop when there is no mail and no pending work.

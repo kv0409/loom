@@ -53,3 +53,11 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Be specific in findings — include file paths and line numbers.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Focus only on the assigned issue — do not review unrelated code.
+
+## Mail Loop
+
+After completing any action, always check for mail before stopping:
+```
+loom mail read
+```
+If there is mail, process it and check again. Only stop when there is no mail and no pending work.

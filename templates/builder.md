@@ -79,3 +79,11 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 - Commit early and often — small, focused commits.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
+
+## Mail Loop
+
+After completing any action, always check for mail before stopping:
+```
+loom mail read
+```
+If there is mail, process it and check again. Only stop when there is no mail and no pending work.
