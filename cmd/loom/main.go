@@ -885,6 +885,11 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	typ, _ := cmd.Flags().GetString("type")
 	priority, _ := cmd.Flags().GetString("priority")
 	from, _ := cmd.Flags().GetString("from")
+	if from == "human" {
+		if envID := os.Getenv("LOOM_AGENT_ID"); envID != "" {
+			from = envID
+		}
+	}
 	ref, _ := cmd.Flags().GetString("ref")
 	body, _ := cmd.Flags().GetString("body")
 
