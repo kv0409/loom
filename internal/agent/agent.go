@@ -40,6 +40,7 @@ type SpawnOpts struct {
 	AssignedIssues []string
 	IssueSlug      string
 	ExtraContext   map[string]string
+	Mode           string
 }
 
 func agentsDir(loomRoot string) string  { return filepath.Join(loomRoot, "agents") }
@@ -132,6 +133,13 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	}
 
 	now := time.Now()
+	mode := opts.Mode
+	if mode == "" {
+		mode = cfg.Kiro.DefaultMode
+	}
+	if mode != "chat" && mode != "acp" {
+		return nil, fmt.Errorf("invalid mode %q: must be chat or acp", mode)
+	}
 	agent := &Agent{
 		ID:             id,
 		Role:           opts.Role,
@@ -142,7 +150,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		Heartbeat:      now,
 		AssignedIssues: opts.AssignedIssues,
 		Config: AgentConfig{
-			KiroMode:   cfg.Kiro.DefaultMode,
+			KiroMode:   mode,
 			MCPEnabled: cfg.MCP.Enabled,
 		},
 	}
@@ -196,7 +204,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 
 	// Build kiro-cli command — pass task as INPUT arg (no tmux send-keys race condition)
 	var kiroCmd string
-	kiroBase := fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, cfg.Kiro.DefaultMode, agentName)
+	kiroBase := fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, mode, agentName)
 	if taskMsg != "" {
 		// Use single quotes to prevent shell interpretation of backticks, $, <, >
 		escaped := strings.ReplaceAll(taskMsg, "'", "'\\''")

@@ -92,9 +92,21 @@ func DefaultConfig() *Config {
 	}
 }
 
+func (c *Config) Validate() error {
+	switch c.Kiro.DefaultMode {
+	case "chat", "acp":
+		return nil
+	default:
+		return fmt.Errorf("invalid kiro.default_mode %q: must be chat or acp", c.Kiro.DefaultMode)
+	}
+}
+
 func Load(loomRoot string) (*Config, error) {
 	cfg := &Config{}
 	if err := store.ReadYAML(filepath.Join(loomRoot, "config.yaml"), cfg); err != nil {
+		return nil, err
+	}
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return cfg, nil

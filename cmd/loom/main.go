@@ -57,6 +57,7 @@ func main() {
 	}
 	startCmd.Flags().Bool("resume", false, "Auto-resume without prompting")
 	startCmd.Flags().Bool("fresh", false, "Discard previous state")
+	startCmd.Flags().String("mode", "", "Kiro mode for orchestrator: chat|acp")
 	startCmd.GroupID = "lifecycle"
 
 	stopCmd := &cobra.Command{
@@ -364,6 +365,7 @@ func main() {
 	spawnCmd.Flags().String("spawned-by", "", "Parent agent ID (defaults to LOOM_AGENT_ID env var)")
 	spawnCmd.Flags().String("slug", "", "Worktree slug for builders")
 	spawnCmd.Flags().String("task", "", "Custom task message for the agent")
+	spawnCmd.Flags().String("mode", "", "Kiro mode override: chat|acp")
 	spawnCmd.MarkFlagRequired("role")
 
 	gcCmd := &cobra.Command{
@@ -1385,6 +1387,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	spawnedBy, _ := cmd.Flags().GetString("spawned-by")
 	slug, _ := cmd.Flags().GetString("slug")
 	task, _ := cmd.Flags().GetString("task")
+	mode, _ := cmd.Flags().GetString("mode")
 
 	if spawnedBy == "" {
 		spawnedBy = os.Getenv("LOOM_AGENT_ID")
@@ -1410,6 +1413,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		AssignedIssues: issues,
 		IssueSlug:      slug,
 		ExtraContext:    extra,
+		Mode:           mode,
 	})
 	if err != nil {
 		return err
@@ -1757,10 +1761,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Spawn orchestrator (skip on --resume: agents are already running)
 	resume, _ := cmd.Flags().GetBool("resume")
+	mode, _ := cmd.Flags().GetString("mode")
 	if !resume {
 		_, err = agent.Spawn(root, agent.SpawnOpts{
 			Role:         "orchestrator",
 			ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
+			Mode:         mode,
 		})
 		if err != nil {
 			daemon.ReleaseLock(root)
