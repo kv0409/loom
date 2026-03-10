@@ -213,14 +213,29 @@ func RenderPrompt(loomRoot string, agent *Agent, extraContext map[string]string)
 		return "", fmt.Errorf("parsing template: %w", err)
 	}
 
+	projectRoot := filepath.Dir(loomRoot)
+
+	var wtPath, wtBranch string
+	if agent.WorktreeName != "" {
+		wts, _ := worktree.List(loomRoot)
+		for _, wt := range wts {
+			if wt.Name == agent.WorktreeName {
+				wtPath = wt.Path
+				wtBranch = wt.Branch
+				break
+			}
+		}
+	}
+
 	vars := map[string]interface{}{
 		"AgentID":        agent.ID,
 		"Role":           agent.Role,
-		"ParentAgent":    agent.SpawnedBy,
-		"AssignedIssues": agent.AssignedIssues,
-		"WorktreeName":   agent.WorktreeName,
+		"SpawnedBy":      agent.SpawnedBy,
+		"AssignedIssues": strings.Join(agent.AssignedIssues, ", "),
+		"WorktreePath":   wtPath,
+		"WorktreeBranch": wtBranch,
 		"MCPEnabled":     agent.Config.MCPEnabled,
-		"ProjectRoot":    filepath.Dir(loomRoot),
+		"ProjectRoot":    projectRoot,
 		"LoomRoot":       loomRoot,
 	}
 	for k, v := range extraContext {

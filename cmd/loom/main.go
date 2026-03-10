@@ -70,7 +70,12 @@ func main() {
 	dashCmd := stub("dash", "Launch TUI dashboard")
 
 	// --- Task ---
-	taskCmd := stub("task", "Create a task from natural language")
+	taskCmd := &cobra.Command{
+		Use:   "task <description>",
+		Short: "Create a task from natural language",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runTask,
+	}
 
 	// --- Issues ---
 	issueCmd := &cobra.Command{Use: "issue", Short: "Issue tracker"}
@@ -451,6 +456,23 @@ func appendToGitignore(entry string) error {
 	}
 	_, err = f.WriteString(entry + "\n")
 	return err
+}
+
+func runTask(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	iss, err := issue.Create(root, args[0], issue.CreateOpts{
+		Type:     "task",
+		Priority: "normal",
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Created %s: %s\n", iss.ID, args[0])
+	fmt.Println("The orchestrator will pick this up automatically.")
+	return nil
 }
 
 func runConfigShow(cmd *cobra.Command, args []string) error {
