@@ -1,10 +1,8 @@
 #!/bin/bash
 # loom-stop-hook.sh
 # Runs at end of every agent turn.
-# 1. Sends heartbeat
-# 2. Nudges parent agent that this agent completed a turn
-
-loom agent heartbeat 2>/dev/null
+# Nudges parent agent that this agent completed a turn.
+# (Heartbeat is handled by preToolUse hook on every shell call.)
 
 # Notify parent if we have one
 if [ -n "$LOOM_PARENT_AGENT" ]; then
