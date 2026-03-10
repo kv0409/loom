@@ -18,6 +18,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
+	"github.com/karanagi/loom/internal/mcp"
 	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
@@ -329,7 +330,14 @@ func main() {
 	// --- Utility ---
 	gcCmd := stub("gc", "Garbage collection")
 	exportCmd := stub("export", "Export work summary")
-	mcpServerCmd := stub("mcp-server", "Start MCP server")
+	mcpServerCmd := &cobra.Command{
+		Use:   "mcp-server",
+		Short: "Start MCP server (stdio transport)",
+		RunE:  runMCPServer,
+	}
+	mcpServerCmd.Flags().String("agent-id", "", "Agent ID for this MCP server instance (required)")
+	mcpServerCmd.Flags().String("loom-root", "", "Path to .loom directory (auto-detected if omitted)")
+	mcpServerCmd.MarkFlagRequired("agent-id")
 
 	root.AddCommand(
 		initCmd,
@@ -1255,6 +1263,20 @@ func relativeTime(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
+}
+
+func runMCPServer(cmd *cobra.Command, args []string) error {
+	agentID, _ := cmd.Flags().GetString("agent-id")
+	root, _ := cmd.Flags().GetString("loom-root")
+	if root == "" {
+		var err error
+		root, err = config.FindLoomRoot()
+		if err != nil {
+			return err
+		}
+	}
+	srv := &mcp.Server{LoomRoot: root, AgentID: agentID}
+	return srv.Run()
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
