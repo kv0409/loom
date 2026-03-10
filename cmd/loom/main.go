@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -112,11 +114,37 @@ func main() {
 
 	// --- Mail ---
 	mailCmd := &cobra.Command{Use: "mail", Short: "Async mail system"}
-	mailCmd.AddCommand(
-		stub("send", "Send a message"),
-		stub("read", "Read inbox"),
-		stub("log", "Message history"),
-	)
+
+	mailSendCmd := &cobra.Command{
+		Use:   "send <to> <subject>",
+		Short: "Send a message",
+		Args:  cobra.ExactArgs(2),
+		RunE:  runMailSend,
+	}
+	mailSendCmd.Flags().String("type", "status", "Message type")
+	mailSendCmd.Flags().String("priority", "normal", "Priority: critical|normal|low")
+	mailSendCmd.Flags().String("from", "human", "Sender")
+	mailSendCmd.Flags().String("ref", "", "Related issue ID")
+	mailSendCmd.Flags().StringP("body", "b", "", "Message body")
+
+	mailReadCmd := &cobra.Command{
+		Use:   "read [agent]",
+		Short: "Read inbox",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runMailRead,
+	}
+	mailReadCmd.Flags().Bool("unread", false, "Only unread messages")
+
+	mailLogCmd := &cobra.Command{
+		Use:   "log",
+		Short: "Message history",
+		RunE:  runMailLog,
+	}
+	mailLogCmd.Flags().String("agent", "", "Filter by agent")
+	mailLogCmd.Flags().String("type", "", "Filter by type")
+	mailLogCmd.Flags().String("since", "", "Time filter (e.g. 1h, 30m)")
+
+	mailCmd.AddCommand(mailSendCmd, mailReadCmd, mailLogCmd)
 
 	// --- Memory ---
 	memoryCmd := &cobra.Command{Use: "memory", Short: "Shared knowledge base"}
@@ -561,5 +589,99 @@ func runIssueClose(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	fmt.Printf("Closed %s\n", args[0])
+	return nil
+}
+
+func runMailSend(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	typ, _ := cmd.Flags().GetString("type")
+	priority, _ := cmd.Flags().GetString("priority")
+	from, _ := cmd.Flags().GetString("from")
+	ref, _ := cmd.Flags().GetString("ref")
+	body, _ := cmd.Flags().GetString("body")
+
+	msg := &mail.Message{
+		From:     from,
+		To:       args[0],
+		Type:     typ,
+		Priority: priority,
+		Ref:      ref,
+		Subject:  args[1],
+		Body:     body,
+	}
+	if err := mail.Send(root, msg); err != nil {
+		return err
+	}
+	fmt.Printf("Sent to %s: %s\n", args[0], args[1])
+	return nil
+}
+
+func runMailRead(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	agent := "orchestrator"
+	if len(args) > 0 {
+		agent = args[0]
+	}
+	unreadOnly, _ := cmd.Flags().GetBool("unread")
+
+	msgs, err := mail.Read(root, agent, unreadOnly)
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		fmt.Println("No messages")
+		return nil
+	}
+	for _, m := range msgs {
+		fmt.Printf("--- %s ---\n", m.ID)
+		fmt.Printf("  Time:     %s\n", m.Timestamp.Format("2006-01-02 15:04:05"))
+		fmt.Printf("  From:     %s\n", m.From)
+		fmt.Printf("  Type:     %s\n", m.Type)
+		fmt.Printf("  Subject:  %s\n", m.Subject)
+		if m.Body != "" {
+			fmt.Printf("  Body:     %s\n", m.Body)
+		}
+		fmt.Println()
+		if !m.Read {
+			mail.MarkRead(root, agent, m.ID)
+		}
+	}
+	return nil
+}
+
+func runMailLog(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	agent, _ := cmd.Flags().GetString("agent")
+	typ, _ := cmd.Flags().GetString("type")
+	sinceStr, _ := cmd.Flags().GetString("since")
+
+	var since time.Duration
+	if sinceStr != "" {
+		since, err = time.ParseDuration(sinceStr)
+		if err != nil {
+			return fmt.Errorf("invalid --since value: %w", err)
+		}
+	}
+
+	msgs, err := mail.Log(root, mail.LogOpts{Agent: agent, Type: typ, Since: since})
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		fmt.Println("No messages")
+		return nil
+	}
+	for _, m := range msgs {
+		fmt.Printf("%s  %s → %s  [%s]  %s\n", m.Timestamp.Format("2006-01-02 15:04:05"), m.From, m.To, m.Type, m.Subject)
+	}
 	return nil
 }
