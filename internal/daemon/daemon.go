@@ -64,8 +64,12 @@ func (d *Daemon) watchIssues() {
 				}
 				notified[iss.ID] = true
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
-				target := d.Config.Tmux.SessionName + ":" + itoa(d.Config.Tmux.OrchestratorWindow)
-				tmux.RunInPane(target, msg)
+				// Look up orchestrator's actual tmux target
+				orch, err := agent.Load(d.LoomRoot, "orchestrator")
+				if err != nil || orch.TmuxTarget == "" {
+					continue
+				}
+				tmux.RunInPane(orch.TmuxTarget, msg)
 			}
 		}
 	}
