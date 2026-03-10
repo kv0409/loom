@@ -323,6 +323,13 @@ func main() {
 	}
 	logCmd.Flags().Bool("all", false, "Show all logs interleaved")
 
+	logsDaemonCmd := &cobra.Command{
+		Use:   "daemon",
+		Short: "Tail the daemon log",
+		RunE:  runLogsDaemon,
+	}
+	logCmd.AddCommand(logsDaemonCmd)
+
 	// --- Config ---
 	configCmd := &cobra.Command{Use: "config", Short: "Configuration management"}
 	configShowCmd := &cobra.Command{
@@ -1581,6 +1588,18 @@ func cleanOldFiles(dir string, cutoff time.Time, dryRun bool, label string) int 
 	return count
 }
 
+func runLogsDaemon(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	logPath := filepath.Join(root, "logs", "daemon.log")
+	tail := exec.Command("tail", "-f", logPath)
+	tail.Stdout = os.Stdout
+	tail.Stderr = os.Stderr
+	return tail.Run()
+}
+
 func runLog(cmd *cobra.Command, args []string) error {
 	root, err := config.FindLoomRoot()
 	if err != nil {
@@ -1661,6 +1680,43 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loom already running (pid %d)", pid)
 	}
 
+	// Daemonize via re-exec with sentinel env var
+	if os.Getenv("LOOM_DAEMON") != "1" {
+		logPath := filepath.Join(root, "logs", "daemon.log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("opening daemon log: %w", err)
+		}
+
+		self, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("finding executable: %w", err)
+		}
+
+		child := exec.Command(self, os.Args[1:]...)
+		child.Env = append(os.Environ(), "LOOM_DAEMON=1")
+		child.Stdout = logFile
+		child.Stderr = logFile
+		if err := child.Start(); err != nil {
+			logFile.Close()
+			return fmt.Errorf("daemonizing: %w", err)
+		}
+		logFile.Close()
+
+		cfg, _ := config.Load(root)
+		session := "loom"
+		if cfg != nil {
+			session = cfg.Tmux.SessionName
+		}
+		fmt.Println("Loom started in background.")
+		fmt.Printf("  Logs:   loom logs daemon  (or tail %s)\n", logPath)
+		fmt.Printf("  Status: loom status\n")
+		fmt.Printf("  Dash:   loom dash\n")
+		fmt.Printf("  Stop:   loom stop\n")
+		fmt.Printf("  Tmux:   tmux attach -t %s\n", session)
+		return nil
+	}
+
 	cfg, err := config.Load(root)
 	if err != nil {
 		return err
@@ -1694,17 +1750,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting daemon: %w", err)
 	}
 
-	fmt.Printf("Loom started. Session: %s. Attach with: tmux attach -t %s\n", cfg.Tmux.SessionName, cfg.Tmux.SessionName)
-
 	// Block on signal
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
-	fmt.Println("\nShutting down...")
 	d.Stop()
 	daemon.ReleaseLock(root)
-	fmt.Println("Loom stopped.")
 	return nil
 }
 
