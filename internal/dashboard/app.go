@@ -34,8 +34,16 @@ const (
 
 var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees, viewKanban}
 
+type agentTreeNode struct {
+	depth  int
+	isLast bool
+	// ancestors[i] is true if the ancestor at depth i is the last child of its parent
+	ancestors []bool
+}
+
 type data struct {
 	agents    []*agent.Agent
+	agentTree []agentTreeNode
 	issues    []*issue.Issue
 	worktrees []*worktree.Worktree
 	diffStats map[string]*worktree.DiffStats
@@ -90,6 +98,7 @@ func (m Model) refresh() tea.Cmd {
 		d.messages, _ = mail.Log(root, mail.LogOpts{})
 		d.memories, _ = memory.List(root, memory.ListOpts{})
 		d.unread = countUnread(root)
+		d.agents, d.agentTree = sortAgentTree(d.agents)
 		d.activity = fetchActivity(d.agents)
 		d.logs = readLogs(root)
 		return d

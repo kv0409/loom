@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/karanagi/loom/internal/agent"
 )
 
 func (m Model) renderAgents() string {
@@ -22,8 +24,30 @@ func (m Model) renderAgents() string {
 		}
 		hb := relTime(a.Heartbeat)
 		statusCol := fmt.Sprintf("%s %-10s", statusIndicator(a.Status), a.Status)
+
+		// Build tree prefix
+		prefix := ""
+		if i < len(m.data.agentTree) {
+			node := m.data.agentTree[i]
+			for d := 0; d < node.depth-1; d++ {
+				if d < len(node.ancestors) && node.ancestors[d] {
+					prefix += "    "
+				} else {
+					prefix += "│   "
+				}
+			}
+			if node.depth > 0 {
+				if node.isLast {
+					prefix += "└── "
+				} else {
+					prefix += "├── "
+				}
+			}
+		}
+
+		id := prefix + a.ID
 		line := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s",
-			a.ID, a.Role, statusCol, wt, issues, hb)
+			id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		} else {
@@ -97,4 +121,64 @@ func relTime(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
+}
+
+func sortAgentTree(agents []*agent.Agent) ([]*agent.Agent, []agentTreeNode) {
+	if len(agents) == 0 {
+		return agents, nil
+	}
+
+	// Build children map: parent ID → list of indices
+	idSet := map[string]bool{}
+	for _, a := range agents {
+		idSet[a.ID] = true
+	}
+	children := map[string][]int{}
+	var roots []int
+	for i, a := range agents {
+		if a.SpawnedBy == "" || !idSet[a.SpawnedBy] {
+			roots = append(roots, i)
+		} else {
+			children[a.SpawnedBy] = append(children[a.SpawnedBy], i)
+		}
+	}
+
+	sorted := make([]*agent.Agent, 0, len(agents))
+	tree := make([]agentTreeNode, 0, len(agents))
+
+	var walk func(idx, depth int, isLast bool, ancestors []bool)
+	walk = func(idx, depth int, isLast bool, ancestors []bool) {
+		anc := make([]bool, len(ancestors))
+		copy(anc, ancestors)
+		sorted = append(sorted, agents[idx])
+		tree = append(tree, agentTreeNode{depth: depth, isLast: isLast, ancestors: anc})
+		kids := children[agents[idx].ID]
+		nextAnc := append(anc, isLast)
+		for j, kid := range kids {
+			walk(kid, depth+1, j == len(kids)-1, nextAnc)
+		}
+	}
+
+	for i, r := range roots {
+		walk(r, 0, i == len(roots)-1, nil)
+	}
+
+	// Append any agents not reached (shouldn't happen, but be safe)
+	visited := map[int]bool{}
+	for _, a := range sorted {
+		for i, orig := range agents {
+			if orig == a {
+				visited[i] = true
+				break
+			}
+		}
+	}
+	for i, a := range agents {
+		if !visited[i] {
+			sorted = append(sorted, a)
+			tree = append(tree, agentTreeNode{})
+		}
+	}
+
+	return sorted, tree
 }
