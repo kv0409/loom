@@ -124,7 +124,7 @@ func List(loomRoot string, opts ListOpts) ([]*Entry, error) {
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Timestamp.Before(entries[j].Timestamp)
+		return entries[i].Timestamp.After(entries[j].Timestamp)
 	})
 	return entries, nil
 }

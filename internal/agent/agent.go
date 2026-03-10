@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"text/template"
@@ -85,6 +86,9 @@ func List(loomRoot string) ([]*Agent, error) {
 		}
 		agents = append(agents, a)
 	}
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].SpawnedAt.After(agents[j].SpawnedAt)
+	})
 	return agents, nil
 }
 

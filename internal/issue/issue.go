@@ -3,6 +3,7 @@ package issue
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -174,6 +175,9 @@ func List(loomRoot string, opts ListOpts) ([]*Issue, error) {
 		}
 		issues = append(issues, issue)
 	}
+	sort.Slice(issues, func(i, j int) bool {
+		return issues[i].UpdatedAt.After(issues[j].UpdatedAt)
+	})
 	return issues, nil
 }
 
