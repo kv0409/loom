@@ -27,10 +27,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var version = "dev"
+
 func main() {
 	root := &cobra.Command{
-		Use:   "loom",
-		Short: "Multi-agent orchestration for kiro-cli",
+		Use:     "loom",
+		Short:   "Multi-agent orchestration for kiro-cli",
+		Version: version,
 	}
 
 	// --- loom init ---
@@ -310,7 +313,13 @@ func main() {
 	lockCmd.AddCommand(lockAcquireCmd, lockReleaseCmd, lockCheckCmd)
 
 	// --- Log ---
-	logCmd := stub("log", "View agent logs")
+	logCmd := &cobra.Command{
+		Use:   "log [agent]",
+		Short: "View agent logs",
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runLog,
+	}
+	logCmd.Flags().Bool("all", false, "Show all logs interleaved")
 
 	// --- Config ---
 	configCmd := &cobra.Command{Use: "config", Short: "Configuration management"}
@@ -328,8 +337,19 @@ func main() {
 	configCmd.AddCommand(configShowCmd, configSetCmd)
 
 	// --- Utility ---
-	gcCmd := stub("gc", "Garbage collection")
-	exportCmd := stub("export", "Export work summary")
+	gcCmd := &cobra.Command{
+		Use:   "gc",
+		Short: "Garbage collection",
+		RunE:  runGC,
+	}
+	gcCmd.Flags().Bool("dry-run", false, "Show what would be cleaned")
+
+	exportCmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export work summary",
+		RunE:  runExport,
+	}
+	exportCmd.Flags().String("issue", "", "Export summary for a specific issue")
 	mcpServerCmd := &cobra.Command{
 		Use:   "mcp-server",
 		Short: "Start MCP server (stdio transport)",
@@ -1263,6 +1283,223 @@ func relativeTime(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
+}
+
+func runExport(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	issueFilter, _ := cmd.Flags().GetString("issue")
+
+	// Load closed/cancelled issues
+	allIssues, err := issue.List(root, issue.ListOpts{All: true})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("# Loom Export")
+
+	// Issues Completed
+	fmt.Println("\n## Issues Completed")
+	var printed bool
+	for _, iss := range allIssues {
+		if iss.Status != "done" && iss.Status != "cancelled" {
+			continue
+		}
+		if issueFilter != "" && iss.ID != issueFilter && iss.Parent != issueFilter {
+			continue
+		}
+		if iss.Parent == "" || (issueFilter != "" && iss.ID == issueFilter) {
+			closedAt := ""
+			if iss.ClosedAt != nil {
+				closedAt = " (closed " + iss.ClosedAt.Format("2006-01-02") + ")"
+			}
+			fmt.Printf("- %s: %s [%s]%s\n", iss.ID, iss.Title, iss.Type, closedAt)
+			// Print children
+			for _, child := range allIssues {
+				if child.Parent == iss.ID && (child.Status == "done" || child.Status == "cancelled") {
+					childClosed := ""
+					if child.ClosedAt != nil {
+						childClosed = " (closed " + child.ClosedAt.Format("2006-01-02") + ")"
+					}
+					fmt.Printf("  - %s: %s [%s]%s\n", child.ID, child.Title, child.Type, childClosed)
+				}
+			}
+			printed = true
+		}
+	}
+	if !printed {
+		fmt.Println("(none)")
+	}
+
+	// Memory entries
+	memories, err := memory.List(root, memory.ListOpts{})
+	if err != nil {
+		memories = nil
+	}
+
+	// Decisions
+	fmt.Println("\n## Decisions Made")
+	printed = false
+	for _, e := range memories {
+		if e.Type != "decision" {
+			continue
+		}
+		snippet := memory.Snippet(e)
+		if snippet != "" {
+			fmt.Printf("- %s: %s — %s\n", e.ID, e.Title, snippet)
+		} else {
+			fmt.Printf("- %s: %s\n", e.ID, e.Title)
+		}
+		printed = true
+	}
+	if !printed {
+		fmt.Println("(none)")
+	}
+
+	// Discoveries
+	fmt.Println("\n## Discoveries")
+	printed = false
+	for _, e := range memories {
+		if e.Type != "discovery" {
+			continue
+		}
+		fmt.Printf("- %s: %s\n", e.ID, e.Title)
+		printed = true
+	}
+	if !printed {
+		fmt.Println("(none)")
+	}
+
+	// Conventions
+	fmt.Println("\n## Conventions Established")
+	printed = false
+	for _, e := range memories {
+		if e.Type != "convention" {
+			continue
+		}
+		fmt.Printf("- %s: %s\n", e.ID, e.Title)
+		printed = true
+	}
+	if !printed {
+		fmt.Println("(none)")
+	}
+
+	return nil
+}
+
+func runGC(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	cutoff := time.Now().Add(-7 * 24 * time.Hour)
+	var total int
+
+	// Archived mail older than 7 days
+	archiveDir := filepath.Join(root, "mail", "archive")
+	total += cleanOldFiles(archiveDir, cutoff, dryRun, "archived mail")
+
+	// Logs older than 7 days
+	logsDir := filepath.Join(root, "logs")
+	total += cleanOldFiles(logsDir, cutoff, dryRun, "log files")
+
+	// Dead agent registrations
+	agents, _ := agent.List(root)
+	deadCount := 0
+	for _, a := range agents {
+		if a.Status == "dead" {
+			if dryRun {
+				fmt.Printf("[dry-run] Would remove dead agent: %s\n", a.ID)
+			} else {
+				if err := agent.Deregister(root, a.ID); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to remove agent %s: %v\n", a.ID, err)
+					continue
+				}
+				fmt.Printf("Removed dead agent: %s\n", a.ID)
+			}
+			deadCount++
+		}
+	}
+	total += deadCount
+
+	if dryRun {
+		fmt.Printf("\nDry run: %d items would be cleaned\n", total)
+	} else {
+		fmt.Printf("\nCleaned %d items\n", total)
+	}
+	return nil
+}
+
+func cleanOldFiles(dir string, cutoff time.Time, dryRun bool, label string) int {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(cutoff) {
+			if dryRun {
+				fmt.Printf("[dry-run] Would remove %s: %s\n", label, e.Name())
+			} else {
+				os.Remove(filepath.Join(dir, e.Name()))
+				fmt.Printf("Removed %s: %s\n", label, e.Name())
+			}
+			count++
+		}
+	}
+	return count
+}
+
+func runLog(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	all, _ := cmd.Flags().GetBool("all")
+
+	logsDir := filepath.Join(root, "logs")
+
+	if all {
+		entries, err := os.ReadDir(logsDir)
+		if err != nil {
+			fmt.Println("No logs found")
+			return nil
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(logsDir, e.Name()))
+			if err != nil {
+				continue
+			}
+			fmt.Print(string(data))
+		}
+		return nil
+	}
+
+	if len(args) == 0 {
+		return fmt.Errorf("specify an agent name or use --all")
+	}
+
+	logFile := filepath.Join(logsDir, args[0]+".log")
+	data, err := os.ReadFile(logFile)
+	if err != nil {
+		fmt.Printf("No logs for %s\n", args[0])
+		return nil
+	}
+	fmt.Print(string(data))
+	return nil
 }
 
 func runMCPServer(cmd *cobra.Command, args []string) error {
