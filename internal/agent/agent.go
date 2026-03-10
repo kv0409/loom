@@ -190,7 +190,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		}
 	}
 	if taskMsg == "" && len(opts.AssignedIssues) > 0 {
-		taskMsg = fmt.Sprintf("Your assigned issues: %s. Read them with `loom issue show <id>` and begin work.",
+		taskMsg = fmt.Sprintf("Your assigned issues: %s. Read them with loom issue show and begin work.",
 			strings.Join(opts.AssignedIssues, ", "))
 	}
 
@@ -198,7 +198,9 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	var kiroCmd string
 	kiroBase := fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, cfg.Kiro.DefaultMode, agentName)
 	if taskMsg != "" {
-		kiroBase += fmt.Sprintf(" %q", taskMsg)
+		// Use single quotes to prevent shell interpretation of backticks, $, <, >
+		escaped := strings.ReplaceAll(taskMsg, "'", "'\\''")
+		kiroBase += fmt.Sprintf(" '%s'", escaped)
 	}
 	if opts.Role == "builder" && agent.WorktreeName != "" {
 		wtPath := filepath.Join(loomRoot, "worktrees", agent.WorktreeName)
