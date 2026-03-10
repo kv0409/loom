@@ -1,7 +1,7 @@
 {
   "name": "loom-explorer",
   "description": "Loom explorer — read-only codebase exploration and analysis.",
-  "model": "claude-sonnet-4.6",
+  "model": "claude-haiku-4.5",
   "tools": [
     "read",
     "grep",
