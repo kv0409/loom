@@ -266,7 +266,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			return m, tea.ExecProcess(c, func(err error) tea.Msg { return nil })
 		}
 	case viewIssues:
-		if len(m.data.issues) > 0 {
+		if len(m.displayIssues()) > 0 {
 			m.view = viewIssueDetail
 		}
 	case viewWorktrees:
@@ -295,7 +295,7 @@ func (m Model) listLen() int {
 	case viewAgents, viewAgentDetail:
 		return len(m.data.agents)
 	case viewIssues, viewIssueDetail:
-		return len(m.data.issues)
+		return len(m.displayIssues())
 	case viewMail:
 		return len(m.data.messages)
 	case viewMemory:

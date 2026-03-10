@@ -2,15 +2,52 @@ package dashboard
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/karanagi/loom/internal/issue"
 )
 
-func (m Model) renderIssues() string {
-	content := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s\n",
-		"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
-	content += "  " + strings.Repeat("─", 85) + "\n"
+const maxRecentDone = 5
 
-	for i, iss := range m.data.issues {
+// displayIssues returns active issues followed by up to maxRecentDone done
+// issues sorted by most recently updated.
+func (m Model) displayIssues() []*issue.Issue {
+	var active, done []*issue.Issue
+	for _, iss := range m.data.issues {
+		if iss.Status == "done" {
+			done = append(done, iss)
+		} else {
+			active = append(active, iss)
+		}
+	}
+	sort.Slice(done, func(i, j int) bool { return done[i].UpdatedAt.After(done[j].UpdatedAt) })
+	if len(done) > maxRecentDone {
+		done = done[:maxRecentDone]
+	}
+	return append(active, done...)
+}
+
+func (m Model) renderIssues() string {
+	display := m.displayIssues()
+
+	// Count active issues for the separator position.
+	activeCount := 0
+	for _, iss := range display {
+		if iss.Status != "done" {
+			activeCount++
+		}
+	}
+
+	header := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s\n",
+		"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
+	content := header + "  " + strings.Repeat("─", 85) + "\n"
+
+	for i, iss := range display {
+		if i == activeCount && activeCount < len(display) {
+			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
+			content += "  " + strings.Repeat("─", 85) + "\n"
+		}
 		statusCol := fmt.Sprintf("%s %-12s", statusIndicator(iss.Status), iss.Status)
 		line := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s",
 			iss.ID, iss.Type, statusCol, truncate(iss.Title, 36), iss.Assignee)
@@ -22,14 +59,15 @@ func (m Model) renderIssues() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("ISSUES (%d)", len(m.data.issues)), content, m.width-2)
+	return panel(fmt.Sprintf("ISSUES (%d active)", activeCount), content, m.width-2)
 }
 
 func (m Model) renderIssueDetail() string {
-	if m.cursor >= len(m.data.issues) {
+	display := m.displayIssues()
+	if m.cursor >= len(display) {
 		return "No issue selected"
 	}
-	iss := m.data.issues[m.cursor]
+	iss := display[m.cursor]
 
 	s := fmt.Sprintf("  %s\n", titleStyle.Render(iss.Title))
 	s += fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s\n",
