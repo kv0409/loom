@@ -11,6 +11,7 @@ import (
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
+	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -148,12 +149,47 @@ func main() {
 
 	// --- Memory ---
 	memoryCmd := &cobra.Command{Use: "memory", Short: "Shared knowledge base"}
-	memoryCmd.AddCommand(
-		stub("add", "Record a decision/discovery/convention"),
-		stub("search", "Search memory"),
-		stub("list", "List memory entries"),
-		stub("show", "Show memory entry detail"),
-	)
+
+	memoryAddCmd := &cobra.Command{
+		Use:   "add <type> <title>",
+		Short: "Record a decision/discovery/convention",
+		Args:  cobra.ExactArgs(2),
+		RunE:  runMemoryAdd,
+	}
+	memoryAddCmd.Flags().String("context", "", "Context (decisions)")
+	memoryAddCmd.Flags().String("rationale", "", "Rationale (decisions)")
+	memoryAddCmd.Flags().String("decision", "", "Decision text")
+	memoryAddCmd.Flags().String("finding", "", "Finding (discoveries)")
+	memoryAddCmd.Flags().String("rule", "", "Rule (conventions)")
+	memoryAddCmd.Flags().String("location", "", "Location (discoveries)")
+	memoryAddCmd.Flags().String("affects", "", "Comma-separated affected issue IDs")
+	memoryAddCmd.Flags().String("tags", "", "Comma-separated tags")
+	memoryAddCmd.Flags().String("source", "", "Author (sets decided_by/discovered_by/established_by)")
+
+	memorySearchCmd := &cobra.Command{
+		Use:   "search <query>",
+		Short: "Search memory",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMemorySearch,
+	}
+	memorySearchCmd.Flags().Int("limit", 5, "Max results")
+
+	memoryListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List memory entries",
+		RunE:  runMemoryList,
+	}
+	memoryListCmd.Flags().String("type", "", "Filter by type: decision|discovery|convention")
+	memoryListCmd.Flags().String("affects", "", "Filter by affected issue ID")
+
+	memoryShowCmd := &cobra.Command{
+		Use:   "show <id>",
+		Short: "Show memory entry detail",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMemoryShow,
+	}
+
+	memoryCmd.AddCommand(memoryAddCmd, memorySearchCmd, memoryListCmd, memoryShowCmd)
 
 	// --- Worktree ---
 	worktreeCmd := &cobra.Command{Use: "worktree", Short: "Git worktree management"}
@@ -684,4 +720,164 @@ func runMailLog(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s  %s → %s  [%s]  %s\n", m.Timestamp.Format("2006-01-02 15:04:05"), m.From, m.To, m.Type, m.Subject)
 	}
 	return nil
+}
+
+func runMemoryAdd(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	typ, title := args[0], args[1]
+	ctx, _ := cmd.Flags().GetString("context")
+	rationale, _ := cmd.Flags().GetString("rationale")
+	decision, _ := cmd.Flags().GetString("decision")
+	finding, _ := cmd.Flags().GetString("finding")
+	rule, _ := cmd.Flags().GetString("rule")
+	location, _ := cmd.Flags().GetString("location")
+	affectsStr, _ := cmd.Flags().GetString("affects")
+	tagsStr, _ := cmd.Flags().GetString("tags")
+	source, _ := cmd.Flags().GetString("source")
+
+	entry := &memory.Entry{
+		Type:      typ,
+		Title:     title,
+		Context:   ctx,
+		Rationale: rationale,
+		Decision:  decision,
+		Finding:   finding,
+		Rule:      rule,
+		Location:  location,
+	}
+	if affectsStr != "" {
+		entry.Affects = splitCSV(affectsStr)
+	}
+	if tagsStr != "" {
+		entry.Tags = splitCSV(tagsStr)
+	}
+	switch typ {
+	case "decision":
+		entry.DecidedBy = source
+	case "discovery":
+		entry.DiscoveredBy = source
+	case "convention":
+		entry.EstablishedBy = source
+	}
+
+	if err := memory.Add(root, entry); err != nil {
+		return err
+	}
+	fmt.Printf("Added %s: %s\n", entry.ID, entry.Title)
+	return nil
+}
+
+func runMemorySearch(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	limit, _ := cmd.Flags().GetInt("limit")
+	results, err := memory.Search(root, args[0], limit)
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		fmt.Println("No results")
+		return nil
+	}
+	fmt.Printf("Results (%d matches):\n\n", len(results))
+	for i, r := range results {
+		fmt.Printf("%d. [%s] %s\n", i+1, r.Entry.ID, r.Entry.Title)
+		fmt.Printf("   Score: %.2f | Type: %s", r.Score, r.Entry.Type)
+		if by := memory.ByField(r.Entry); by != "" {
+			fmt.Printf(" | By: %s", by)
+		}
+		fmt.Println()
+		if s := memory.Snippet(r.Entry); s != "" {
+			fmt.Printf("   %s\n", s)
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+func runMemoryList(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	typ, _ := cmd.Flags().GetString("type")
+	affects, _ := cmd.Flags().GetString("affects")
+
+	entries, err := memory.List(root, memory.ListOpts{Type: typ, Affects: affects})
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		fmt.Println("No memory entries")
+		return nil
+	}
+	fmt.Printf("%-12s %-12s %-40s %-16s %s\n", "ID", "TYPE", "TITLE", "BY", "TIMESTAMP")
+	for _, e := range entries {
+		title := e.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Printf("%-12s %-12s %-40s %-16s %s\n", e.ID, e.Type, title, memory.ByField(e), e.Timestamp.Format("2006-01-02 15:04"))
+	}
+	return nil
+}
+
+func runMemoryShow(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	e, err := memory.Load(root, args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("ID:        %s\n", e.ID)
+	fmt.Printf("Title:     %s\n", e.Title)
+	fmt.Printf("Type:      %s\n", e.Type)
+	fmt.Printf("Timestamp: %s\n", e.Timestamp.Format("2006-01-02 15:04:05"))
+	printIf("Decided By", e.DecidedBy)
+	printIf("Context", e.Context)
+	printIf("Decision", e.Decision)
+	printIf("Rationale", e.Rationale)
+	for _, a := range e.Alternatives {
+		fmt.Printf("Alternative: %s (rejected: %s)\n", a.Option, a.RejectedBecause)
+	}
+	printIf("Discovered By", e.DiscoveredBy)
+	printIf("Location", e.Location)
+	printIf("Finding", e.Finding)
+	printIf("Implications", e.Implications)
+	printIf("Established By", e.EstablishedBy)
+	printIf("Rule", e.Rule)
+	for _, ex := range e.Examples {
+		fmt.Printf("Example:   %s\n", ex)
+	}
+	printIf("Applies To", e.AppliesTo)
+	if len(e.Affects) > 0 {
+		fmt.Printf("Affects:   %s\n", strings.Join(e.Affects, ", "))
+	}
+	if len(e.Tags) > 0 {
+		fmt.Printf("Tags:      %s\n", strings.Join(e.Tags, ", "))
+	}
+	return nil
+}
+
+func printIf(label, value string) {
+	if value != "" {
+		fmt.Printf("%-10s %s\n", label+":", value)
+	}
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
