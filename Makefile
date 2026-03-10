@@ -7,7 +7,7 @@ build:
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) ./cmd/loom
 
 install: build
-	cp $(BINARY) $(GOPATH)/bin/ || cp $(BINARY) ~/go/bin/
+	GOBIN=$(HOME)/go/bin go install ./cmd/loom
 
 clean:
 	rm -f $(BINARY)
