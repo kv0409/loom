@@ -1,14 +1,33 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/karanagi/loom/internal/store"
 	"gopkg.in/yaml.v3"
 )
+
+var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+
+// DeriveSessionName returns "loom-<sanitized-basename>-<short-hash>" for the given absolute directory path.
+func DeriveSessionName(absDir string) string {
+	base := filepath.Base(absDir)
+	name := strings.ToLower(unsafeChars.ReplaceAllString(base, "-"))
+	name = strings.Trim(name, "-")
+	if name == "" {
+		name = "default"
+	}
+	h := sha256.Sum256([]byte(absDir))
+	shortHash := hex.EncodeToString(h[:])[:8]
+	return "loom-" + name + "-" + shortHash
+}
 
 type Config struct {
 	Project string        `yaml:"project"`

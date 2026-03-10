@@ -487,6 +487,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Write default config
 	cfg := config.DefaultConfig()
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("getting working directory: %w", err)
+	}
+	cfg.Tmux.SessionName = config.DeriveSessionName(wd)
 	if err := config.Save(".loom", cfg); err != nil {
 		return fmt.Errorf("writing config: %w", err)
 	}
@@ -1748,7 +1753,26 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create tmux session
+	// Create tmux session (resolve name collisions with other projects)
+	desired := cfg.Tmux.SessionName
+	if tmux.SessionExists(desired) {
+		// If we own this session (lock is ours), reuse it.
+		// Otherwise, find a unique suffix.
+		_, alive := daemon.CheckLock(root)
+		if !alive {
+			for i := 2; i <= 99; i++ {
+				candidate := fmt.Sprintf("%s-%d", desired, i)
+				if !tmux.SessionExists(candidate) {
+					fmt.Fprintf(os.Stderr, "Warning: tmux session %q already exists, using %q\n", desired, candidate)
+					cfg.Tmux.SessionName = candidate
+					break
+				}
+			}
+			if cfg.Tmux.SessionName == desired {
+				return fmt.Errorf("tmux session %q (and suffixed variants) already exist", desired)
+			}
+		}
+	}
 	if !tmux.SessionExists(cfg.Tmux.SessionName) {
 		if err := tmux.CreateSession(cfg.Tmux.SessionName); err != nil {
 			return fmt.Errorf("creating tmux session: %w", err)
