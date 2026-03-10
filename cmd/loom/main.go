@@ -1771,12 +1771,19 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loom is not running")
 	}
 
-	// Kill all registered agents first
+	// Kill all registered agents and clean up their worktrees
 	agents, _ := agent.List(root)
 	cfg, _ := config.Load(root)
 	for _, a := range agents {
 		fmt.Printf("Killing agent %s...\n", a.ID)
-		agent.Kill(root, a.ID, false)
+		agent.Kill(root, a.ID, true)
+	}
+
+	// Remove any remaining orphaned worktrees
+	wts, _ := worktree.List(root)
+	for _, wt := range wts {
+		fmt.Printf("Removing worktree %s...\n", wt.Name)
+		worktree.Remove(root, wt.Name)
 	}
 
 	// Kill the tmux session
