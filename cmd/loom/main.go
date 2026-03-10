@@ -10,8 +10,10 @@ import (
 
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/worktree"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -193,19 +195,56 @@ func main() {
 
 	// --- Worktree ---
 	worktreeCmd := &cobra.Command{Use: "worktree", Short: "Git worktree management"}
-	worktreeCmd.AddCommand(
-		stub("list", "List worktrees"),
-		stub("show", "Show worktree detail"),
-		stub("cleanup", "Remove orphaned worktrees"),
-	)
+
+	worktreeListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List worktrees",
+		RunE:  runWorktreeList,
+	}
+
+	worktreeShowCmd := &cobra.Command{
+		Use:   "show <name>",
+		Short: "Show worktree detail",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runWorktreeShow,
+	}
+
+	worktreeCleanupCmd := &cobra.Command{
+		Use:   "cleanup",
+		Short: "Remove orphaned worktrees",
+		RunE:  runWorktreeCleanup,
+	}
+	worktreeCleanupCmd.Flags().Bool("force", false, "Remove without prompting")
+
+	worktreeCmd.AddCommand(worktreeListCmd, worktreeShowCmd, worktreeCleanupCmd)
 
 	// --- Lock ---
 	lockCmd := &cobra.Command{Use: "lock", Short: "File-level locks"}
-	lockCmd.AddCommand(
-		stub("acquire", "Acquire a lock"),
-		stub("release", "Release a lock"),
-		stub("check", "Check lock status"),
-	)
+
+	lockAcquireCmd := &cobra.Command{
+		Use:   "acquire <file>",
+		Short: "Acquire a lock",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runLockAcquire,
+	}
+	lockAcquireCmd.Flags().String("agent", "human", "Agent name")
+	lockAcquireCmd.Flags().String("issue", "", "Related issue ID")
+
+	lockReleaseCmd := &cobra.Command{
+		Use:   "release <file>",
+		Short: "Release a lock",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runLockRelease,
+	}
+
+	lockCheckCmd := &cobra.Command{
+		Use:   "check <file>",
+		Short: "Check lock status",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runLockCheck,
+	}
+
+	lockCmd.AddCommand(lockAcquireCmd, lockReleaseCmd, lockCheckCmd)
 
 	// --- Log ---
 	logCmd := stub("log", "View agent logs")
@@ -880,4 +919,122 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+func runWorktreeList(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	wts, err := worktree.List(root)
+	if err != nil {
+		return err
+	}
+	if len(wts) == 0 {
+		fmt.Println("No active worktrees")
+		return nil
+	}
+	fmt.Printf("%-35s %-15s %-15s %s\n", "WORKTREE", "AGENT", "ISSUE", "BRANCH")
+	for _, wt := range wts {
+		fmt.Printf("%-35s %-15s %-15s %s\n", wt.Name, wt.Agent, wt.Issue, wt.Branch)
+	}
+	return nil
+}
+
+func runWorktreeShow(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	wt, stats, err := worktree.Show(root, args[0])
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Name:    %s\n", wt.Name)
+	fmt.Printf("Path:    %s\n", wt.Path)
+	fmt.Printf("Branch:  %s\n", wt.Branch)
+	fmt.Printf("Agent:   %s\n", wt.Agent)
+	fmt.Printf("Issue:   %s\n", wt.Issue)
+	if stats != nil && stats.FilesChanged > 0 {
+		fmt.Printf("Changes: %d files changed (+%d, -%d)\n", stats.FilesChanged, stats.Insertions, stats.Deletions)
+	}
+	return nil
+}
+
+func runWorktreeCleanup(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	orphaned, err := worktree.Cleanup(root)
+	if err != nil {
+		return err
+	}
+	if len(orphaned) == 0 {
+		fmt.Println("No orphaned worktrees")
+		return nil
+	}
+	force, _ := cmd.Flags().GetBool("force")
+	if !force {
+		fmt.Println("Orphaned worktrees:")
+		for _, name := range orphaned {
+			fmt.Printf("  %s\n", name)
+		}
+		fmt.Println("Use --force to remove them")
+		return nil
+	}
+	for _, name := range orphaned {
+		if err := worktree.Remove(root, name); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to remove %s: %v\n", name, err)
+			continue
+		}
+		fmt.Printf("Removed %s\n", name)
+	}
+	return nil
+}
+
+func runLockAcquire(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	agent, _ := cmd.Flags().GetString("agent")
+	issue, _ := cmd.Flags().GetString("issue")
+	if err := lock.Acquire(root, args[0], agent, issue); err != nil {
+		return err
+	}
+	fmt.Printf("Locked %s\n", args[0])
+	return nil
+}
+
+func runLockRelease(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	if err := lock.Release(root, args[0]); err != nil {
+		return err
+	}
+	fmt.Printf("Released %s\n", args[0])
+	return nil
+}
+
+func runLockCheck(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	l, err := lock.Check(root, args[0])
+	if err != nil {
+		return err
+	}
+	if l == nil {
+		fmt.Printf("%s is not locked\n", args[0])
+		return nil
+	}
+	fmt.Printf("File:     %s\n", l.File)
+	fmt.Printf("Agent:    %s\n", l.Agent)
+	fmt.Printf("Issue:    %s\n", l.Issue)
+	fmt.Printf("Acquired: %s\n", l.AcquiredAt.Format("2006-01-02 15:04:05"))
+	return nil
 }
