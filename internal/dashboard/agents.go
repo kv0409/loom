@@ -7,10 +7,9 @@ import (
 )
 
 func (m Model) renderAgents() string {
-	s := headerStyle.Render(fmt.Sprintf("AGENTS (%d)", len(m.data.agents))) + "\n\n"
-	s += fmt.Sprintf("  %-16s %-10s %-10s %-22s %-14s %s\n",
+	content := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s\n",
 		"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
-	s += "  " + strings.Repeat("─", 90) + "\n"
+	content += "  " + strings.Repeat("─", 88) + "\n"
 
 	for i, a := range m.data.agents {
 		wt := "—"
@@ -22,16 +21,18 @@ func (m Model) renderAgents() string {
 			issues = truncate(strings.Join(a.AssignedIssues, ","), 14)
 		}
 		hb := relTime(a.Heartbeat)
-		line := fmt.Sprintf("  %-16s %-10s %-10s %-22s %-14s %s",
-			a.ID, a.Role, a.Status, wt, issues, hb)
+		statusCol := fmt.Sprintf("%s %-10s", statusIndicator(a.Status), a.Status)
+		line := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s",
+			a.ID, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		} else {
 			line = statusStyle(a.Status).Render(line)
 		}
-		s += line + "\n"
+		content += line + "\n"
 	}
-	return s
+
+	return panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), content, m.width-2)
 }
 
 func (m Model) renderAgentDetail() string {
@@ -40,23 +41,23 @@ func (m Model) renderAgentDetail() string {
 	}
 	a := m.data.agents[m.cursor]
 
-	s := headerStyle.Render("Agent: "+a.ID) + "\n\n"
-	s += fmt.Sprintf("  Role:       %s\n", a.Role)
-	s += fmt.Sprintf("  Status:     %s\n", statusStyle(a.Status).Render(a.Status))
-	s += fmt.Sprintf("  PID:        %d\n", a.PID)
-	s += fmt.Sprintf("  Tmux:       %s\n", a.TmuxTarget)
-	s += fmt.Sprintf("  Spawned By: %s\n", a.SpawnedBy)
-	s += fmt.Sprintf("  Spawned At: %s\n", a.SpawnedAt.Format("15:04:05"))
-	s += fmt.Sprintf("  Heartbeat:  %s\n", relTime(a.Heartbeat))
+	s := fmt.Sprintf("  Role: %-14s Status: %s %-10s Heartbeat: %s\n",
+		a.Role, statusIndicator(a.Status), a.Status, relTime(a.Heartbeat))
+	s += fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d\n",
+		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID)
+	if a.TmuxTarget != "" {
+		s += fmt.Sprintf("  Tmux: %s\n", a.TmuxTarget)
+	}
 
 	if len(a.AssignedIssues) > 0 {
-		s += fmt.Sprintf("\n  Issues: %s\n", strings.Join(a.AssignedIssues, ", "))
+		s += "\n  " + headerStyle.Render("ASSIGNED ISSUES") + "\n"
+		s += fmt.Sprintf("  └── %s\n", strings.Join(a.AssignedIssues, ", "))
 	}
 	if a.WorktreeName != "" {
-		s += fmt.Sprintf("  Worktree: %s\n", a.WorktreeName)
+		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", a.WorktreeName)
 	}
 
-	// Show recent mail for this agent
+	// Recent mail
 	s += "\n  " + headerStyle.Render("RECENT MAIL") + "\n"
 	count := 0
 	for _, msg := range m.data.messages {
@@ -80,7 +81,7 @@ func (m Model) renderAgentDetail() string {
 		s += "  (none)\n"
 	}
 
-	return s
+	return panel("Agent: "+a.ID, s, m.width-2)
 }
 
 func relTime(t time.Time) string {

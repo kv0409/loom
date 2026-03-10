@@ -6,22 +6,23 @@ import (
 )
 
 func (m Model) renderIssues() string {
-	s := headerStyle.Render(fmt.Sprintf("ISSUES (%d)", len(m.data.issues))) + "\n\n"
-	s += fmt.Sprintf("  %-12s %-8s %-14s %-36s %s\n",
+	content := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s\n",
 		"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
-	s += "  " + strings.Repeat("─", 85) + "\n"
+	content += "  " + strings.Repeat("─", 85) + "\n"
 
 	for i, iss := range m.data.issues {
-		line := fmt.Sprintf("  %-12s %-8s %-14s %-36s %s",
-			iss.ID, iss.Type, iss.Status, truncate(iss.Title, 36), iss.Assignee)
+		statusCol := fmt.Sprintf("%s %-12s", statusIndicator(iss.Status), iss.Status)
+		line := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s",
+			iss.ID, iss.Type, statusCol, truncate(iss.Title, 36), iss.Assignee)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		} else {
 			line = statusStyle(iss.Status).Render(line)
 		}
-		s += line + "\n"
+		content += line + "\n"
 	}
-	return s
+
+	return panel(fmt.Sprintf("ISSUES (%d)", len(m.data.issues)), content, m.width-2)
 }
 
 func (m Model) renderIssueDetail() string {
@@ -30,30 +31,30 @@ func (m Model) renderIssueDetail() string {
 	}
 	iss := m.data.issues[m.cursor]
 
-	s := headerStyle.Render("Issue: "+iss.ID) + "\n\n"
-	s += fmt.Sprintf("  Title:    %s\n", iss.Title)
-	s += fmt.Sprintf("  Type:     %s\n", iss.Type)
-	s += fmt.Sprintf("  Status:   %s\n", statusStyle(iss.Status).Render(iss.Status))
-	s += fmt.Sprintf("  Priority: %s\n", iss.Priority)
+	s := fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s\n",
+		iss.Type, iss.Priority, statusIndicator(iss.Status), statusStyle(iss.Status).Render(iss.Status))
 	if iss.Assignee != "" {
 		s += fmt.Sprintf("  Assignee: %s\n", iss.Assignee)
 	}
+
 	if iss.Description != "" {
-		s += fmt.Sprintf("\n  %s\n", iss.Description)
+		s += "\n  " + headerStyle.Render("DESCRIPTION") + "\n"
+		s += fmt.Sprintf("  %s\n", iss.Description)
 	}
 	if iss.Parent != "" {
-		s += fmt.Sprintf("  Parent:   %s\n", iss.Parent)
+		s += fmt.Sprintf("  Parent: %s\n", iss.Parent)
 	}
 	if len(iss.DependsOn) > 0 {
-		s += fmt.Sprintf("  Depends:  %s\n", strings.Join(iss.DependsOn, ", "))
+		s += fmt.Sprintf("  Depends: %s\n", strings.Join(iss.DependsOn, ", "))
 	}
+
 	if len(iss.Children) > 0 {
 		s += "\n  " + headerStyle.Render("CHILDREN") + "\n"
 		for _, cid := range iss.Children {
 			label := cid
 			for _, ci := range m.data.issues {
 				if ci.ID == cid {
-					label = fmt.Sprintf("%s [%s] %s", cid, ci.Status, truncate(ci.Title, 30))
+					label = fmt.Sprintf("%s %s [%s] %s", statusIndicator(ci.Status), cid, ci.Status, truncate(ci.Title, 30))
 					break
 				}
 			}
@@ -72,5 +73,6 @@ func (m Model) renderIssueDetail() string {
 			s += fmt.Sprintf("  %s %s %s%s\n", h.At.Format("15:04"), h.By, h.Action, detail)
 		}
 	}
-	return s
+
+	return panel("Issue: "+iss.ID, s, m.width-2)
 }
