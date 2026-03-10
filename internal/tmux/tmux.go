@@ -117,5 +117,9 @@ func CapturePane(target string) (string, error) {
 
 // RunInPane sends a command to a pane and presses Enter.
 func RunInPane(target string, command string) error {
-	return SendKeys(target, command+" Enter")
+	if err := SendKeys(target, command); err != nil {
+		return err
+	}
+	_, err := run("send-keys", "-t", target, "Enter")
+	return err
 }
