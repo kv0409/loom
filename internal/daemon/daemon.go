@@ -81,7 +81,8 @@ func (d *Daemon) watchIssues() {
 }
 
 func (d *Daemon) watchMail() {
-	notified := make(map[string]bool)
+	const renotifyInterval = 30 * time.Second
+	notifiedAt := make(map[string]time.Time)
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.MailIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -103,15 +104,18 @@ func (d *Daemon) watchMail() {
 				if err != nil {
 					continue
 				}
+				if len(msgs) == 0 {
+					continue
+				}
+				a, err := agent.Load(d.LoomRoot, agentID)
+				if err != nil || a.TmuxTarget == "" {
+					continue
+				}
 				for _, m := range msgs {
-					if notified[m.ID] {
+					if t, ok := notifiedAt[m.ID]; ok && time.Since(t) < renotifyInterval {
 						continue
 					}
-					notified[m.ID] = true
-					a, err := agent.Load(d.LoomRoot, agentID)
-					if err != nil || a.TmuxTarget == "" {
-						continue
-					}
+					notifiedAt[m.ID] = time.Now()
 					msg := "[LOOM] New mail from " + m.From + ": " + m.Subject + ". Run: loom mail read"
 					tmux.RunInPane(a.TmuxTarget, msg)
 				}
