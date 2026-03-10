@@ -13,6 +13,7 @@ import (
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/worktree"
 )
 
 type Server struct {
@@ -295,6 +296,21 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		out, _ := json.MarshalIndent(a, "", "  ")
 		return string(out), nil
 
+	case "loom_agent_kill":
+		id := str(args, "id")
+		cleanup := boolVal(args, "cleanup")
+		if err := agent.Kill(s.LoomRoot, id, cleanup); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Killed %s (cleanup=%v)", id, cleanup), nil
+
+	case "loom_worktree_remove":
+		name := str(args, "name")
+		if err := worktree.Remove(s.LoomRoot, name); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Removed worktree %s", name), nil
+
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
@@ -354,6 +370,12 @@ func toolDefs() []toolDef {
 			"file")},
 		{Name: "loom_agent_heartbeat", Description: "Update agent heartbeat timestamp", InputSchema: obj(props{})},
 		{Name: "loom_agent_status", Description: "Get current agent status and info", InputSchema: obj(props{})},
+		{Name: "loom_agent_kill", Description: "Kill an agent (stops tmux window, optionally removes worktree and branch, deregisters)", InputSchema: obj(
+			props{"id": propStr("Agent ID to kill"), "cleanup": propBool("Also remove the agent's worktree and delete its branch")},
+			"id")},
+		{Name: "loom_worktree_remove", Description: "Remove a worktree directory and delete its loom/ branch", InputSchema: obj(
+			props{"name": propStr("Worktree name (e.g. loom-LOOM-001-01-login-form)")},
+			"name")},
 	}
 }
 

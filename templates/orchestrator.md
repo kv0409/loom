@@ -45,6 +45,10 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 ## Communication Protocol
 
 - Read mail frequently — leads report completions and blockers to you.
+- When a lead reports completion, kill it to free resources:
+  ```
+  loom agent kill <LEAD-ID> --cleanup
+  ```
 - When a lead reports a blocker, decide whether to spawn an explorer/researcher, or provide guidance via `loom nudge`.
 - When all sub-issues of an epic are done, close the epic:
   ```
