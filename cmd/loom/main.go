@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -338,6 +339,18 @@ func main() {
 	configCmd.AddCommand(configShowCmd, configSetCmd)
 
 	// --- Utility ---
+	spawnCmd := &cobra.Command{
+		Use:   "spawn",
+		Short: "Spawn a new agent",
+		RunE:  runSpawn,
+	}
+	spawnCmd.Flags().String("role", "", "Agent role: lead|builder|reviewer|explorer|researcher")
+	spawnCmd.Flags().String("issues", "", "Comma-separated issue IDs to assign")
+	spawnCmd.Flags().String("spawned-by", "", "Parent agent ID (defaults to LOOM_AGENT_ID env var)")
+	spawnCmd.Flags().String("slug", "", "Worktree slug for builders")
+	spawnCmd.Flags().String("task", "", "Custom task message for the agent")
+	spawnCmd.MarkFlagRequired("role")
+
 	gcCmd := &cobra.Command{
 		Use:   "gc",
 		Short: "Garbage collection",
@@ -366,6 +379,7 @@ func main() {
 		issueCmd,
 		agentsCmd, agentCmd,
 		attachCmd, nudgeCmd, killCmd,
+		spawnCmd,
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
 		gcCmd, exportCmd, mcpServerCmd,
@@ -1313,6 +1327,50 @@ func runKill(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runSpawn(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	role, _ := cmd.Flags().GetString("role")
+	issuesStr, _ := cmd.Flags().GetString("issues")
+	spawnedBy, _ := cmd.Flags().GetString("spawned-by")
+	slug, _ := cmd.Flags().GetString("slug")
+	task, _ := cmd.Flags().GetString("task")
+
+	if spawnedBy == "" {
+		spawnedBy = os.Getenv("LOOM_AGENT_ID")
+	}
+
+	var issues []string
+	if issuesStr != "" {
+		for _, s := range strings.Split(issuesStr, ",") {
+			if t := strings.TrimSpace(s); t != "" {
+				issues = append(issues, t)
+			}
+		}
+	}
+
+	var extra map[string]string
+	if task != "" {
+		extra = map[string]string{"task": task}
+	}
+
+	a, err := agent.Spawn(root, agent.SpawnOpts{
+		Role:           role,
+		SpawnedBy:      spawnedBy,
+		AssignedIssues: issues,
+		IssueSlug:      slug,
+		ExtraContext:    extra,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Spawned %s (role: %s)\n", a.ID, a.Role)
+	return nil
+}
+
 func relativeTime(t time.Time) string {
 	if t.IsZero() {
 		return "never"
@@ -1573,6 +1631,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Check prerequisites
+	for _, bin := range []string{"tmux", "kiro-cli", "loom"} {
+		if _, err := exec.LookPath(bin); err != nil {
+			return fmt.Errorf("%s not found in PATH (required)", bin)
+		}
+	}
+
 	pid, alive := daemon.CheckLock(root)
 	if alive {
 		return fmt.Errorf("loom already running (pid %d)", pid)
@@ -1635,6 +1700,19 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loom is not running")
 	}
 
+	// Kill all registered agents first
+	agents, _ := agent.List(root)
+	cfg, _ := config.Load(root)
+	for _, a := range agents {
+		fmt.Printf("Killing agent %s...\n", a.ID)
+		agent.Kill(root, a.ID, false)
+	}
+
+	// Kill the tmux session
+	if cfg != nil {
+		tmux.KillSession(cfg.Tmux.SessionName)
+	}
+
 	force, _ := cmd.Flags().GetBool("force")
 	p, err := os.FindProcess(pid)
 	if err != nil {
@@ -1646,9 +1724,10 @@ func runStop(cmd *cobra.Command, args []string) error {
 		sig = syscall.SIGKILL
 	}
 	if err := p.Signal(sig); err != nil {
-		return fmt.Errorf("sending signal to pid %d: %w", pid, err)
+		// Process may already be dead from tmux kill
+		daemon.ReleaseLock(root)
 	}
-	fmt.Printf("Sent stop signal to loom (pid %d)\n", pid)
+	fmt.Printf("Loom stopped (pid %d)\n", pid)
 	return nil
 }
 
