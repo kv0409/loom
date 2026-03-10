@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
+	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
@@ -39,11 +42,28 @@ func main() {
 	lifecycleGroup := &cobra.Group{ID: "lifecycle", Title: "Lifecycle"}
 	root.AddGroup(lifecycleGroup)
 
-	startCmd := stub("start", "Launch orchestrator and daemon")
+	startCmd := &cobra.Command{
+		Use:   "start",
+		Short: "Launch orchestrator and daemon",
+		RunE:  runStart,
+	}
+	startCmd.Flags().Bool("resume", false, "Auto-resume without prompting")
+	startCmd.Flags().Bool("fresh", false, "Discard previous state")
 	startCmd.GroupID = "lifecycle"
-	stopCmd := stub("stop", "Graceful shutdown")
+
+	stopCmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Graceful shutdown",
+		RunE:  runStop,
+	}
+	stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
 	stopCmd.GroupID = "lifecycle"
-	statusCmd := stub("status", "Quick health check")
+
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Quick health check",
+		RunE:  runStatus,
+	}
 	statusCmd.GroupID = "lifecycle"
 
 	// --- Dashboard ---
@@ -1196,4 +1216,155 @@ func relativeTime(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
+}
+
+func runStart(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	pid, alive := daemon.CheckLock(root)
+	if alive {
+		return fmt.Errorf("loom already running (pid %d)", pid)
+	}
+
+	cfg, err := config.Load(root)
+	if err != nil {
+		return err
+	}
+
+	// Create tmux session
+	if !tmux.SessionExists(cfg.Tmux.SessionName) {
+		if err := tmux.CreateSession(cfg.Tmux.SessionName); err != nil {
+			return fmt.Errorf("creating tmux session: %w", err)
+		}
+	}
+
+	if err := daemon.AcquireLock(root); err != nil {
+		return err
+	}
+
+	// Spawn orchestrator
+	_, err = agent.Spawn(root, agent.SpawnOpts{
+		Role: "orchestrator",
+	})
+	if err != nil {
+		daemon.ReleaseLock(root)
+		return fmt.Errorf("spawning orchestrator: %w", err)
+	}
+
+	// Start daemon goroutines
+	d := daemon.New(root, cfg)
+	if err := d.Start(); err != nil {
+		daemon.ReleaseLock(root)
+		return fmt.Errorf("starting daemon: %w", err)
+	}
+
+	fmt.Printf("Loom started. Session: %s. Attach with: tmux attach -t %s\n", cfg.Tmux.SessionName, cfg.Tmux.SessionName)
+
+	// Block on signal
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	fmt.Println("\nShutting down...")
+	d.Stop()
+	daemon.ReleaseLock(root)
+	fmt.Println("Loom stopped.")
+	return nil
+}
+
+func runStop(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	pid, alive := daemon.CheckLock(root)
+	if !alive {
+		return fmt.Errorf("loom is not running")
+	}
+
+	force, _ := cmd.Flags().GetBool("force")
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("finding process %d: %w", pid, err)
+	}
+
+	sig := syscall.SIGTERM
+	if force {
+		sig = syscall.SIGKILL
+	}
+	if err := p.Signal(sig); err != nil {
+		return fmt.Errorf("sending signal to pid %d: %w", pid, err)
+	}
+	fmt.Printf("Sent stop signal to loom (pid %d)\n", pid)
+	return nil
+}
+
+func runStatus(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	pid, alive := daemon.CheckLock(root)
+	if !alive {
+		fmt.Println("Loom is not running")
+		return nil
+	}
+
+	fmt.Printf("Loom: running (pid %d)\n", pid)
+
+	// Agent counts
+	agents, _ := agent.List(root)
+	var active, idle, dead int
+	for _, a := range agents {
+		switch a.Status {
+		case "active":
+			active++
+		case "idle":
+			idle++
+		case "dead":
+			dead++
+		}
+	}
+	fmt.Printf("Agents: %d active, %d idle, %d dead\n", active, idle, dead)
+
+	// Issue counts
+	allIssues, _ := issue.List(root, issue.ListOpts{All: true})
+	var open, inProgress, done int
+	for _, iss := range allIssues {
+		switch iss.Status {
+		case "open", "assigned":
+			open++
+		case "in-progress", "review", "blocked":
+			inProgress++
+		case "done":
+			done++
+		}
+	}
+	fmt.Printf("Issues: %d open, %d in-progress, %d done\n", open, inProgress, done)
+
+	// Worktree count
+	wts, _ := worktree.List(root)
+	fmt.Printf("Worktrees: %d active\n", len(wts))
+
+	// Undelivered mail count
+	var undelivered int
+	inboxRoot := filepath.Join(root, "mail", "inbox")
+	if entries, err := os.ReadDir(inboxRoot); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			msgs, err := mail.Read(root, e.Name(), true)
+			if err == nil {
+				undelivered += len(msgs)
+			}
+		}
+	}
+	fmt.Printf("Mail: %d undelivered\n", undelivered)
+	return nil
 }
