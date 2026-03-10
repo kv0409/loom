@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/store"
 )
 
@@ -33,7 +34,14 @@ type LogOpts struct {
 func Send(loomRoot string, msg *Message) error {
 	msg.Timestamp = time.Now()
 	msg.ID = fmt.Sprintf("%d-%s-%s", msg.Timestamp.Unix(), msg.From, slug(msg.Subject))
-	dir := filepath.Join(loomRoot, "mail", "inbox", msg.To)
+
+	// Route to parent if recipient is dead or missing
+	to := msg.To
+	if a, err := agent.Load(loomRoot, to); err == nil && a.Status == "dead" && a.SpawnedBy != "" {
+		to = a.SpawnedBy
+	}
+
+	dir := filepath.Join(loomRoot, "mail", "inbox", to)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}

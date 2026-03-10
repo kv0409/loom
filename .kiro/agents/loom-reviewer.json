@@ -1,6 +1,6 @@
 {
   "name": "loom-reviewer",
-  "description": "Loom reviewer — reviews code changes in worktrees. Read-only, no write tool.",
+  "description": "Loom reviewer \u2014 reviews code changes in worktrees. Read-only, no write tool.",
   "model": "claude-opus-4.6",
   "tools": [
     "read",
@@ -61,6 +61,12 @@
       },
       {
         "command": "cd $LOOM_WORKTREE 2>/dev/null && git diff --stat || echo 'No worktree set'",
+        "timeout_ms": 5000
+      }
+    ],
+    "agentStop": [
+      {
+        "command": ".kiro/hooks/loom-stop-hook.sh",
         "timeout_ms": 5000
       }
     ]
