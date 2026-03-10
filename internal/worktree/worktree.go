@@ -30,8 +30,8 @@ func projectRoot(loomRoot string) string {
 }
 
 func Create(loomRoot string, issueID string, slug string, agent string) (*Worktree, error) {
-	name := "loom-" + issueID + "-" + slug
-	branch := "loom/" + issueID + "-" + slug
+	name := issueID + "-" + slug
+	branch := issueID + "-" + slug
 	wtPath := filepath.Join(".loom", "worktrees", name)
 	absPath := filepath.Join(projectRoot(loomRoot), wtPath)
 
@@ -71,11 +71,7 @@ func Remove(loomRoot string, name string) error {
 		return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
 	}
 
-	// Extract branch suffix from name: loom-<rest> -> loom/<rest>
-	suffix := strings.TrimPrefix(name, "loom-")
-	branch := "loom/" + suffix
-
-	cmd = exec.Command("git", "branch", "-d", branch)
+	cmd = exec.Command("git", "branch", "-d", name)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("git branch -d: %s", strings.TrimSpace(string(out)))
@@ -136,12 +132,9 @@ func List(loomRoot string) ([]*Worktree, error) {
 }
 
 // parseNameConvention extracts agent/issue from naming convention.
-// Name format: loom-<issueID>-<slug>
-// We can't know the agent from the name alone, so we leave it empty unless
-// we find an agent file that references this worktree.
+// Name format: <issueID>-<slug>
 func parseNameConvention(wt *Worktree) {
-	// Try to extract issue ID: loom-LOOM-NNN... pattern
-	re := regexp.MustCompile(`^loom-(LOOM-\d+(?:-\d+)?)`)
+	re := regexp.MustCompile(`^(LOOM-\d+(?:-\d+)?)`)
 	if m := re.FindStringSubmatch(wt.Name); len(m) > 1 {
 		wt.Issue = m[1]
 	}

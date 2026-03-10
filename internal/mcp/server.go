@@ -373,8 +373,8 @@ func toolDefs() []toolDef {
 		{Name: "loom_agent_kill", Description: "Kill an agent (stops tmux window, optionally removes worktree and branch, deregisters)", InputSchema: obj(
 			props{"id": propStr("Agent ID to kill"), "cleanup": propBool("Also remove the agent's worktree and delete its branch")},
 			"id")},
-		{Name: "loom_worktree_remove", Description: "Remove a worktree directory and delete its loom/ branch", InputSchema: obj(
-			props{"name": propStr("Worktree name (e.g. loom-LOOM-001-01-login-form)")},
+		{Name: "loom_worktree_remove", Description: "Remove a worktree directory and delete its branch", InputSchema: obj(
+			props{"name": propStr("Worktree name (e.g. LOOM-001-01-login-form)")},
 			"name")},
 	}
 }

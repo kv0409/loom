@@ -62,7 +62,7 @@ func panel(title string, content string, width int) string {
 			t := titleStyle.Render(" " + title + " ")
 			tLen := lipgloss.Width(t)
 			borderColor := lipgloss.NewStyle().Foreground(gray)
-			remaining := innerW - tLen
+			remaining := innerW - tLen - 1
 			if remaining < 0 {
 				remaining = 0
 			}

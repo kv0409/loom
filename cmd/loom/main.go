@@ -64,8 +64,16 @@ func main() {
 		Short: "Graceful shutdown",
 		RunE:  runStop,
 	}
-	stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
+		stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
+	stopCmd.Flags().Bool("daemon-only", false, "Stop only the daemon; leave agents and tmux session running")
 	stopCmd.GroupID = "lifecycle"
+
+	restartCmd := &cobra.Command{
+		Use:   "restart",
+		Short: "Hot-reload daemon without killing agents",
+		RunE:  runRestart,
+	}
+	restartCmd.GroupID = "lifecycle"
 
 	statusCmd := &cobra.Command{
 		Use:   "status",
@@ -381,7 +389,7 @@ func main() {
 
 	root.AddCommand(
 		initCmd,
-		startCmd, stopCmd, statusCmd,
+		startCmd, stopCmd, restartCmd, statusCmd,
 		dashCmd, taskCmd,
 		issueCmd,
 		agentsCmd, agentCmd,
@@ -1733,14 +1741,17 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Spawn orchestrator
-	_, err = agent.Spawn(root, agent.SpawnOpts{
-		Role:         "orchestrator",
-		ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
-	})
-	if err != nil {
-		daemon.ReleaseLock(root)
-		return fmt.Errorf("spawning orchestrator: %w", err)
+	// Spawn orchestrator (skip on --resume: agents are already running)
+	resume, _ := cmd.Flags().GetBool("resume")
+	if !resume {
+		_, err = agent.Spawn(root, agent.SpawnOpts{
+			Role:         "orchestrator",
+			ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
+		})
+		if err != nil {
+			daemon.ReleaseLock(root)
+			return fmt.Errorf("spawning orchestrator: %w", err)
+		}
 	}
 
 	// Start daemon goroutines
@@ -1760,6 +1771,57 @@ func runStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runRestart(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	pid, alive := daemon.CheckLock(root)
+	if !alive {
+		return fmt.Errorf("loom is not running")
+	}
+
+	// Signal daemon to stop (it will release the lock itself)
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("finding process %d: %w", pid, err)
+	}
+	if err := p.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("signaling daemon: %w", err)
+	}
+
+	// Wait for lock to be released (up to 5s)
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if _, alive := daemon.CheckLock(root); !alive {
+			break
+		}
+	}
+
+	// Re-exec daemon with --resume (skips orchestrator spawn)
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable: %w", err)
+	}
+	logPath := filepath.Join(root, "logs", "daemon.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening daemon log: %w", err)
+	}
+	child := exec.Command(self, "start", "--resume")
+	child.Env = append(os.Environ(), "LOOM_DAEMON=1")
+	child.Stdout = logFile
+	child.Stderr = logFile
+	if err := child.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("restarting daemon: %w", err)
+	}
+	logFile.Close()
+	fmt.Printf("Daemon restarted (pid %d)\n", child.Process.Pid)
+	return nil
+}
+
 func runStop(cmd *cobra.Command, args []string) error {
 	root, err := config.FindLoomRoot()
 	if err != nil {
@@ -1771,24 +1833,27 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loom is not running")
 	}
 
-	// Kill all registered agents and clean up their worktrees
-	agents, _ := agent.List(root)
-	cfg, _ := config.Load(root)
-	for _, a := range agents {
-		fmt.Printf("Killing agent %s...\n", a.ID)
-		agent.Kill(root, a.ID, true)
-	}
+	daemonOnly, _ := cmd.Flags().GetBool("daemon-only")
+	if !daemonOnly {
+		// Kill all registered agents and clean up their worktrees
+		agents, _ := agent.List(root)
+		cfg, _ := config.Load(root)
+		for _, a := range agents {
+			fmt.Printf("Killing agent %s...\n", a.ID)
+			agent.Kill(root, a.ID, true)
+		}
 
-	// Remove any remaining orphaned worktrees
-	wts, _ := worktree.List(root)
-	for _, wt := range wts {
-		fmt.Printf("Removing worktree %s...\n", wt.Name)
-		worktree.Remove(root, wt.Name)
-	}
+		// Remove any remaining orphaned worktrees
+		wts, _ := worktree.List(root)
+		for _, wt := range wts {
+			fmt.Printf("Removing worktree %s...\n", wt.Name)
+			worktree.Remove(root, wt.Name)
+		}
 
-	// Kill the tmux session
-	if cfg != nil {
-		tmux.KillSession(cfg.Tmux.SessionName)
+		// Kill the tmux session
+		if cfg != nil {
+			tmux.KillSession(cfg.Tmux.SessionName)
+		}
 	}
 
 	force, _ := cmd.Flags().GetBool("force")

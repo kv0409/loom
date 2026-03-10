@@ -86,6 +86,9 @@ func (m Model) renderOverview() string {
 }
 
 func truncate(s string, n int) string {
+	if n <= 3 {
+		return "..."
+	}
 	if len(s) > n {
 		return s[:n-3] + "..."
 	}

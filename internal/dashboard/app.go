@@ -24,9 +24,11 @@ const (
 	viewIssueDetail
 	viewMail
 	viewMemory
+	viewActivity
+	viewLogs
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs}
 
 type data struct {
 	agents    []*agent.Agent
@@ -35,15 +37,18 @@ type data struct {
 	messages  []*mail.Message
 	memories  []*memory.Entry
 	unread    int
+	activity  []activityEntry
+	logs      []logLine
 }
 
 type Model struct {
-	loomRoot string
-	view     view
-	data     data
-	cursor   int
-	width    int
-	height   int
+	loomRoot  string
+	view      view
+	data      data
+	cursor    int
+	width     int
+	height    int
+	logFilter int // 0=all, 1..N=index into agents
 }
 
 type tickMsg time.Time
@@ -70,6 +75,8 @@ func (m Model) refresh() tea.Cmd {
 		d.messages, _ = mail.Log(root, mail.LogOpts{})
 		d.memories, _ = memory.List(root, memory.ListOpts{})
 		d.unread = countUnread(root)
+		d.activity = fetchActivity(d.agents)
+		d.logs = readLogs(root)
 		return d
 	}
 }
@@ -143,6 +150,22 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = viewMemory
 		m.cursor = 0
 		return m, nil
+	case "t":
+		m.view = viewActivity
+		m.cursor = 0
+		return m, nil
+	case "l":
+		m.view = viewLogs
+		m.cursor = 0
+		return m, nil
+	case "f":
+		if m.view == viewLogs {
+			m.logFilter++
+			if m.logFilter > len(m.data.agents) {
+				m.logFilter = 0
+			}
+			return m, nil
+		}
 	case "tab":
 		m.view = nextView(m.view)
 		m.cursor = 0
@@ -227,8 +250,12 @@ func (m Model) View() string {
 		content = m.renderMail()
 	case viewMemory:
 		content = m.renderMemory()
+	case viewActivity:
+		content = m.renderActivity()
+	case viewLogs:
+		content = m.renderLogs()
 	}
 
-	help := helpStyle.Render(" [a]gents [i]ssues [m]ail [d]ecisions [Tab]cycle [Esc]back [q]uit")
+	help := helpStyle.Render(" [a]gents [i]ssues [m]ail [d]ecisions [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit")
 	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
 }
