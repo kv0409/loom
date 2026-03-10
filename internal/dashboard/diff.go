@@ -32,7 +32,7 @@ func (m Model) renderWorktrees() string {
 	content += "  " + strings.Repeat("─", 80) + "\n"
 	for i, wt := range m.data.worktrees {
 		line := fmt.Sprintf("  %-30s %-30s %-15s %s",
-			truncate(wt.Name, 30), truncate(wt.Branch, 30), wt.Agent, wt.Issue)
+			truncate(slugFromWorktree(wt.Name), 30), truncate(wt.Branch, 30), wt.Agent, wt.Issue)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		}
@@ -78,7 +78,7 @@ func (m Model) renderDiff() string {
 
 	title := "DIFF"
 	if m.selectedWorktree < len(m.data.worktrees) {
-		title = "DIFF: " + m.data.worktrees[m.selectedWorktree].Name
+		title = "DIFF: " + slugFromWorktree(m.data.worktrees[m.selectedWorktree].Name)
 	}
 	return panel(title, out, m.width-2)
 }

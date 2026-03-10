@@ -1,10 +1,17 @@
 package dashboard
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+var wtPrefixRe = regexp.MustCompile(`^LOOM-\d+-\d+-`)
+
+func slugFromWorktree(name string) string {
+	return wtPrefixRe.ReplaceAllString(name, "")
+}
 
 var (
 	green  = lipgloss.Color("2")

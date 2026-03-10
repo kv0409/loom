@@ -16,7 +16,7 @@ func (m Model) renderAgents() string {
 	for i, a := range m.data.agents {
 		wt := "—"
 		if a.WorktreeName != "" {
-			wt = truncate(a.WorktreeName, 22)
+			wt = truncate(slugFromWorktree(a.WorktreeName), 22)
 		}
 		issues := "—"
 		if len(a.AssignedIssues) > 0 {
@@ -78,7 +78,7 @@ func (m Model) renderAgentDetail() string {
 		s += fmt.Sprintf("  └── %s\n", strings.Join(a.AssignedIssues, ", "))
 	}
 	if a.WorktreeName != "" {
-		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", a.WorktreeName)
+		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", slugFromWorktree(a.WorktreeName))
 	}
 
 	// Recent mail

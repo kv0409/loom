@@ -52,7 +52,7 @@ func (m Model) renderOverview() string {
 			diffStr = fmt.Sprintf(" %df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
 		}
 		wtContent += fmt.Sprintf("  %s  %-14s %s%s\n",
-			truncate(wt.Name, 22), idleStyle.Render(truncate(wt.Agent, 14)),
+			truncate(slugFromWorktree(wt.Name), 22), idleStyle.Render(truncate(wt.Agent, 14)),
 			idleStyle.Render(truncate(wt.Branch, 20)), activeStyle.Render(diffStr))
 	}
 	if wtContent == "" {
@@ -60,7 +60,7 @@ func (m Model) renderOverview() string {
 	}
 	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
-	// Mail (kept as-is)
+	// Mail
 	mailContent := ""
 	limit := min(len(m.data.messages), 5)
 	for _, msg := range m.data.messages[:limit] {
