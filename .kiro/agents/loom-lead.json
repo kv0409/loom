@@ -68,7 +68,7 @@
         "timeout_ms": 5000
       }
     ],
-    "agentStop": [
+    "stop": [
       {
         "command": ".kiro/hooks/loom-stop-hook.sh",
         "timeout_ms": 5000

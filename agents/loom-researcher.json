@@ -1,6 +1,6 @@
 {
   "name": "loom-researcher",
-  "description": "Loom researcher — external research via web search and fetch. No code writing.",
+  "description": "Loom researcher \u2014 external research via web search and fetch. No code writing.",
   "model": "claude-sonnet-4.6",
   "tools": [
     "read",
@@ -58,6 +58,12 @@
       {
         "command": "echo \"=== LOOM AGENT: $LOOM_AGENT_ID ===\" && echo \"Role: researcher\" && echo \"Root: $LOOM_ROOT\"",
         "timeout_ms": 3000
+      }
+    ],
+    "stop": [
+      {
+        "command": ".kiro/hooks/loom-stop-hook.sh",
+        "timeout_ms": 5000
       }
     ]
   },
