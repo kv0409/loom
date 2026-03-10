@@ -31,7 +31,8 @@ func (m Model) renderIssueDetail() string {
 	}
 	iss := m.data.issues[m.cursor]
 
-	s := fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s\n",
+	s := fmt.Sprintf("  %s\n", titleStyle.Render(iss.Title))
+	s += fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s\n",
 		iss.Type, iss.Priority, statusIndicator(iss.Status), statusStyle(iss.Status).Render(iss.Status))
 	if iss.Assignee != "" {
 		s += fmt.Sprintf("  Assignee: %s\n", iss.Assignee)

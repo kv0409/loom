@@ -1,6 +1,10 @@
 package dashboard
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 var (
 	green  = lipgloss.Color("2")
@@ -47,19 +51,22 @@ func statusIndicator(status string) string {
 }
 
 func panel(title string, content string, width int) string {
-	s := borderStyle.Width(width - 2).Render(content)
+	innerW := width - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	s := borderStyle.Width(innerW).Render(content)
 	if title != "" {
-		// Overlay title on top border
-		t := titleStyle.Render(" " + title + " ")
 		lines := splitLines(s)
 		if len(lines) > 0 {
-			topBorder := lines[0]
-			if len(topBorder) > 3 {
-				tLen := lipgloss.Width(t)
-				if tLen+3 < lipgloss.Width(topBorder) {
-					lines[0] = topBorder[:2] + t + topBorder[2+tLen:]
-				}
+			t := titleStyle.Render(" " + title + " ")
+			tLen := lipgloss.Width(t)
+			borderColor := lipgloss.NewStyle().Foreground(gray)
+			remaining := innerW - tLen
+			if remaining < 0 {
+				remaining = 0
 			}
+			lines[0] = borderColor.Render("╭─") + t + borderColor.Render(strings.Repeat("─", remaining)+"╮")
 			s = joinLines(lines)
 		}
 	}
