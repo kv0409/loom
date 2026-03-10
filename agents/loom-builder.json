@@ -3,7 +3,7 @@
   "description": "Loom builder — implements code changes in an isolated worktree. Most restricted writer agent.",
   "model": "claude-sonnet-4.6",
   "tools": ["read", "write", "grep", "glob", "code", "shell", "todo"],
-  "allowedTools": ["read", "grep", "glob", "code", "todo"],
+  "allowedTools": ["read", "write", "grep", "glob", "code", "todo", "@loom/loom_*"],
   "toolsSettings": {
     "shell": {
       "autoAllowReadonly": true,

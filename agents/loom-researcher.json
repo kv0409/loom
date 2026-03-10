@@ -2,8 +2,24 @@
   "name": "loom-researcher",
   "description": "Loom researcher — external research via web search and fetch. No code writing.",
   "model": "claude-sonnet-4.6",
-  "tools": ["read", "grep", "glob", "shell", "thinking", "web_search", "web_fetch"],
-  "allowedTools": ["read", "grep", "glob", "thinking", "web_search", "web_fetch"],
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "shell",
+    "thinking",
+    "web_search",
+    "web_fetch"
+  ],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob",
+    "thinking",
+    "web_search",
+    "web_fetch",
+    "@loom/loom_*"
+  ],
   "toolsSettings": {
     "shell": {
       "autoAllowReadonly": true,
@@ -23,7 +39,9 @@
   "mcpServers": {
     "loom": {
       "command": "loom",
-      "args": ["mcp-server"]
+      "args": [
+        "mcp-server"
+      ]
     }
   },
   "hooks": {

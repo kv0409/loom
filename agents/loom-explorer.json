@@ -2,8 +2,22 @@
   "name": "loom-explorer",
   "description": "Loom explorer — read-only codebase exploration and analysis.",
   "model": "claude-sonnet-4.6",
-  "tools": ["read", "grep", "glob", "code", "shell", "thinking"],
-  "allowedTools": ["read", "grep", "glob", "code", "thinking"],
+  "tools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "shell",
+    "thinking"
+  ],
+  "allowedTools": [
+    "read",
+    "grep",
+    "glob",
+    "code",
+    "thinking",
+    "@loom/loom_*"
+  ],
   "toolsSettings": {
     "shell": {
       "autoAllowReadonly": true,
