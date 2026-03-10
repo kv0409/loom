@@ -57,13 +57,19 @@ func (m Model) renderOverview() string {
 	}
 	mqContent := ""
 	for _, wt := range m.data.worktrees {
-		stage := "ready"
+		stage := "pending"
 		issueStatus := ""
 		if iss, ok := issueByWT[wt.Name]; ok {
 			issueStatus = iss.Status
 			switch iss.Status {
+			case "open":
+				stage = "pending"
+			case "assigned":
+				stage = "assigned"
 			case "in-progress":
 				stage = "building"
+			case "blocked":
+				stage = "blocked"
 			case "review":
 				stage = "review"
 			case "done":
