@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
@@ -15,19 +16,51 @@ import (
 )
 
 type Daemon struct {
-	LoomRoot string
-	Config   *config.Config
-	stop     chan struct{}
-	done     chan struct{}
+	LoomRoot   string
+	Config     *config.Config
+	stop       chan struct{}
+	done       chan struct{}
+	mu         sync.Mutex
+	acpClients map[string]*acp.Client
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
 	return &Daemon{
-		LoomRoot: loomRoot,
-		Config:   cfg,
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
+		LoomRoot:   loomRoot,
+		Config:     cfg,
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
+		acpClients: make(map[string]*acp.Client),
 	}
+}
+
+// notify delivers a message to an agent. ACP agents receive a session/prompt;
+// chat agents receive tmux send-keys.
+func (d *Daemon) notify(a *agent.Agent, msg string) {
+	if a.Config.KiroMode == "acp" {
+		d.mu.Lock()
+		c := d.acpClients[a.ID]
+		d.mu.Unlock()
+		if c != nil && a.ACPSessionID != "" {
+			c.SendPrompt(a.ACPSessionID, msg)
+		}
+		return
+	}
+	if a.TmuxTarget != "" {
+		tmux.RunInPane(a.TmuxTarget, msg)
+	}
+}
+
+// isAlive checks whether an agent's backing process is still running.
+func (d *Daemon) isAlive(a *agent.Agent) bool {
+	if a.Config.KiroMode == "acp" {
+		d.mu.Lock()
+		c := d.acpClients[a.ID]
+		d.mu.Unlock()
+		return c != nil
+	}
+	_, err := tmux.CapturePane(a.TmuxTarget)
+	return err == nil
 }
 
 func (d *Daemon) Start() error {
@@ -43,6 +76,29 @@ func (d *Daemon) Start() error {
 func (d *Daemon) Stop() {
 	close(d.stop)
 	<-d.done
+	d.mu.Lock()
+	for id, c := range d.acpClients {
+		c.Close()
+		delete(d.acpClients, id)
+	}
+	d.mu.Unlock()
+}
+
+// RegisterACPClient associates an ACP client with an agent ID.
+func (d *Daemon) RegisterACPClient(agentID string, c *acp.Client) {
+	d.mu.Lock()
+	d.acpClients[agentID] = c
+	d.mu.Unlock()
+}
+
+// UnregisterACPClient removes and closes an ACP client for the given agent.
+func (d *Daemon) UnregisterACPClient(agentID string) {
+	d.mu.Lock()
+	if c, ok := d.acpClients[agentID]; ok {
+		c.Close()
+		delete(d.acpClients, agentID)
+	}
+	d.mu.Unlock()
 }
 
 func (d *Daemon) watchIssues() {
@@ -69,12 +125,11 @@ func (d *Daemon) watchIssues() {
 				}
 				notified[iss.ID] = true
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
-				// Look up orchestrator's actual tmux target
 				orch, err := agent.Load(d.LoomRoot, "orchestrator")
-				if err != nil || orch.TmuxTarget == "" {
+				if err != nil {
 					continue
 				}
-				tmux.RunInPane(orch.TmuxTarget, msg)
+				d.notify(orch, msg)
 			}
 		}
 	}
@@ -108,7 +163,7 @@ func (d *Daemon) watchMail() {
 					continue
 				}
 				a, err := agent.Load(d.LoomRoot, agentID)
-				if err != nil || a.TmuxTarget == "" {
+				if err != nil {
 					continue
 				}
 				for _, m := range msgs {
@@ -117,7 +172,7 @@ func (d *Daemon) watchMail() {
 					}
 					notifiedAt[m.ID] = time.Now()
 					msg := "[LOOM] New mail from " + m.From + ": " + m.Subject + ". Run: loom mail read"
-					tmux.RunInPane(a.TmuxTarget, msg)
+					d.notify(a, msg)
 				}
 			}
 		}
@@ -140,23 +195,21 @@ func (d *Daemon) watchHeartbeats() {
 				if a.Status == "dead" || a.Status == "done" {
 					continue
 				}
-				// Check if tmux pane is still alive instead of relying on heartbeats
-				_, err := tmux.CapturePane(a.TmuxTarget)
-				if err != nil {
-					// Pane is gone — agent is truly dead
-					a.Status = "dead"
-					agent.Save(d.LoomRoot, a)
-					parentID := a.SpawnedBy
-					if parentID == "" {
-						continue
-					}
-					parent, err := agent.Load(d.LoomRoot, parentID)
-					if err != nil || parent.TmuxTarget == "" {
-						continue
-					}
-					msg := "[LOOM] Agent " + a.ID + " is dead (tmux pane gone)"
-					tmux.RunInPane(parent.TmuxTarget, msg)
+				if d.isAlive(a) {
+					continue
 				}
+				a.Status = "dead"
+				agent.Save(d.LoomRoot, a)
+				parentID := a.SpawnedBy
+				if parentID == "" {
+					continue
+				}
+				parent, err := agent.Load(d.LoomRoot, parentID)
+				if err != nil {
+					continue
+				}
+				msg := "[LOOM] Agent " + a.ID + " is dead"
+				d.notify(parent, msg)
 			}
 		}
 	}

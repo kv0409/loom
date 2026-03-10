@@ -27,6 +27,7 @@ type Agent struct {
 	Heartbeat      time.Time   `yaml:"heartbeat"`
 	AssignedIssues []string    `yaml:"assigned_issues,omitempty"`
 	WorktreeName   string      `yaml:"worktree,omitempty"`
+	ACPSessionID   string      `yaml:"acp_session_id,omitempty"`
 	Config         AgentConfig `yaml:"config"`
 }
 
