@@ -265,7 +265,7 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	// Cascade: kill or warn children first
 	children, _ := listChildren(loomRoot, id)
 	for _, child := range children {
-		if childSafeToKill(loomRoot, child) {
+		if childSafeToKill(loomRoot, child) || child.TmuxTarget == "" {
 			Kill(loomRoot, child.ID, cleanupWorktree)
 		} else {
 			tmux.SendKeys(child.TmuxTarget, "[LOOM] Shutdown")

@@ -265,6 +265,9 @@ func (d *Daemon) watchDoneIssues() {
 					for _, aid := range a.AssignedIssues {
 						if aid == iss.ID {
 							agent.Kill(d.LoomRoot, a.ID, true)
+							if a.Config.KiroMode == "acp" {
+								d.UnregisterACPClient(a.ID)
+							}
 							break
 						}
 					}
