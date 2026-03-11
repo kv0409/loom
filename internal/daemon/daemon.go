@@ -233,6 +233,12 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		return
 	}
 
+	c.AgentID = a.ID
+	deny := d.Config.Deny
+	c.OnPermission = func(tool, command string) bool {
+		return !deny.IsDenied(tool, command)
+	}
+
 	log.Printf("[acp] %s: calling Initialize", a.ID)
 	if _, err := c.Initialize(); err != nil {
 		log.Printf("[acp] %s: Initialize failed: %v", a.ID, err)

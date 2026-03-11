@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+// PermissionHandler decides whether to approve a server→client request.
+// It receives the tool name and command string extracted from the request.
+// Return true to approve, false to deny.
+type PermissionHandler func(tool, command string) bool
+
 // Client manages a kiro-cli ACP subprocess and its JSON-RPC lifecycle.
 type Client struct {
 	cmd    *exec.Cmd
@@ -30,6 +35,12 @@ type Client struct {
 	// Output buffer for dashboard.
 	outMu         sync.Mutex
 	lastResponses []string
+
+	// AgentID for audit logging.
+	AgentID string
+
+	// OnPermission is called for server→client permission requests.
+	OnPermission PermissionHandler
 
 	waitOnce sync.Once
 	waitErr  error
@@ -54,6 +65,14 @@ type jsonRPCResponse struct {
 // jsonRPCNotification is a server-initiated notification (no ID).
 type jsonRPCNotification struct {
 	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+}
+
+// serverRequest is a JSON-RPC 2.0 request sent from server to client.
+type serverRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      int64           `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
 }
@@ -165,12 +184,10 @@ func (c *Client) readLoop(r *bufio.Reader) {
 
 		if resp.ID != 0 {
 			// Check if it's a server→client request (has both id and method).
-			var probe struct {
-				Method string `json:"method"`
-			}
-			_ = json.Unmarshal(line, &probe)
-			if probe.Method != "" {
-				log.Printf("[acp] server request: id=%d method=%s body=%s", resp.ID, probe.Method, string(line))
+			var req serverRequest
+			_ = json.Unmarshal(line, &req)
+			if req.Method != "" {
+				c.handleServerRequest(&req)
 				continue
 			}
 			// It's a response to a request — deliver to waiting caller.
@@ -189,6 +206,78 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			continue
 		}
 		c.handleNotification(&notif)
+	}
+}
+
+// handleServerRequest processes a server→client JSON-RPC request (e.g. permission prompts).
+// It extracts tool/command info, checks the deny list via OnPermission, sends an
+// approve or deny response back, and logs the decision for audit.
+func (c *Client) handleServerRequest(req *serverRequest) {
+	// Extract tool and command from params for deny-list checking.
+	var params struct {
+		Tool    string `json:"tool"`
+		Command string `json:"command"`
+		Name    string `json:"name"`
+		Action  struct {
+			Tool    string `json:"tool"`
+			Command string `json:"command"`
+			Name    string `json:"name"`
+		} `json:"action"`
+	}
+	_ = json.Unmarshal(req.Params, &params)
+
+	tool := params.Tool
+	if tool == "" {
+		tool = params.Action.Tool
+	}
+	if tool == "" {
+		tool = params.Name
+	}
+	if tool == "" {
+		tool = params.Action.Name
+	}
+	command := params.Command
+	if command == "" {
+		command = params.Action.Command
+	}
+
+	approved := true
+	if c.OnPermission != nil {
+		approved = c.OnPermission(tool, command)
+	}
+
+	action := "approved"
+	if !approved {
+		action = "denied"
+	}
+	log.Printf("[acp-permission] agent=%s method=%s tool=%q command=%q decision=%s", c.AgentID, req.Method, tool, command, action)
+
+	// Send JSON-RPC response back to kiro-cli.
+	var result interface{}
+	if approved {
+		result = map[string]bool{"approved": true}
+	} else {
+		result = map[string]bool{"approved": false}
+	}
+	resp := struct {
+		JSONRPC string      `json:"jsonrpc"`
+		ID      int64       `json:"id"`
+		Result  interface{} `json:"result"`
+	}{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  result,
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("[acp-permission] marshal error: %v", err)
+		return
+	}
+	c.mu.Lock()
+	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
+	c.mu.Unlock()
+	if err != nil {
+		log.Printf("[acp-permission] write error: %v", err)
 	}
 }
 
