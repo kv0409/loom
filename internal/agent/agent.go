@@ -296,6 +296,25 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	return Deregister(loomRoot, id)
 }
 
+// KillProcess kills the OS process (group) for a dead agent by PID.
+// Returns true if a process was found and signalled.
+func KillProcess(a *Agent) bool {
+	if a.PID <= 0 || a.Config.KiroMode != "acp" {
+		return false
+	}
+	// Check if process is still alive.
+	if err := syscall.Kill(a.PID, 0); err != nil {
+		return false
+	}
+	syscall.Kill(-a.PID, syscall.SIGTERM)
+	time.Sleep(500 * time.Millisecond)
+	// Force kill if still alive.
+	if err := syscall.Kill(a.PID, 0); err == nil {
+		syscall.Kill(-a.PID, syscall.SIGKILL)
+	}
+	return true
+}
+
 // assignIssues sets the assignee on each of the agent's assigned issues.
 func assignIssues(loomRoot string, a *Agent) {
 	for _, issID := range a.AssignedIssues {
