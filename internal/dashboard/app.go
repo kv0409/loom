@@ -74,6 +74,7 @@ type Model struct {
 	lastClickTime    time.Time
 	lastClickRow     int
 	hoverRow         int // -1 = no hover
+	detailScroll     int // scroll offset for agent detail output
 }
 
 type tickMsg time.Time
@@ -270,7 +271,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "n":
-		if m.view == viewAgents && len(m.data.agents) > 0 {
+		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
 			m.nudgeMode = true
 			m.nudgeInput = ""
 			return m, nil
@@ -283,11 +284,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "o":
 		if m.view == viewAgents && m.cursor < len(m.data.agents) {
-			a := m.data.agents[m.cursor]
-			if out, err := daemon.Output(m.loomRoot, a.ID, 50); err == nil {
-				m.view = viewAgentDetail
-				m.diffContent = out
-			}
+			m.view = viewAgentDetail
+			m.detailScroll = 0
 			return m, nil
 		}
 	case "tab":
@@ -295,6 +293,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	case "j", "down":
+		if m.view == viewAgentDetail {
+			m.detailScroll++
+			return m, nil
+		}
 		m.cursor++
 		m.clampCursor()
 		return m, nil
@@ -303,6 +305,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	case "k", "up":
+		if m.view == viewAgentDetail {
+			m.detailScroll--
+			if m.detailScroll < 0 {
+				m.detailScroll = 0
+			}
+			return m, nil
+		}
 		m.cursor--
 		if m.cursor < 0 {
 			m.cursor = 0
@@ -319,15 +328,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case viewAgents:
 		if len(m.data.agents) > 0 {
 			m.view = viewAgentDetail
+			m.detailScroll = 0
 		}
 	case viewAgentDetail:
 		if m.cursor < len(m.data.agents) {
 			a := m.data.agents[m.cursor]
-			c := exec.Command("loom", "attach", a.ID)
-			c.Stdin = os.Stdin
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-			return m, tea.ExecProcess(c, func(err error) tea.Msg { return nil })
+			// ACP agents have no tmux pane — Enter is a no-op in detail view
+			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
+				c := exec.Command("loom", "attach", a.ID)
+				c.Stdin = os.Stdin
+				c.Stdout = os.Stdout
+				c.Stderr = os.Stderr
+				return m, tea.ExecProcess(c, func(err error) tea.Msg { return nil })
+			}
 		}
 	case viewIssues:
 		if len(m.displayIssues()) > 0 {
@@ -433,8 +446,16 @@ func (m Model) View() string {
 
 func (m Model) helpBar() string {
 	base := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit"
-	if m.view == viewAgents {
-		base += " | [n]udge [m]essage [o]utput [x]kill [Enter]attach"
+	if m.view == viewAgentDetail {
+		base += " | [n]udge [j/k]scroll"
+		if m.cursor < len(m.data.agents) {
+			a := m.data.agents[m.cursor]
+			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
+				base += " [Enter]attach"
+			}
+		}
+	} else if m.view == viewAgents {
+		base += " | [n]udge [m]essage [o]utput [x]kill [Enter]detail"
 	}
 	return helpStyle.Render(base)
 }
@@ -460,6 +481,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
+		if m.view == viewAgentDetail {
+			m.detailScroll--
+			if m.detailScroll < 0 {
+				m.detailScroll = 0
+			}
+			return m, nil
+		}
 		m.cursor--
 		if m.cursor < 0 {
 			m.cursor = 0
@@ -467,6 +495,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonWheelDown:
+		if m.view == viewAgentDetail {
+			m.detailScroll++
+			return m, nil
+		}
 		m.cursor++
 		m.clampCursor()
 		return m, nil
