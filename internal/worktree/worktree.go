@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/karanagi/loom/internal/config"
 )
 
 type Worktree struct {
@@ -71,10 +73,14 @@ func Remove(loomRoot string, name string) error {
 		return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
 	}
 
-	cmd = exec.Command("git", "branch", "-d", name)
+	flag := "-d"
+	if cfg, err := config.Load(loomRoot); err == nil && cfg.Merge.Strategy == "squash" {
+		flag = "-D"
+	}
+	cmd = exec.Command("git", "branch", flag, name)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git branch -d: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("git branch %s: %s", flag, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
