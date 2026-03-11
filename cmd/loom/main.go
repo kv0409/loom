@@ -30,12 +30,13 @@ import (
 )
 
 var version = "dev"
+var commitHash = "unknown"
 
 func main() {
 	root := &cobra.Command{
 		Use:     "loom",
 		Short:   "Multi-agent orchestration for kiro-cli",
-		Version: version,
+		Version: fmt.Sprintf("%s (%s)", version, commitHash),
 	}
 
 	// --- loom init ---
@@ -395,6 +396,12 @@ func main() {
 		RunE:  runMerges,
 	}
 
+	updateCmd := &cobra.Command{
+		Use:   "update",
+		Short: "Update loom to the latest version",
+		RunE:  runUpdate,
+	}
+
 	root.AddCommand(
 		initCmd,
 		startCmd, stopCmd, restartCmd, statusCmd,
@@ -406,6 +413,7 @@ func main() {
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
 		gcCmd, exportCmd, mcpServerCmd, mergesCmd,
+		updateCmd,
 	)
 
 	if err := root.Execute(); err != nil {
@@ -1918,6 +1926,89 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 	logFile.Close()
 	fmt.Printf("Daemon restarted (pid %d)\n", child.Process.Pid)
+	return nil
+}
+
+func runUpdate(cmd *cobra.Command, args []string) error {
+	fmt.Printf("Current: %s (%s)\n", version, commitHash)
+
+	// Fetch latest commit via git ls-remote (works with private repos)
+	fmt.Print("Checking for updates... ")
+	lsRemote := exec.Command("git", "ls-remote", "origin", "refs/heads/main")
+	out, err := lsRemote.Output()
+	if err != nil {
+		return fmt.Errorf("git ls-remote failed: %w", err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return fmt.Errorf("could not determine remote HEAD")
+	}
+	remoteFull := fields[0]
+	remoteShort := remoteFull[:7]
+	fmt.Printf("latest is %s\n", remoteShort)
+
+	if commitHash == remoteShort {
+		fmt.Println("Already up to date.")
+		return nil
+	}
+
+	// Pull latest and rebuild
+	fmt.Print("Pulling... ")
+	pull := exec.Command("git", "pull", "--ff-only", "origin", "main")
+	if out, err := pull.CombinedOutput(); err != nil {
+		return fmt.Errorf("git pull failed: %s\n%s", err, out)
+	}
+	fmt.Println("done.")
+
+	fmt.Print("Building... ")
+	build := exec.Command("make", "install")
+	if out, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("make install failed: %s\n%s", err, out)
+	}
+	fmt.Println("done.")
+
+	// Restart daemon if running
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return nil // no project context, skip restart
+	}
+	pid, alive := daemon.CheckLock(root)
+	if !alive {
+		return nil
+	}
+
+	fmt.Print("Restarting daemon... ")
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("finding daemon process: %w", err)
+	}
+	p.Signal(syscall.SIGTERM)
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
+		if _, alive := daemon.CheckLock(root); !alive {
+			break
+		}
+	}
+
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable: %w", err)
+	}
+	logPath := filepath.Join(root, "logs", "daemon.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening daemon log: %w", err)
+	}
+	child := exec.Command(self, "start", "--resume")
+	child.Env = append(os.Environ(), "LOOM_DAEMON=1")
+	child.Stdout = logFile
+	child.Stderr = logFile
+	if err := child.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("restarting daemon: %w", err)
+	}
+	logFile.Close()
+	fmt.Printf("done (pid %d).\n", child.Process.Pid)
 	return nil
 }
 

@@ -1,13 +1,14 @@
 BINARY=loom
 VERSION=0.1.0
+COMMIT=$(shell git rev-parse --short HEAD)
 
 .PHONY: build install clean vet tidy
 
 build:
-	go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) ./cmd/loom
+	go build -ldflags "-X main.version=$(VERSION) -X main.commitHash=$(COMMIT)" -o $(BINARY) ./cmd/loom
 
 install: build
-	GOBIN=$(HOME)/go/bin go install ./cmd/loom
+	GOBIN=$(HOME)/go/bin go install -ldflags "-X main.version=$(VERSION) -X main.commitHash=$(COMMIT)" ./cmd/loom
 
 clean:
 	rm -f $(BINARY)
