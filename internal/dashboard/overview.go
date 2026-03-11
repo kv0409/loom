@@ -9,7 +9,11 @@ import (
 )
 
 func (m Model) renderOverview() string {
+	stacked := m.width < 80
 	colW := max((m.width-4)/2, 30)
+	if stacked {
+		colW = max(m.width-2, 20)
+	}
 	innerW := colW - 2
 
 	// Agent table: ID, role, heartbeat ago
@@ -102,6 +106,10 @@ func (m Model) renderOverview() string {
 		memContent = "  (empty)\n"
 	}
 	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
+
+	if stacked {
+		return lipgloss.JoinVertical(lipgloss.Left, agentPanel, issuePanel, wtPanel, mailPanel, memPanel)
+	}
 
 	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
 	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel)
