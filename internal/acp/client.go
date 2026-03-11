@@ -152,6 +152,7 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 // Initialize performs the ACP initialize handshake.
 func (c *Client) Initialize() (*InitializeResult, error) {
 	params := map[string]interface{}{
+		"protocolVersion": "2025-11-16",
 		"clientInfo": map[string]string{
 			"name":    "loom",
 			"version": "0.1.0",

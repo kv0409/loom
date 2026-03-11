@@ -36,7 +36,14 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 
 6. **Manage merges**: After a builder's work is reviewed and approved, merge their worktree branch.
 
-7. **Report up**: Notify your parent when the feature is complete or blocked:
+7. **Clean up after merge**: After merging a builder's branch, kill the builder and reviewer agents (with worktree cleanup):
+   ```
+   loom agent kill <BUILDER-ID> --cleanup
+   loom agent kill <REVIEWER-ID> --cleanup
+   ```
+   This stops their tmux windows, removes worktrees, deletes branches, and deregisters them.
+
+8. **Report up**: Notify your parent when the feature is complete or blocked:
    ```
    loom mail send $LOOM_PARENT_AGENT "Feature complete" --type completion --ref <ISSUE-ID>
    loom mail send $LOOM_PARENT_AGENT "Blocked on X" --type blocker --ref <ISSUE-ID>
@@ -46,7 +53,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 
 - Builders and reviewers send mail to you — check frequently with `loom mail read`.
 - When a builder completes, spawn a reviewer for their work.
-- When a reviewer approves, merge the builder's branch and close the sub-issue.
+- When a reviewer approves, merge the builder's branch, kill the builder and reviewer agents (`loom agent kill <ID> --cleanup`), and close the sub-issue.
 - When all sub-issues are done, close the parent issue and notify your parent.
 
 ## When You See [LOOM] Messages
