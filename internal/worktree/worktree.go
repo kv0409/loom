@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/karanagi/loom/internal/config"
+	"github.com/karanagi/loom/internal/issue"
 )
 
 type Worktree struct {
@@ -221,16 +222,26 @@ func Cleanup(loomRoot string) ([]string, error) {
 		}
 	}
 
-	var orphaned []string
-	for _, wt := range worktrees {
-		if wt.Agent != "" && !registered[wt.Agent] {
-			orphaned = append(orphaned, wt.Name)
-		}
+	activeStatuses := map[string]bool{
+		"open": true, "assigned": true, "in-progress": true,
+		"blocked": true, "review": true,
 	}
 
-	// If no agents are registered at all, all worktrees are orphaned
-	if len(registered) == 0 && len(worktrees) > 0 {
-		for _, wt := range worktrees {
+	var orphaned []string
+	for _, wt := range worktrees {
+		if wt.Agent != "" {
+			if !registered[wt.Agent] {
+				orphaned = append(orphaned, wt.Name)
+			}
+			continue
+		}
+		// Agent is empty — check if the associated issue is still active
+		if wt.Issue == "" {
+			orphaned = append(orphaned, wt.Name)
+			continue
+		}
+		iss, err := issue.Load(loomRoot, wt.Issue)
+		if err != nil || !activeStatuses[iss.Status] {
 			orphaned = append(orphaned, wt.Name)
 		}
 	}
