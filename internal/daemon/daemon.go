@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -101,6 +102,30 @@ func (d *Daemon) Stop() {
 		delete(d.acpClients, id)
 	}
 	d.mu.Unlock()
+}
+
+// Reload stops all watcher goroutines, reloads config from disk, then restarts
+// the watchers. The acpClients map is preserved across the reload.
+func (d *Daemon) Reload() error {
+	log.Println("[daemon] reload: stopping goroutines")
+	close(d.stop)
+	<-d.done
+	d.stopAPI()
+
+	cfg, err := config.Load(d.LoomRoot)
+	if err != nil {
+		return fmt.Errorf("reload config: %w", err)
+	}
+	d.Config = cfg
+
+	// Fresh channels and tracking state.
+	d.stop = make(chan struct{})
+	d.done = make(chan struct{})
+	d.nudgeCounts = make(map[string]int)
+	d.lastSeen = make(map[string]time.Time)
+
+	log.Println("[daemon] reload: restarting goroutines")
+	return d.Start()
 }
 
 // RegisterACPClient associates an ACP client with an agent ID.

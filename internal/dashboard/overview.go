@@ -36,7 +36,7 @@ func (m Model) renderOverview() string {
 	issueContent := ""
 	issueCount := 0
 	for _, iss := range m.data.issues {
-		if iss.Status == "done" {
+		if iss.Status == "done" || iss.Status == "cancelled" {
 			continue
 		}
 		issueCount++
