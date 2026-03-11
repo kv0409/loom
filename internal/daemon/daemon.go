@@ -167,6 +167,7 @@ func (d *Daemon) watchACPOutput() {
 }
 
 func (d *Daemon) activateACPAgent(a *agent.Agent) {
+	log.Printf("[acp] activating agent %s (role=%s)", a.ID, a.Role)
 	projectRoot := filepath.Dir(d.LoomRoot)
 
 	env := append(os.Environ(),
@@ -189,6 +190,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		workDir = filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
 	}
 
+	log.Printf("[acp] %s: creating client cmd=%s workDir=%s args=%v", a.ID, d.Config.Kiro.Command, workDir, extraArgs)
 	c, err := acp.NewClient(d.Config.Kiro.Command, workDir, env, extraArgs...)
 	if err != nil {
 		log.Printf("[acp] %s: NewClient failed: %v", a.ID, err)
@@ -197,6 +199,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		return
 	}
 
+	log.Printf("[acp] %s: calling Initialize", a.ID)
 	if _, err := c.Initialize(); err != nil {
 		log.Printf("[acp] %s: Initialize failed: %v", a.ID, err)
 		c.Close()
@@ -205,6 +208,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		return
 	}
 
+	log.Printf("[acp] %s: calling NewSession", a.ID)
 	sessionID, err := c.NewSession()
 	if err != nil {
 		log.Printf("[acp] %s: NewSession failed: %v", a.ID, err)
@@ -213,9 +217,10 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		agent.Save(d.LoomRoot, a)
 		return
 	}
+	log.Printf("[acp] %s: session=%s, sending initial task", a.ID, sessionID)
 
 	if a.InitialTask != "" {
-		if _, err := c.SendPrompt(sessionID, a.InitialTask); err != nil {
+		if err := c.SendPrompt(sessionID, a.InitialTask); err != nil {
 			log.Printf("[acp] %s: SendPrompt failed: %v", a.ID, err)
 			c.Close()
 			a.Status = "dead"

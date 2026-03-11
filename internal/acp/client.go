@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -16,13 +17,17 @@ import (
 type Client struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
-	stdout *bufio.Reader
 	mu     sync.Mutex // serialises writes
 	nextID atomic.Int64
 	exited atomic.Bool
 
+	// Background reader delivers responses to waiting callers.
+	pending   map[int64]chan jsonRPCResponse
+	pendingMu sync.Mutex
+
+	// Output buffer for dashboard.
 	outMu         sync.Mutex
-	lastResponses []string // last 50 responses
+	lastResponses []string
 }
 
 // jsonRPCRequest is a JSON-RPC 2.0 request.
@@ -39,6 +44,13 @@ type jsonRPCResponse struct {
 	ID      int64           `json:"id"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *rpcError       `json:"error,omitempty"`
+}
+
+// jsonRPCNotification is a server-initiated notification (no ID).
+type jsonRPCNotification struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
 }
 
 type rpcError struct {
@@ -73,8 +85,6 @@ type ContentBlock struct {
 }
 
 // NewClient spawns kiro-cli in ACP mode and returns a connected Client.
-// The command arg should be the path to kiro-cli (e.g. from Config.Kiro.Command).
-// Additional args (like --agent) can be passed via extraArgs.
 func NewClient(command string, workDir string, env []string, extraArgs ...string) (*Client, error) {
 	args := append([]string{"acp"}, extraArgs...)
 	cmd := exec.Command(command, args...)
@@ -97,18 +107,105 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 	}
 
 	c := &Client{
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: bufio.NewReader(stdoutPipe),
+		cmd:     cmd,
+		stdin:   stdin,
+		pending: make(map[int64]chan jsonRPCResponse),
 	}
+
+	// Background reader: dispatches responses and captures notifications.
+	go c.readLoop(bufio.NewReader(stdoutPipe))
 	go func() {
 		cmd.Wait()
 		c.exited.Store(true)
+		// Unblock any waiting callers.
+		c.pendingMu.Lock()
+		for id, ch := range c.pending {
+			close(ch)
+			delete(c.pending, id)
+		}
+		c.pendingMu.Unlock()
 	}()
+
 	return c, nil
 }
 
-// call sends a JSON-RPC request and reads the response.
+// readLoop continuously reads stdout and dispatches lines.
+func (c *Client) readLoop(r *bufio.Reader) {
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			return // pipe closed
+		}
+		if len(line) == 0 {
+			continue
+		}
+
+		// Try to parse as a response (has "id" field).
+		var resp jsonRPCResponse
+		if err := json.Unmarshal(line, &resp); err != nil {
+			continue
+		}
+
+		if resp.ID != 0 {
+			// It's a response to a request — deliver to waiting caller.
+			c.pendingMu.Lock()
+			ch, ok := c.pending[resp.ID]
+			c.pendingMu.Unlock()
+			if ok {
+				ch <- resp
+			}
+			continue
+		}
+
+		// It's a notification — extract useful text for the output buffer.
+		var notif jsonRPCNotification
+		if err := json.Unmarshal(line, &notif); err != nil {
+			continue
+		}
+		c.handleNotification(&notif)
+	}
+}
+
+// handleNotification processes server notifications and captures output.
+func (c *Client) handleNotification(n *jsonRPCNotification) {
+	switch n.Method {
+	case "session/notification":
+		// Extract update type and text content.
+		var params struct {
+			Update struct {
+				Type    string `json:"type"`
+				Content string `json:"content"`
+				Text    string `json:"text"`
+			} `json:"update"`
+		}
+		if err := json.Unmarshal(n.Params, &params); err != nil {
+			return
+		}
+		text := params.Update.Text
+		if text == "" {
+			text = params.Update.Content
+		}
+		if text != "" {
+			c.appendOutput(fmt.Sprintf("[%s] %s", params.Update.Type, text))
+		}
+	case "_kiro.dev/metadata":
+		// Context usage — could track but skip for now.
+	default:
+		// Log unknown notifications for debugging.
+		log.Printf("[acp-notif] %s", n.Method)
+	}
+}
+
+func (c *Client) appendOutput(text string) {
+	c.outMu.Lock()
+	c.lastResponses = append(c.lastResponses, text)
+	if len(c.lastResponses) > 50 {
+		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
+	}
+	c.outMu.Unlock()
+}
+
+// call sends a JSON-RPC request and waits for the matching response.
 func (c *Client) call(method string, params interface{}, result interface{}) error {
 	id := c.nextID.Add(1)
 	req := jsonRPCRequest{
@@ -123,6 +220,18 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 		return fmt.Errorf("acp: marshal %s: %w", method, err)
 	}
 
+	// Register a channel for the response before sending.
+	ch := make(chan jsonRPCResponse, 1)
+	c.pendingMu.Lock()
+	c.pending[id] = ch
+	c.pendingMu.Unlock()
+
+	defer func() {
+		c.pendingMu.Lock()
+		delete(c.pending, id)
+		c.pendingMu.Unlock()
+	}()
+
 	c.mu.Lock()
 	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
 	c.mu.Unlock()
@@ -130,15 +239,10 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 		return fmt.Errorf("acp: write %s: %w", method, err)
 	}
 
-	// Read newline-delimited response.
-	line, err := c.stdout.ReadBytes('\n')
-	if err != nil {
-		return fmt.Errorf("acp: read %s: %w", method, err)
-	}
-
-	var resp jsonRPCResponse
-	if err := json.Unmarshal(line, &resp); err != nil {
-		return fmt.Errorf("acp: decode %s: %w", method, err)
+	// Wait for the background reader to deliver our response.
+	resp, ok := <-ch
+	if !ok {
+		return fmt.Errorf("acp: %s: connection closed", method)
 	}
 	if resp.Error != nil {
 		return resp.Error
@@ -149,10 +253,39 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 	return nil
 }
 
+// send fires a JSON-RPC request without waiting for a response.
+func (c *Client) send(method string, params interface{}) error {
+	id := c.nextID.Add(1)
+	req := jsonRPCRequest{
+		JSONRPC: "2.0",
+		ID:      id,
+		Method:  method,
+		Params:  params,
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("acp: marshal %s: %w", method, err)
+	}
+	c.mu.Lock()
+	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
+	c.mu.Unlock()
+	if err != nil {
+		return fmt.Errorf("acp: write %s: %w", method, err)
+	}
+	return nil
+}
+
 // Initialize performs the ACP initialize handshake.
 func (c *Client) Initialize() (*InitializeResult, error) {
 	params := map[string]interface{}{
-		"protocolVersion": "2025-11-16",
+		"protocolVersion": 1,
+		"clientCapabilities": map[string]interface{}{
+			"fs": map[string]bool{
+				"readTextFile":  true,
+				"writeTextFile": true,
+			},
+			"terminal": true,
+		},
 		"clientInfo": map[string]string{
 			"name":    "loom",
 			"version": "0.1.0",
@@ -167,50 +300,30 @@ func (c *Client) Initialize() (*InitializeResult, error) {
 
 // NewSession creates a new ACP session and returns the session ID.
 func (c *Client) NewSession() (string, error) {
+	params := map[string]interface{}{
+		"cwd":        c.cmd.Dir,
+		"mcpServers": []interface{}{},
+	}
 	var res SessionResult
-	if err := c.call("session/new", nil, &res); err != nil {
+	if err := c.call("session/new", params, &res); err != nil {
 		return "", err
 	}
 	return res.SessionID, nil
 }
 
 // SendPrompt sends a text prompt to an existing session.
-// Uses 'content' key per kiro-cli's deviation from the ACP spec (DISC-004).
-func (c *Client) SendPrompt(sessionID string, text string) (*PromptResult, error) {
+// Fire-and-forget: the agent works asynchronously, output captured via notifications.
+func (c *Client) SendPrompt(sessionID string, text string) error {
 	params := map[string]interface{}{
 		"sessionId": sessionID,
 		"content": []map[string]string{
 			{"type": "text", "text": text},
 		},
 	}
-	var res PromptResult
-	if err := c.call("session/prompt", params, &res); err != nil {
-		return nil, err
-	}
-	c.recordResponse(&res)
-	return &res, nil
+	return c.send("session/prompt", params)
 }
 
-// recordResponse extracts text content from a PromptResult and appends to the buffer.
-func (c *Client) recordResponse(res *PromptResult) {
-	var texts []string
-	for _, b := range res.Content {
-		if b.Type == "text" && b.Text != "" {
-			texts = append(texts, b.Text)
-		}
-	}
-	if len(texts) == 0 {
-		return
-	}
-	c.outMu.Lock()
-	c.lastResponses = append(c.lastResponses, texts...)
-	if len(c.lastResponses) > 50 {
-		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
-	}
-	c.outMu.Unlock()
-}
-
-// RecentOutput returns the last n captured response texts.
+// RecentOutput returns the last n captured output lines.
 func (c *Client) RecentOutput(n int) []string {
 	c.outMu.Lock()
 	defer c.outMu.Unlock()
@@ -225,7 +338,7 @@ func (c *Client) RecentOutput(n int) []string {
 	return out
 }
 
-// Close shuts down the subprocess. It closes stdin and waits for exit.
+// Close shuts down the subprocess.
 func (c *Client) Close() error {
 	c.stdin.Close()
 	return c.cmd.Wait()
