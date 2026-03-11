@@ -145,7 +145,7 @@ func (m Model) renderAgentDetail() string {
 		}
 	}
 	if count == 0 {
-		s += "  (none)\n"
+		s += "  No recent activity for this agent.\n"
 	}
 
 	return panel("Agent: "+a.ID, s, m.width-2)
