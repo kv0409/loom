@@ -39,8 +39,19 @@ func (m Model) renderIssues() string {
 		}
 	}
 
-	header := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s\n",
-		"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
+	// Proportional column widths.
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	idW := max(8, avail*14/100)
+	typeW := max(5, avail*8/100)
+	statusW := max(8, avail*14/100)
+	assignW := max(8, avail*14/100)
+	titleW := max(10, avail-idW-typeW-statusW-assignW)
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", idW, typeW, statusW+2, titleW)
+	header := fmt.Sprintf(fmtStr+"\n", "ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
 	content := header + "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, iss := range display {
@@ -48,9 +59,8 @@ func (m Model) renderIssues() string {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 		}
-		statusCol := fmt.Sprintf("%s %-12s", statusIndicator(iss.Status), iss.Status)
-		line := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s",
-			iss.ID, iss.Type, statusCol, truncate(iss.Title, 36), iss.Assignee)
+		statusCol := fmt.Sprintf("%s %-*s", statusIndicator(iss.Status), statusW, truncate(iss.Status, statusW))
+		line := fmt.Sprintf(fmtStr, iss.ID, iss.Type, statusCol, truncate(iss.Title, titleW), truncate(iss.Assignee, assignW))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
 		} else if i == m.hoverRow {

@@ -23,24 +23,36 @@ func (m Model) renderAgents() string {
 		}
 	}
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-12s %%-12s %%-22s %%-14s %%s", idWidth)
+	// Proportional column widths based on terminal width.
+	avail := m.width - 6 // 2 indent + 4 inter-column spaces
+	if avail < 40 {
+		avail = 40
+	}
+	roleW := max(6, avail*10/100)
+	statusW := max(8, avail*12/100)
+	wtW := max(8, avail*22/100)
+	issueW := max(6, avail*14/100)
+	hbW := max(6, avail*10/100)
+	idW := max(idWidth, avail-roleW-statusW-wtW-issueW-hbW)
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s", idW, roleW, statusW+2, wtW, issueW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, a := range m.data.agents {
 		wt := "—"
 		if a.WorktreeName != "" {
-			wt = truncate(slugFromWorktree(a.WorktreeName), 22)
+			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
 		}
 		issues := "—"
 		if len(a.AssignedIssues) > 0 {
-			issues = truncate(strings.Join(a.AssignedIssues, ","), 14)
+			issues = truncate(strings.Join(a.AssignedIssues, ","), issueW)
 		}
 		hb := relTime(a.Heartbeat)
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ⚡%d", a.NudgeCount)
 		}
-		statusCol := fmt.Sprintf("%s %-10s", statusIndicator(a.Status), a.Status)
+		statusCol := fmt.Sprintf("%s %-*s", statusIndicator(a.Status), statusW, truncate(a.Status, statusW))
 
 		// Build tree prefix (2-char indent per level).
 		prefix := ""
@@ -107,8 +119,9 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	if a.NudgeCount > 0 {
-		s += "\n  " + headerStyle.Render("NUDGES") + "\n"
-		s += fmt.Sprintf("  Count: %d  Last: %s\n", a.NudgeCount, relTime(a.LastNudge))
+		lines = append(lines, "")
+		lines = append(lines, "  "+headerStyle.Render("NUDGES"))
+		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, relTime(a.LastNudge)))
 	}
 
 	// ACP output

@@ -120,7 +120,12 @@ func (m Model) renderActivity() string {
 		return panel("ACTIVITY", "  (no activity detected)\n", m.width-2)
 	}
 
-	content := fmt.Sprintf("  %-16s %s\n", "AGENT", "RECENT OUTPUT")
+	// Proportional column widths.
+	agentW := max(8, m.width*16/100)
+	lineW := max(20, m.width-agentW-6)
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%s", agentW)
+	content := fmt.Sprintf(fmtStr+"\n", "AGENT", "RECENT OUTPUT")
 	content += "  " + strings.Repeat("─", m.width-6) + "\n"
 
 	visible := m.height - 8
@@ -134,8 +139,8 @@ func (m Model) renderActivity() string {
 
 	for i := start; i < len(entries); i++ {
 		e := entries[i]
-		agentLabel := idleStyle.Render(fmt.Sprintf("%-16s", e.AgentID))
-		content += fmt.Sprintf("  %s %s\n", agentLabel, truncate(e.Line, m.width-22))
+		agentLabel := idleStyle.Render(fmt.Sprintf("%-*s", agentW, truncate(e.AgentID, agentW)))
+		content += fmt.Sprintf("  %s %s\n", agentLabel, truncate(e.Line, lineW))
 	}
 
 	return panel(fmt.Sprintf("ACTIVITY (%d agents)", len(entries)), content, m.width-2)
