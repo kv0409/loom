@@ -49,12 +49,34 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    loom mail send $LOOM_PARENT_AGENT "Blocked on X" --type blocker --ref <ISSUE-ID>
    ```
 
+## Review Stage Protocol
+
+The issue lifecycle enforces a review stage: `in-progress → review → done`.
+
+- Builders mark issues as `review` when work is complete (never `done`).
+- When you see an issue in `review` status (or receive a builder's completion mail), spawn a reviewer:
+  ```
+  loom spawn --role reviewer --issues <TASK-ID>
+  ```
+- **Reviewer PASS**: The reviewer marks the issue `done`. Merge the builder's branch, then kill both agents:
+  ```
+  loom agent kill <BUILDER-ID> --cleanup
+  loom agent kill <REVIEWER-ID> --cleanup
+  ```
+- **Reviewer FAIL**: The reviewer marks the issue back to `in-progress` with a comment. The builder continues working. Nudge the builder if needed:
+  ```
+  loom mail send <BUILDER-ID> "Review failed: <findings>" --type nudge --ref <TASK-ID>
+  ```
+  When the builder resubmits (marks `review` again), spawn a new reviewer.
+
 ## Communication Protocol
 
 - Builders and reviewers send mail to you — check frequently with `loom mail read`.
 - When a builder completes, spawn a reviewer for their work.
-- When a reviewer approves, merge the builder's branch, kill the builder and reviewer agents (`loom agent kill <ID> --cleanup`), and close the sub-issue.
+- When a reviewer approves (PASS), merge the builder's branch, kill the builder and reviewer agents (`loom agent kill <ID> --cleanup`), and close the sub-issue.
+- When a reviewer rejects (FAIL), wait for the builder to fix and resubmit for review.
 - When all sub-issues are done, close the parent issue and notify your parent.
+- **Only reviewers and leads mark issues as `done`** — never builders.
 
 ## When You See [LOOM] Messages
 
