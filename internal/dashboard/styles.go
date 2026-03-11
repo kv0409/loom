@@ -118,7 +118,7 @@ func panel(title string, content string, width int) string {
 	if title != "" {
 		lines := splitLines(s)
 		if len(lines) > 0 {
-			t := panelTitleStyle(title).Render(" " + title + " ")
+			t := panelTitleStyle(title).Render(" " + panelIcon(title) + title + " ")
 			tLen := lipgloss.Width(t)
 			bc := lipgloss.NewStyle().Foreground(colSubtle)
 			remaining := innerW - tLen - 1
@@ -130,6 +130,31 @@ func panel(title string, content string, width int) string {
 		}
 	}
 	return s
+}
+
+// panelIcon returns a unicode icon prefix for the given panel title.
+func panelIcon(title string) string {
+	t := strings.ToUpper(title)
+	switch {
+	case strings.Contains(t, "AGENT"):
+		return "🤖 "
+	case strings.Contains(t, "ISSUE"):
+		return "📋 "
+	case strings.Contains(t, "MAIL"):
+		return "📬 "
+	case strings.Contains(t, "MEMORY"):
+		return "🧠 "
+	case strings.Contains(t, "ACTIVITY"):
+		return "📊 "
+	case strings.Contains(t, "LOG"):
+		return "📝 "
+	case strings.Contains(t, "WORKTREE"), strings.Contains(t, "DIFF"):
+		return "🌳 "
+	case strings.Contains(t, "KANBAN"), strings.Contains(t, "BOARD"):
+		return "📌 "
+	default:
+		return ""
+	}
 }
 
 // panelTitleStyle picks a color based on panel title keyword.
