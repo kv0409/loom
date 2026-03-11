@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -69,7 +71,9 @@ func (m Model) renderAgentDetail() string {
 		a.Role, statusIndicator(a.Status), a.Status, relTime(a.Heartbeat))
 	s += fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d\n",
 		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID)
-	if a.TmuxTarget != "" {
+	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+		s += "  Mode: ACP\n"
+	} else if a.TmuxTarget != "" {
 		s += fmt.Sprintf("  Tmux: %s\n", a.TmuxTarget)
 	}
 
@@ -79,6 +83,19 @@ func (m Model) renderAgentDetail() string {
 	}
 	if a.WorktreeName != "" {
 		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", slugFromWorktree(a.WorktreeName))
+	}
+
+	// ACP output
+	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+		s += "\n  " + headerStyle.Render("RECENT OUTPUT") + "\n"
+		outPath := filepath.Join(m.loomRoot, "agents", a.ID+".output")
+		if raw, err := os.ReadFile(outPath); err == nil {
+			for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
+				s += "  " + line + "\n"
+			}
+		} else {
+			s += "  (waiting for output...)\n"
+		}
 	}
 
 	// Recent mail

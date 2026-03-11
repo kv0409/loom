@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,13 +67,14 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 
 func (d *Daemon) Start() error {
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { defer wg.Done(); d.watchInboxGC() }()
 	go func() { defer wg.Done(); d.watchPendingAgents() }()
+	go func() { defer wg.Done(); d.watchACPOutput() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -132,6 +134,32 @@ func (d *Daemon) watchPendingAgents() {
 				if a.Status == "pending-acp" {
 					d.activateACPAgent(a)
 				}
+			}
+		}
+	}
+}
+
+func (d *Daemon) watchACPOutput() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			d.mu.Lock()
+			ids := make([]string, 0, len(d.acpClients))
+			for id := range d.acpClients {
+				ids = append(ids, id)
+			}
+			d.mu.Unlock()
+			for _, id := range ids {
+				lines := d.GetACPOutput(id, 10)
+				if len(lines) == 0 {
+					continue
+				}
+				p := filepath.Join(d.LoomRoot, "agents", id+".output")
+				os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0644)
 			}
 		}
 	}
