@@ -107,8 +107,9 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	if a.NudgeCount > 0 {
-		s += "\n  " + headerStyle.Render("NUDGES") + "\n"
-		s += fmt.Sprintf("  Count: %d  Last: %s\n", a.NudgeCount, relTime(a.LastNudge))
+		lines = append(lines, "")
+		lines = append(lines, "  "+headerStyle.Render("NUDGES"))
+		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, relTime(a.LastNudge)))
 	}
 
 	// ACP output

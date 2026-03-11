@@ -241,7 +241,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	case "m":
-		if m.view == viewAgents && len(m.data.agents) > 0 {
+		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
 			m.messageMode = true
 			m.messageInput = ""
 			return m, nil
