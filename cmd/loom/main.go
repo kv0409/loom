@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1884,10 +1885,19 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting daemon: %w", err)
 	}
 
-	// Block on signal
+	// Block on signals: SIGHUP triggers hot-reload, SIGINT/SIGTERM shut down.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	for s := range sig {
+		if s == syscall.SIGHUP {
+			log.Println("[daemon] received SIGHUP, reloading")
+			if err := d.Reload(); err != nil {
+				log.Printf("[daemon] reload failed: %v", err)
+			}
+			continue
+		}
+		break
+	}
 
 	d.Stop()
 	daemon.ReleaseLock(root)
@@ -1905,43 +1915,15 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loom is not running")
 	}
 
-	// Signal daemon to stop (it will release the lock itself)
+	// Send SIGHUP to trigger in-process reload (preserves ACP clients).
 	p, err := os.FindProcess(pid)
 	if err != nil {
 		return fmt.Errorf("finding process %d: %w", pid, err)
 	}
-	if err := p.Signal(syscall.SIGTERM); err != nil {
+	if err := p.Signal(syscall.SIGHUP); err != nil {
 		return fmt.Errorf("signaling daemon: %w", err)
 	}
-
-	// Wait for lock to be released (up to 5s)
-	for i := 0; i < 50; i++ {
-		time.Sleep(100 * time.Millisecond)
-		if _, alive := daemon.CheckLock(root); !alive {
-			break
-		}
-	}
-
-	// Re-exec daemon with --resume (skips orchestrator spawn)
-	self, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("finding executable: %w", err)
-	}
-	logPath := filepath.Join(root, "logs", "daemon.log")
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("opening daemon log: %w", err)
-	}
-	child := exec.Command(self, "start", "--resume")
-	child.Env = append(os.Environ(), "LOOM_DAEMON=1")
-	child.Stdout = logFile
-	child.Stderr = logFile
-	if err := child.Start(); err != nil {
-		logFile.Close()
-		return fmt.Errorf("restarting daemon: %w", err)
-	}
-	logFile.Close()
-	fmt.Printf("Daemon restarted (pid %d)\n", child.Process.Pid)
+	fmt.Printf("Sent SIGHUP to daemon (pid %d) — reloading\n", pid)
 	return nil
 }
 
