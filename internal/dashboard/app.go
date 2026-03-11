@@ -63,7 +63,7 @@ type Model struct {
 	cursor           int
 	width            int
 	height           int
-	logFilter        int // 0=all, 1..N=index into agents
+	logFilter        int // 0=all, 1=lifecycle, 2=error, 3=stderr, 4=warn
 	nudgeMode        bool
 	nudgeInput       string
 	messageMode      bool
