@@ -40,6 +40,35 @@ type Config struct {
 	Tmux    TmuxConfig    `yaml:"tmux"`
 	Kiro    KiroConfig    `yaml:"kiro"`
 	MCP     MCPConfig     `yaml:"mcp"`
+	Deny    DenyConfig    `yaml:"deny"`
+}
+
+type DenyConfig struct {
+	Tools    []string `yaml:"tools"`
+	Commands []string `yaml:"commands"`
+}
+
+// IsDenied returns true if the given tool name or command matches the deny list.
+// Tools are matched by exact name. Commands are matched as glob patterns.
+func (d *DenyConfig) IsDenied(tool string, command string) bool {
+	for _, t := range d.Tools {
+		if t == tool {
+			return true
+		}
+	}
+	for _, pattern := range d.Commands {
+		if matched, _ := filepath.Match(pattern, command); matched {
+			return true
+		}
+		// Also check if the command starts with the pattern (prefix match for commands with args)
+		if strings.Contains(command, " ") {
+			parts := strings.SplitN(command, " ", 2)
+			if matched, _ := filepath.Match(pattern, parts[0]); matched {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type LimitsConfig struct {
@@ -110,6 +139,10 @@ func DefaultConfig() *Config {
 		MCP: MCPConfig{
 			Enabled: true,
 			Port:    0,
+		},
+		Deny: DenyConfig{
+			Tools:    nil,
+			Commands: nil,
 		},
 	}
 }
