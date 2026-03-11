@@ -34,7 +34,7 @@ func (m Model) renderIssues() string {
 	// Count active issues for the separator position.
 	activeCount := 0
 	for _, iss := range display {
-		if iss.Status != "done" {
+		if iss.Status != "done" && iss.Status != "cancelled" {
 			activeCount++
 		}
 	}
