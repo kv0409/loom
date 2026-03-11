@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -93,6 +94,7 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 	args := append([]string{"acp"}, extraArgs...)
 	cmd := exec.Command(command, args...)
 	cmd.Dir = workDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if len(env) > 0 {
 		cmd.Env = env
 	}
@@ -355,10 +357,27 @@ func (c *Client) RecentOutput(n int) []string {
 	return out
 }
 
-// Close shuts down the subprocess.
+// Close shuts down the subprocess by killing the process group.
 func (c *Client) Close() error {
 	c.stdin.Close()
-	c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+	// Send SIGTERM to the process group so child processes (aim sandbox, etc.) also exit.
+	if c.cmd.Process != nil {
+		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGTERM)
+	}
+	// Give it a moment to exit gracefully.
+	done := make(chan struct{})
+	go func() {
+		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		if c.cmd.Process != nil {
+			syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+		}
+		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+	}
 	return c.waitErr
 }
 

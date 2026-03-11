@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/template"
 	"time"
 
@@ -273,6 +274,13 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	}
 	if a.TmuxTarget != "" {
 		tmux.KillWindow(a.TmuxTarget)
+	}
+	// Kill ACP process group by PID (covers kiro-cli + aim sandbox + children).
+	if a.PID > 0 && a.Config.KiroMode == "acp" {
+		syscall.Kill(-a.PID, syscall.SIGTERM)
+		// Brief grace period, then force kill.
+		time.Sleep(500 * time.Millisecond)
+		syscall.Kill(-a.PID, syscall.SIGKILL)
 	}
 	if cleanupWorktree && a.WorktreeName != "" {
 		worktree.Remove(loomRoot, a.WorktreeName)
