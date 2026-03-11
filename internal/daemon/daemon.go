@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,6 +25,7 @@ type Daemon struct {
 	done       chan struct{}
 	mu         sync.Mutex
 	acpClients map[string]*acp.Client
+	apiLn      net.Listener
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
@@ -67,6 +69,9 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 }
 
 func (d *Daemon) Start() error {
+	if err := d.startAPI(); err != nil {
+		return err
+	}
 	var wg sync.WaitGroup
 	wg.Add(7)
 	go func() { defer wg.Done(); d.watchIssues() }()
@@ -83,6 +88,7 @@ func (d *Daemon) Start() error {
 func (d *Daemon) Stop() {
 	close(d.stop)
 	<-d.done
+	d.stopAPI()
 	d.mu.Lock()
 	for id, c := range d.acpClients {
 		c.Close()
