@@ -317,6 +317,28 @@ func (d *Daemon) watchIssues() {
 	}
 }
 
+// allDescendantsResolved recursively checks that all children (and their
+// children, etc.) of the given issue are done or cancelled.
+func allDescendantsResolved(loomRoot, issueID string) bool {
+	iss, err := issue.Load(loomRoot, issueID)
+	if err != nil {
+		return false
+	}
+	for _, childID := range iss.Children {
+		child, err := issue.Load(loomRoot, childID)
+		if err != nil {
+			return false
+		}
+		if child.Status != "done" && child.Status != "cancelled" {
+			return false
+		}
+		if len(child.Children) > 0 && !allDescendantsResolved(loomRoot, childID) {
+			return false
+		}
+	}
+	return true
+}
+
 // watchDoneIssues polls parent issues and auto-closes them when all children
 // are done or cancelled. It also notifies agents assigned to resolved issues
 // to wrap up, and grace-kills them after 2 minutes if they're still alive.
@@ -342,24 +364,12 @@ func (d *Daemon) watchDoneIssues() {
 				}
 			}
 
-			// Auto-close parents with all children resolved.
+			// Auto-close parents with all descendants resolved.
 			for _, iss := range issues {
 				if len(iss.Children) == 0 || iss.Status == "done" || iss.Status == "cancelled" {
 					continue
 				}
-				allResolved := true
-				for _, childID := range iss.Children {
-					child, err := issue.Load(d.LoomRoot, childID)
-					if err != nil {
-						allResolved = false
-						break
-					}
-					if child.Status != "done" && child.Status != "cancelled" {
-						allResolved = false
-						break
-					}
-				}
-				if !allResolved {
+				if !allDescendantsResolved(d.LoomRoot, iss.ID) {
 					continue
 				}
 				issue.Close(d.LoomRoot, iss.ID, "all children resolved")
