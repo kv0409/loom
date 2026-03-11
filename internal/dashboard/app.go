@@ -9,6 +9,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
@@ -64,6 +65,8 @@ type Model struct {
 	logFilter        int // 0=all, 1..N=index into agents
 	nudgeMode        bool
 	nudgeInput       string
+	messageMode      bool
+	messageInput     string
 	selectedWorktree int
 	diffContent      string
 }
@@ -149,7 +152,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.cursor < len(m.data.agents) && m.nudgeInput != "" {
 				a := m.data.agents[m.cursor]
-				exec.Command("loom", "nudge", a.ID, m.nudgeInput).Run()
+				daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
 			}
 			m.nudgeMode = false
 			m.nudgeInput = ""
@@ -163,6 +166,31 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		default:
 			if len(msg.String()) == 1 || msg.String() == " " {
 				m.nudgeInput += msg.String()
+			}
+		}
+		return m, nil
+	}
+
+	// Message mode captures all input
+	if m.messageMode {
+		switch msg.String() {
+		case "enter":
+			if m.cursor < len(m.data.agents) && m.messageInput != "" {
+				a := m.data.agents[m.cursor]
+				daemon.Message(m.loomRoot, a.ID, m.messageInput)
+			}
+			m.messageMode = false
+			m.messageInput = ""
+		case "esc":
+			m.messageMode = false
+			m.messageInput = ""
+		case "backspace":
+			if len(m.messageInput) > 0 {
+				m.messageInput = m.messageInput[:len(m.messageInput)-1]
+			}
+		default:
+			if len(msg.String()) == 1 || msg.String() == " " {
+				m.messageInput += msg.String()
 			}
 		}
 		return m, nil
@@ -196,6 +224,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		return m, nil
 	case "m":
+		if m.view == viewAgents && len(m.data.agents) > 0 {
+			m.messageMode = true
+			m.messageInput = ""
+			return m, nil
+		}
 		m.view = viewMail
 		m.cursor = 0
 		return m, nil
@@ -232,7 +265,16 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		if m.view == viewAgents && m.cursor < len(m.data.agents) {
 			a := m.data.agents[m.cursor]
-			exec.Command("loom", "kill", a.ID).Run()
+			daemon.Kill(m.loomRoot, a.ID, false)
+			return m, nil
+		}
+	case "o":
+		if m.view == viewAgents && m.cursor < len(m.data.agents) {
+			a := m.data.agents[m.cursor]
+			if out, err := daemon.Output(m.loomRoot, a.ID, 50); err == nil {
+				m.view = viewAgentDetail
+				m.diffContent = out
+			}
 			return m, nil
 		}
 	case "tab":
@@ -366,13 +408,20 @@ func (m Model) View() string {
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█  [Enter]send [Esc]cancel", agentName, m.nudgeInput))
 	}
+	if m.messageMode {
+		agentName := ""
+		if m.cursor < len(m.data.agents) {
+			agentName = m.data.agents[m.cursor].ID
+		}
+		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█  [Enter]send [Esc]cancel", agentName, m.messageInput))
+	}
 	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
 }
 
 func (m Model) helpBar() string {
 	base := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit"
 	if m.view == viewAgents {
-		base += " | [n]udge [x]kill [Enter]attach"
+		base += " | [n]udge [m]essage [o]utput [x]kill [Enter]attach"
 	}
 	return helpStyle.Render(base)
 }
