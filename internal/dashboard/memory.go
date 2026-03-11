@@ -22,7 +22,21 @@ func (m Model) renderMemory() string {
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "TYPE", "TITLE", "BY")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
-	for i, e := range m.data.memories {
+	visibleRows := m.height - 8 // header + tab bar + panel chrome + help bar
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	start := m.cursor - visibleRows + 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(m.data.memories) {
+		end = len(m.data.memories)
+	}
+
+	for i := start; i < end; i++ {
+		e := m.data.memories[i]
 		line := fmt.Sprintf(fmtStr,
 			truncate(e.ID, idW), truncate(e.Type, typeW), truncate(e.Title, titleW), truncate(memory.ByField(e), byW))
 		if i == m.cursor {
