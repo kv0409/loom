@@ -49,25 +49,31 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 	return entries
 }
 
-// assembleChunks joins [agent_message_chunk] fragments into readable text.
+// assembleChunks joins [agent_message_chunk] and [session_update] fragments into readable text.
+// maxLen <= 0 means no limit.
 func assembleChunks(raw string) string {
+	return assembleChunksN(raw, 200)
+}
+
+func assembleChunksN(raw string, maxLen int) string {
 	var parts []string
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		// Strip the [agent_message_chunk] prefix
-		if after, ok := strings.CutPrefix(line, "[agent_message_chunk]"); ok {
-			parts = append(parts, strings.TrimLeft(after, " "))
-		} else {
-			parts = append(parts, line)
+		// Strip known prefixes from the notification handler.
+		for _, prefix := range []string{"[agent_message_chunk]", "[session_update]"} {
+			if after, ok := strings.CutPrefix(line, prefix); ok {
+				line = strings.TrimLeft(after, " ")
+				break
+			}
 		}
+		parts = append(parts, line)
 	}
 	joined := strings.Join(parts, "")
-	// Trim to last ~200 chars for readability
-	if len(joined) > 200 {
-		joined = "…" + joined[len(joined)-199:]
+	if maxLen > 0 && len(joined) > maxLen {
+		joined = "…" + joined[len(joined)-(maxLen-1):]
 	}
 	return joined
 }

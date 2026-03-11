@@ -90,8 +90,23 @@ func (m Model) renderAgentDetail() string {
 		s += "\n  " + headerStyle.Render("RECENT OUTPUT") + "\n"
 		outPath := filepath.Join(m.loomRoot, "agents", a.ID+".output")
 		if raw, err := os.ReadFile(outPath); err == nil {
-			for _, line := range strings.Split(strings.TrimRight(string(raw), "\n"), "\n") {
-				s += "  " + line + "\n"
+			text := assembleChunksN(string(raw), 500)
+			if text == "" {
+				s += "  (waiting for output...)\n"
+			} else {
+				// Word-wrap the assembled text to fit the panel width.
+				maxW := m.width - 8
+				if maxW < 40 {
+					maxW = 40
+				}
+				for len(text) > 0 {
+					end := maxW
+					if end > len(text) {
+						end = len(text)
+					}
+					s += "  " + text[:end] + "\n"
+					text = text[end:]
+				}
 			}
 		} else {
 			s += "  (waiting for output...)\n"
