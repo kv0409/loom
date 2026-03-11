@@ -468,6 +468,32 @@ func (c *Client) CancelSession(sessionID string) error {
 	return c.call("session/cancel", params, nil)
 }
 
+// LoadSession resumes an existing session by ID (e.g. after daemon restart).
+func (c *Client) LoadSession(sessionID string) error {
+	params := map[string]interface{}{
+		"sessionId": sessionID,
+	}
+	return c.call("session/load", params, nil)
+}
+
+// SetMode switches the agent mode for an existing session.
+func (c *Client) SetMode(sessionID string, mode string) error {
+	params := map[string]interface{}{
+		"sessionId": sessionID,
+		"mode":      mode,
+	}
+	return c.call("session/set_mode", params, nil)
+}
+
+// SetModel changes the model for an existing session.
+func (c *Client) SetModel(sessionID string, model string) error {
+	params := map[string]interface{}{
+		"sessionId": sessionID,
+		"model":     model,
+	}
+	return c.call("session/set_model", params, nil)
+}
+
 // RecentOutput returns the last n captured output lines.
 func (c *Client) RecentOutput(n int) []string {
 	c.outMu.Lock()
