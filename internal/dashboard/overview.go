@@ -10,20 +10,29 @@ import (
 
 func (m Model) renderOverview() string {
 	colW := max((m.width-4)/2, 30)
+	innerW := colW - 2
 
-	// Agent table: ID, role, status, heartbeat ago
+	// Agent table: ID, role, heartbeat ago
+	// Layout: "  ● ID ROLE AGO" — overhead: 4 fixed + 2 field separators = 6
+	aIdW := min(18, max(8, (innerW-6)*3/5))
+	aRoleW := max(4, innerW-6-aIdW-4)
 	agentContent := ""
 	for _, a := range m.data.agents {
 		ago := timeAgo(a.Heartbeat)
-		agentContent += fmt.Sprintf("  %s %-18s %-12s %s\n",
-			statusIndicator(a.Status), truncate(a.ID, 18), a.Role, idleStyle.Render(ago))
+		agentContent += fmt.Sprintf("  %s %-*s %-*s %s\n",
+			statusIndicator(a.Status), aIdW, truncate(a.ID, aIdW),
+			aRoleW, truncate(a.Role, aRoleW), idleStyle.Render(ago))
 	}
 	if agentContent == "" {
 		agentContent = "  (none)\n"
 	}
 	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
-	// Issues: non-done, showing ID, title, status, assignee
+	// Issues: non-done, showing ID, title, status
+	// Layout: "  ● ID TITLE STATUS" — overhead: 4 fixed + 2 field separators = 6
+	iIdW := min(12, max(6, (innerW-6)/4))
+	iStatusW := min(11, max(6, (innerW-6)/5))
+	iTitleW := max(6, innerW-6-iIdW-iStatusW)
 	issueContent := ""
 	issueCount := 0
 	for _, iss := range m.data.issues {
@@ -31,13 +40,10 @@ func (m Model) renderOverview() string {
 			continue
 		}
 		issueCount++
-		assignee := iss.Assignee
-		if assignee == "" {
-			assignee = "-"
-		}
-		issueContent += fmt.Sprintf("  %s %-12s %-20s %s %s\n",
-			statusIndicator(iss.Status), iss.ID, truncate(iss.Title, 20),
-			statusStyle(iss.Status).Render(fmt.Sprintf("%-11s", iss.Status)), idleStyle.Render(assignee))
+		issueContent += fmt.Sprintf("  %s %-*s %-*s %s\n",
+			statusIndicator(iss.Status), iIdW, truncate(iss.ID, iIdW),
+			iTitleW, truncate(iss.Title, iTitleW),
+			statusStyle(iss.Status).Render(truncate(iss.Status, iStatusW)))
 	}
 	if issueContent == "" {
 		issueContent = "  (none)\n"
@@ -45,15 +51,17 @@ func (m Model) renderOverview() string {
 	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", issueCount), issueContent, colW)
 
 	// Worktrees with DiffStats
+	wtSlugW := min(22, max(8, (innerW-4)/3))
+	wtBranchW := min(20, max(6, (innerW-4)/3))
 	wtContent := ""
 	for _, wt := range m.data.worktrees {
 		diffStr := ""
 		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
 			diffStr = fmt.Sprintf(" %df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
 		}
-		wtContent += fmt.Sprintf("  %s  %-14s %s%s\n",
-			truncate(slugFromWorktree(wt.Name), 22), idleStyle.Render(truncate(wt.Agent, 14)),
-			idleStyle.Render(truncate(wt.Branch, 20)), activeStyle.Render(diffStr))
+		wtContent += fmt.Sprintf("  %-*s %s%s\n",
+			wtSlugW, truncate(slugFromWorktree(wt.Name), wtSlugW),
+			idleStyle.Render(truncate(wt.Branch, wtBranchW)), activeStyle.Render(diffStr))
 	}
 	if wtContent == "" {
 		wtContent = "  (none)\n"
@@ -63,10 +71,13 @@ func (m Model) renderOverview() string {
 	// Mail
 	mailContent := ""
 	limit := min(len(m.data.messages), 5)
+	mailFromW := min(12, max(4, (innerW-10)/4))
+	mailSubjW := max(6, innerW-10-mailFromW*2-8)
 	for _, msg := range m.data.messages[:limit] {
 		mailContent += fmt.Sprintf("  %s %s→%s [%s] %s\n",
 			idleStyle.Render(msg.Timestamp.Format("15:04")),
-			msg.From, msg.To, msg.Type, truncate(msg.Subject, 30))
+			truncate(msg.From, mailFromW), truncate(msg.To, mailFromW),
+			msg.Type, truncate(msg.Subject, mailSubjW))
 	}
 	if mailContent == "" {
 		mailContent = "  (none)\n"

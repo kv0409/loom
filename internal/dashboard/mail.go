@@ -7,7 +7,7 @@ import (
 
 func (m Model) renderMail() string {
 	content := fmt.Sprintf("  %-8s %-14s %-8s %s\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
-	content += "  " + strings.Repeat("─", 68) + "\n"
+	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, msg := range m.data.messages {
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)

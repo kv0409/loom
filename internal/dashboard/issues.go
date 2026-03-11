@@ -41,12 +41,12 @@ func (m Model) renderIssues() string {
 
 	header := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s\n",
 		"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
-	content := header + "  " + strings.Repeat("─", 85) + "\n"
+	content := header + "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, iss := range display {
 		if i == activeCount && activeCount < len(display) {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
-			content += "  " + strings.Repeat("─", 85) + "\n"
+			content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 		}
 		statusCol := fmt.Sprintf("%s %-12s", statusIndicator(iss.Status), iss.Status)
 		line := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s",

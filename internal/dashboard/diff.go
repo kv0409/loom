@@ -29,7 +29,7 @@ func fetchDiff(wtPath string) string {
 
 func (m Model) renderWorktrees() string {
 	content := fmt.Sprintf("  %-30s %-30s %-15s %s\n", "NAME", "BRANCH", "AGENT", "ISSUE")
-	content += "  " + strings.Repeat("─", 80) + "\n"
+	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	for i, wt := range m.data.worktrees {
 		line := fmt.Sprintf("  %-30s %-30s %-15s %s",
 			truncate(slugFromWorktree(wt.Name), 30), truncate(wt.Branch, 30), wt.Agent, wt.Issue)

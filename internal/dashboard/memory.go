@@ -9,7 +9,7 @@ import (
 
 func (m Model) renderMemory() string {
 	content := fmt.Sprintf("  %-10s %-12s %-36s %s\n", "ID", "TYPE", "TITLE", "BY")
-	content += "  " + strings.Repeat("─", 68) + "\n"
+	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, e := range m.data.memories {
 		line := fmt.Sprintf("  %-10s %-12s %-36s %s",

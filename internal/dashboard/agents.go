@@ -13,7 +13,7 @@ import (
 func (m Model) renderAgents() string {
 	content := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s\n",
 		"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
-	content += "  " + strings.Repeat("─", 88) + "\n"
+	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, a := range m.data.agents {
 		wt := "—"

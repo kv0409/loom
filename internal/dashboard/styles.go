@@ -63,11 +63,23 @@ func statusIndicator(status string) string {
 	}
 }
 
+func truncateLines(s string, maxW int) string {
+	lines := splitLines(s)
+	trunc := lipgloss.NewStyle().MaxWidth(maxW)
+	for i, l := range lines {
+		if lipgloss.Width(l) > maxW {
+			lines[i] = trunc.Render(l)
+		}
+	}
+	return joinLines(lines)
+}
+
 func panel(title string, content string, width int) string {
 	innerW := width - 2
 	if innerW < 1 {
 		innerW = 1
 	}
+	content = truncateLines(content, innerW)
 	s := borderStyle.Width(innerW).Render(content)
 	if title != "" {
 		lines := splitLines(s)
