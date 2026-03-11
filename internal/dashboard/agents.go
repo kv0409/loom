@@ -62,7 +62,7 @@ func (m Model) renderAgents() string {
 		id := prefix + a.ID
 		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
-			line = selectedStyle.Render(line)
+			line = selectedStyle.Render("▸" + line[1:])
 		} else {
 			line = statusStyle(a.Status).Render(line)
 		}
@@ -145,7 +145,7 @@ func (m Model) renderAgentDetail() string {
 		}
 	}
 	if count == 0 {
-		s += "  (none)\n"
+		s += "  No recent activity for this agent.\n"
 	}
 
 	return panel("Agent: "+a.ID, s, m.width-2)

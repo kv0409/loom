@@ -15,7 +15,7 @@ func (m Model) renderMemory() string {
 		line := fmt.Sprintf("  %-10s %-12s %-36s %s",
 			e.ID, e.Type, truncate(e.Title, 36), memory.ByField(e))
 		if i == m.cursor {
-			line = selectedStyle.Render(line)
+			line = selectedStyle.Render("▸" + line[1:])
 		}
 		content += line + "\n"
 	}

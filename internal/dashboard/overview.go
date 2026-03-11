@@ -24,7 +24,7 @@ func (m Model) renderOverview() string {
 			aRoleW, truncate(a.Role, aRoleW), idleStyle.Render(ago))
 	}
 	if agentContent == "" {
-		agentContent = "  (none)\n"
+		agentContent = "  No agents running. Use loom spawn to start.\n"
 	}
 	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
@@ -46,7 +46,7 @@ func (m Model) renderOverview() string {
 			statusStyle(iss.Status).Render(truncate(iss.Status, iStatusW)))
 	}
 	if issueContent == "" {
-		issueContent = "  (none)\n"
+		issueContent = "  No open issues. Use loom issue create to add one.\n"
 	}
 	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", issueCount), issueContent, colW)
 
@@ -64,7 +64,7 @@ func (m Model) renderOverview() string {
 			idleStyle.Render(truncate(wt.Branch, wtBranchW)), activeStyle.Render(diffStr))
 	}
 	if wtContent == "" {
-		wtContent = "  (none)\n"
+		wtContent = "  No worktrees active. Builders create them automatically.\n"
 	}
 	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
@@ -80,7 +80,7 @@ func (m Model) renderOverview() string {
 			msg.Type, truncate(msg.Subject, mailSubjW))
 	}
 	if mailContent == "" {
-		mailContent = "  (none)\n"
+		mailContent = "  No messages yet. Agents communicate via loom mail.\n"
 	}
 	mailPanel := panel(fmt.Sprintf("MAIL (%d unread)", m.data.unread), mailContent, colW)
 
@@ -147,3 +147,4 @@ func max(a, b int) int {
 	}
 	return b
 }
+

@@ -34,7 +34,7 @@ func (m Model) renderIssues() string {
 	// Count active issues for the separator position.
 	activeCount := 0
 	for _, iss := range display {
-		if iss.Status != "done" {
+		if iss.Status != "done" && iss.Status != "cancelled" {
 			activeCount++
 		}
 	}
@@ -52,7 +52,7 @@ func (m Model) renderIssues() string {
 		line := fmt.Sprintf("  %-12s %-8s %-16s %-36s %s",
 			iss.ID, iss.Type, statusCol, truncate(iss.Title, 36), iss.Assignee)
 		if i == m.cursor {
-			line = selectedStyle.Render(line)
+			line = selectedStyle.Render("▸" + line[1:])
 		} else {
 			line = statusStyle(iss.Status).Render(line)
 		}
