@@ -47,7 +47,8 @@ func (d *Daemon) notify(a *agent.Agent, msg string) {
 		return
 	}
 	if a.TmuxTarget != "" {
-		tmux.RunInPane(a.TmuxTarget, msg)
+		tmux.SendKeys(a.TmuxTarget, msg)
+		tmux.SendKeys(a.TmuxTarget, "Enter")
 	}
 }
 
