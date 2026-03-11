@@ -249,6 +249,57 @@ func Close(loomRoot string, id string, reason string) (*Issue, error) {
 	return issue, nil
 }
 
+// CancelledInfo holds info about a cancelled issue for caller notification.
+type CancelledInfo struct {
+	IssueID          string
+	PreviousAssignee string
+}
+
+// Cancel cancels an issue and recursively cancels all active children.
+// Returns info about every issue that was cancelled so the caller can notify agents.
+func Cancel(loomRoot, id string) ([]CancelledInfo, error) {
+	issue, err := Load(loomRoot, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []CancelledInfo
+
+	// Only cancel if the issue is in an active state
+	activeStatuses := map[string]bool{"open": true, "assigned": true, "in-progress": true, "blocked": true, "review": true}
+	if !activeStatuses[issue.Status] {
+		return result, nil
+	}
+
+	now := time.Now()
+	prevAssignee := issue.Assignee
+
+	issue.History = append(issue.History, HistoryEntry{
+		At: now, By: actor(), Action: "status_change",
+		Detail: issue.Status + " → cancelled",
+	})
+	issue.Status = "cancelled"
+	issue.Assignee = ""
+	issue.ClosedAt = &now
+
+	if err := Save(loomRoot, issue); err != nil {
+		return nil, fmt.Errorf("saving cancelled issue %s: %w", id, err)
+	}
+
+	result = append(result, CancelledInfo{IssueID: id, PreviousAssignee: prevAssignee})
+
+	// Recursively cancel active children
+	for _, childID := range issue.Children {
+		childResult, err := Cancel(loomRoot, childID)
+		if err != nil {
+			return nil, fmt.Errorf("cancelling child %s: %w", childID, err)
+		}
+		result = append(result, childResult...)
+	}
+
+	return result, nil
+}
+
 func validateTransition(from, to string) error {
 	if to == "cancelled" {
 		return nil
