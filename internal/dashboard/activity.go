@@ -63,9 +63,11 @@ func assembleChunksN(raw string, maxLen int) string {
 			continue
 		}
 		// Strip known prefixes from the notification handler.
-		for _, prefix := range []string{"[agent_message_chunk]", "[session_update]"} {
+		// Format is "[prefix] content" — remove prefix + the single format space,
+		// but preserve any content-leading spaces (they're word boundaries).
+		for _, prefix := range []string{"[agent_message_chunk] ", "[session_update] "} {
 			if after, ok := strings.CutPrefix(line, prefix); ok {
-				line = strings.TrimLeft(after, " ")
+				line = after
 				break
 			}
 		}
