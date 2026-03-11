@@ -19,6 +19,7 @@ type Client struct {
 	stdout *bufio.Reader
 	mu     sync.Mutex // serialises writes
 	nextID atomic.Int64
+	exited atomic.Bool
 }
 
 // jsonRPCRequest is a JSON-RPC 2.0 request.
@@ -92,11 +93,16 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 		return nil, fmt.Errorf("acp: start %s: %w", command, err)
 	}
 
-	return &Client{
+	c := &Client{
 		cmd:    cmd,
 		stdin:  stdin,
 		stdout: bufio.NewReader(stdoutPipe),
-	}, nil
+	}
+	go func() {
+		cmd.Wait()
+		c.exited.Store(true)
+	}()
+	return c, nil
 }
 
 // call sends a JSON-RPC request and reads the response.
@@ -189,4 +195,9 @@ func (c *Client) Close() error {
 // PID returns the OS process ID of the kiro-cli subprocess.
 func (c *Client) PID() int {
 	return c.cmd.Process.Pid
+}
+
+// Exited reports whether the subprocess has exited.
+func (c *Client) Exited() bool {
+	return c.exited.Load()
 }

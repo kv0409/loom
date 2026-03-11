@@ -57,7 +57,7 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 		d.mu.Lock()
 		c := d.acpClients[a.ID]
 		d.mu.Unlock()
-		return c != nil
+		return c != nil && !c.Exited()
 	}
 	_, err := tmux.CapturePane(a.TmuxTarget)
 	return err == nil
@@ -324,6 +324,9 @@ func (d *Daemon) watchHeartbeats() {
 				}
 				if d.isAlive(a) {
 					continue
+				}
+				if a.Config.KiroMode == "acp" {
+					d.UnregisterACPClient(a.ID)
 				}
 				a.Status = "dead"
 				agent.Save(d.LoomRoot, a)
