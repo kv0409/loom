@@ -2,6 +2,7 @@ package issue
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -9,6 +10,14 @@ import (
 
 	"github.com/karanagi/loom/internal/store"
 )
+
+// actor returns the current agent ID if running inside a loom agent, otherwise "human".
+func actor() string {
+	if id := os.Getenv("LOOM_AGENT_ID"); id != "" {
+		return id
+	}
+	return "human"
+}
 
 type Issue struct {
 	ID          string         `yaml:"id"`
@@ -117,11 +126,11 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 		Priority:    opts.Priority,
 		Parent:      opts.Parent,
 		DependsOn:   opts.DependsOn,
-		CreatedBy:   "human",
+		CreatedBy:   actor(),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 		History: []HistoryEntry{
-			{At: now, By: "human", Action: "created"},
+			{At: now, By: actor(), Action: "created"},
 		},
 	}
 
@@ -194,21 +203,21 @@ func Update(loomRoot string, id string, opts UpdateOpts) (*Issue, error) {
 			return nil, err
 		}
 		issue.History = append(issue.History, HistoryEntry{
-			At: now, By: "human", Action: "status_change",
+			At: now, By: actor(), Action: "status_change",
 			Detail: issue.Status + " → " + opts.Status,
 		})
 		issue.Status = opts.Status
 	}
 	if opts.Priority != "" {
 		issue.History = append(issue.History, HistoryEntry{
-			At: now, By: "human", Action: "priority_change",
+			At: now, By: actor(), Action: "priority_change",
 			Detail: issue.Priority + " → " + opts.Priority,
 		})
 		issue.Priority = opts.Priority
 	}
 	if opts.Assignee != "" {
 		issue.History = append(issue.History, HistoryEntry{
-			At: now, By: "human", Action: "assigned",
+			At: now, By: actor(), Action: "assigned",
 			Detail: opts.Assignee,
 		})
 		issue.Assignee = opts.Assignee
@@ -231,7 +240,7 @@ func Close(loomRoot string, id string, reason string) (*Issue, error) {
 	issue.ClosedAt = &now
 	issue.CloseReason = reason
 	issue.History = append(issue.History, HistoryEntry{
-		At: now, By: "human", Action: "closed", Detail: reason,
+		At: now, By: actor(), Action: "closed", Detail: reason,
 	})
 
 	if err := Save(loomRoot, issue); err != nil {
