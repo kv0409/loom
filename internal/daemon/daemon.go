@@ -26,15 +26,21 @@ type Daemon struct {
 	mu         sync.Mutex
 	acpClients map[string]*acp.Client
 	apiLn      net.Listener
+
+	// Stale heartbeat tracking
+	nudgeCounts map[string]int       // agent ID → consecutive nudges sent
+	lastSeen    map[string]time.Time // agent ID → last observed heartbeat timestamp
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
 	return &Daemon{
-		LoomRoot:   loomRoot,
-		Config:     cfg,
-		stop:       make(chan struct{}),
-		done:       make(chan struct{}),
-		acpClients: make(map[string]*acp.Client),
+		LoomRoot:    loomRoot,
+		Config:      cfg,
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+		acpClients:  make(map[string]*acp.Client),
+		nudgeCounts: make(map[string]int),
+		lastSeen:    make(map[string]time.Time),
 	}
 }
 
@@ -335,6 +341,10 @@ func (d *Daemon) watchMail() {
 }
 
 func (d *Daemon) watchHeartbeats() {
+	timeout := time.Duration(d.Config.Limits.HeartbeatTimeoutSeconds) * time.Second
+	if timeout == 0 {
+		timeout = 300 * time.Second
+	}
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.HeartbeatIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -348,26 +358,64 @@ func (d *Daemon) watchHeartbeats() {
 			}
 			for _, a := range agents {
 				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
+					delete(d.nudgeCounts, a.ID)
+					delete(d.lastSeen, a.ID)
 					continue
 				}
-				if d.isAlive(a) {
+				if !d.isAlive(a) {
+					if a.Config.KiroMode == "acp" {
+						d.UnregisterACPClient(a.ID)
+					}
+					a.Status = "dead"
+					agent.Save(d.LoomRoot, a)
+					delete(d.nudgeCounts, a.ID)
+					delete(d.lastSeen, a.ID)
+					parentID := a.SpawnedBy
+					if parentID == "" {
+						continue
+					}
+					parent, err := agent.Load(d.LoomRoot, parentID)
+					if err != nil {
+						continue
+					}
+					d.notify(parent, "[LOOM] Agent "+a.ID+" is dead")
 					continue
 				}
-				if a.Config.KiroMode == "acp" {
-					d.UnregisterACPClient(a.ID)
-				}
-				a.Status = "dead"
-				agent.Save(d.LoomRoot, a)
-				parentID := a.SpawnedBy
-				if parentID == "" {
+
+				// Agent is alive — check for stale heartbeat.
+				prev, tracked := d.lastSeen[a.ID]
+				if !tracked {
+					// First time seeing this agent; seed tracking.
+					d.lastSeen[a.ID] = a.Heartbeat
 					continue
 				}
-				parent, err := agent.Load(d.LoomRoot, parentID)
-				if err != nil {
+
+				// Heartbeat was refreshed since last check — reset nudge count.
+				if a.Heartbeat.After(prev) {
+					d.lastSeen[a.ID] = a.Heartbeat
+					d.nudgeCounts[a.ID] = 0
 					continue
 				}
-				msg := "[LOOM] Agent " + a.ID + " is dead"
-				d.notify(parent, msg)
+
+				// Check if heartbeat is stale.
+				if time.Since(a.Heartbeat) <= timeout {
+					continue
+				}
+
+				count := d.nudgeCounts[a.ID]
+				if count < 2 {
+					d.notify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
+					d.nudgeCounts[a.ID] = count + 1
+					if count+1 == 2 {
+						if parentID := a.SpawnedBy; parentID != "" {
+							parent, err := agent.Load(d.LoomRoot, parentID)
+							if err == nil {
+								d.notify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
+							}
+						}
+						d.nudgeCounts[a.ID] = 3 // prevent repeat notifications
+					}
+				}
 			}
 		}
 	}
