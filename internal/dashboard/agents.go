@@ -80,34 +80,39 @@ func (m Model) renderAgentDetail() string {
 	}
 	a := m.data.agents[m.cursor]
 
-	s := fmt.Sprintf("  Role: %-14s Status: %s %-10s Heartbeat: %s\n",
-		a.Role, statusIndicator(a.Status), a.Status, relTime(a.Heartbeat))
-	s += fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d\n",
-		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID)
+	// Build all lines, then apply scroll viewport.
+	var lines []string
+
+	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %-10s Heartbeat: %s",
+		a.Role, statusIndicator(a.Status), a.Status, relTime(a.Heartbeat)))
+	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
+		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID))
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-		s += "  Mode: ACP\n"
+		lines = append(lines, "  Mode: ACP")
 	} else if a.TmuxTarget != "" {
-		s += fmt.Sprintf("  Tmux: %s\n", a.TmuxTarget)
+		lines = append(lines, fmt.Sprintf("  Tmux: %s", a.TmuxTarget))
 	}
 
 	if len(a.AssignedIssues) > 0 {
-		s += "\n  " + headerStyle.Render("ASSIGNED ISSUES") + "\n"
-		s += fmt.Sprintf("  └── %s\n", strings.Join(a.AssignedIssues, ", "))
+		lines = append(lines, "")
+		lines = append(lines, "  "+headerStyle.Render("ASSIGNED ISSUES"))
+		lines = append(lines, fmt.Sprintf("  └── %s", strings.Join(a.AssignedIssues, ", ")))
 	}
 	if a.WorktreeName != "" {
-		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", slugFromWorktree(a.WorktreeName))
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  "+headerStyle.Render("WORKTREE")+": %s", slugFromWorktree(a.WorktreeName)))
 	}
 
 	// ACP output
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-		s += "\n  " + headerStyle.Render("RECENT OUTPUT") + "\n"
+		lines = append(lines, "")
+		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
 		outPath := filepath.Join(m.loomRoot, "agents", a.ID+".output")
 		if raw, err := os.ReadFile(outPath); err == nil {
-			text := assembleChunksN(string(raw), 500)
+			text := assembleChunksN(string(raw), 0) // no truncation — we scroll
 			if text == "" {
-				s += "  (waiting for output...)\n"
+				lines = append(lines, "  (waiting for output...)")
 			} else {
-				// Word-wrap the assembled text to fit the panel width.
 				maxW := m.width - 8
 				if maxW < 40 {
 					maxW = 40
@@ -117,17 +122,18 @@ func (m Model) renderAgentDetail() string {
 					if end > len(text) {
 						end = len(text)
 					}
-					s += "  " + text[:end] + "\n"
+					lines = append(lines, "  "+text[:end])
 					text = text[end:]
 				}
 			}
 		} else {
-			s += "  (waiting for output...)\n"
+			lines = append(lines, "  (waiting for output...)")
 		}
 	}
 
 	// Recent mail
-	s += "\n  " + headerStyle.Render("RECENT MAIL") + "\n"
+	lines = append(lines, "")
+	lines = append(lines, "  "+headerStyle.Render("RECENT MAIL"))
 	count := 0
 	for _, msg := range m.data.messages {
 		if msg.From == a.ID || msg.To == a.ID {
@@ -139,7 +145,7 @@ func (m Model) renderAgentDetail() string {
 			if msg.From == a.ID {
 				other = msg.To
 			}
-			s += fmt.Sprintf("  %s %s %s: %s\n", dir, msg.Timestamp.Format("15:04"), other, truncate(msg.Subject, 40))
+			lines = append(lines, fmt.Sprintf("  %s %s %s: %s", dir, msg.Timestamp.Format("15:04"), other, truncate(msg.Subject, 40)))
 			count++
 			if count >= 5 {
 				break
@@ -147,10 +153,40 @@ func (m Model) renderAgentDetail() string {
 		}
 	}
 	if count == 0 {
-		s += "  No recent activity for this agent.\n"
+		lines = append(lines, "  No recent activity for this agent.")
 	}
 
-	return panel("Agent: "+a.ID, s, m.width-2)
+	// Apply scroll viewport
+	viewH := m.height - 5
+	if viewH < 1 {
+		viewH = 1
+	}
+	scroll := m.detailScroll
+	maxScroll := len(lines) - viewH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + viewH
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var s string
+	for _, l := range lines[scroll:end] {
+		s += l + "\n"
+	}
+
+	hint := ""
+	if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
+		hint = " [Enter]attach"
+	}
+	return panel("Agent: "+a.ID+" [n]udge"+hint, s, m.width-2)
 }
 
 func relTime(t time.Time) string {
