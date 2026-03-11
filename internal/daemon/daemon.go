@@ -65,11 +65,12 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 
 func (d *Daemon) Start() error {
 	var wg sync.WaitGroup
-	wg.Add(4)
+	wg.Add(5)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
+	go func() { defer wg.Done(); d.watchInboxGC() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -253,6 +254,31 @@ func (d *Daemon) watchHeartbeats() {
 				}
 				msg := "[LOOM] Agent " + a.ID + " is dead"
 				d.notify(parent, msg)
+			}
+		}
+	}
+}
+
+func (d *Daemon) watchInboxGC() {
+	ticker := time.NewTicker(time.Duration(d.Config.Polling.HeartbeatIntervalMs) * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
+			entries, err := os.ReadDir(inboxRoot)
+			if err != nil {
+				continue
+			}
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				if _, err := agent.Load(d.LoomRoot, e.Name()); err != nil {
+					os.RemoveAll(filepath.Join(inboxRoot, e.Name()))
+				}
 			}
 		}
 	}
