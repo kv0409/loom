@@ -15,7 +15,7 @@ const maxRecentDone = 5
 func (m Model) displayIssues() []*issue.Issue {
 	var active, done []*issue.Issue
 	for _, iss := range m.data.issues {
-		if iss.Status == "done" {
+		if iss.Status == "done" || iss.Status == "cancelled" {
 			done = append(done, iss)
 		} else {
 			active = append(active, iss)
