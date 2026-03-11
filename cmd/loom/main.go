@@ -47,6 +47,7 @@ func main() {
 		RunE:  runInit,
 	}
 	initCmd.Flags().Bool("force", false, "Overwrite existing .loom/ directory")
+	initCmd.Flags().Bool("refresh", false, "Update templates, agents, and hooks without wiping state")
 
 	// --- Lifecycle ---
 	lifecycleGroup := &cobra.Group{ID: "lifecycle", Title: "Lifecycle"}
@@ -448,6 +449,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	force, _ := cmd.Flags().GetBool("force")
+	refresh, _ := cmd.Flags().GetBool("refresh")
+
+	if force && refresh {
+		return fmt.Errorf("--force and --refresh are mutually exclusive")
+	}
+
+	// --refresh: update templates/agents/hooks only, preserve state
+	if refresh {
+		if _, err := os.Stat(".loom"); os.IsNotExist(err) {
+			return fmt.Errorf(".loom/ does not exist (run loom init first)")
+		}
+		if err := installTemplates(); err != nil {
+			return err
+		}
+		if err := installAgentsAndHooks(); err != nil {
+			return err
+		}
+		fmt.Println("Refreshed templates, agents, and hooks")
+		return nil
+	}
 
 	// Check existing .loom/
 	if _, err := os.Stat(".loom"); err == nil {
@@ -506,82 +527,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("writing config: %w", err)
 	}
 
-	// Copy embedded templates
-	entries, err := fs.ReadDir(templates.TemplatesFS, ".")
-	if err != nil {
-		return fmt.Errorf("reading embedded templates: %w", err)
+	// Copy embedded templates and install agents/hooks
+	if err := installTemplates(); err != nil {
+		return err
 	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := fs.ReadFile(templates.TemplatesFS, e.Name())
-		if err != nil {
-			return fmt.Errorf("reading template %s: %w", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(".loom/templates", e.Name()), data, 0644); err != nil {
-			return fmt.Errorf("writing template %s: %w", e.Name(), err)
-		}
-	}
-
-	// Install kiro-cli agent definitions
-	if err := os.MkdirAll(".kiro/agents", 0755); err != nil {
-		return fmt.Errorf("creating .kiro/agents: %w", err)
-	}
-	// Copy prompt templates to .kiro/agents/prompts/ (where kiro-cli resolves file:// URIs)
-	if err := os.MkdirAll(".kiro/agents/prompts", 0755); err != nil {
-		return fmt.Errorf("creating .kiro/agents/prompts: %w", err)
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		data, err := fs.ReadFile(templates.TemplatesFS, e.Name())
-		if err != nil {
-			continue
-		}
-		role := strings.TrimSuffix(e.Name(), ".md")
-		promptName := "loom-" + role + ".md"
-		if err := os.WriteFile(filepath.Join(".kiro/agents/prompts", promptName), data, 0644); err != nil {
-			return fmt.Errorf("writing prompt %s: %w", promptName, err)
-		}
-	}
-	agentEntries, err := fs.ReadDir(agents.AgentsFS, ".")
-	if err != nil {
-		return fmt.Errorf("reading embedded agents: %w", err)
-	}
-	for _, e := range agentEntries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := fs.ReadFile(agents.AgentsFS, e.Name())
-		if err != nil {
-			return fmt.Errorf("reading agent %s: %w", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(".kiro/agents", e.Name()), data, 0644); err != nil {
-			return fmt.Errorf("writing agent %s: %w", e.Name(), err)
-		}
-	}
-
-	// Install hooks
-	if err := os.MkdirAll(".kiro/hooks", 0755); err != nil {
-		return fmt.Errorf("creating .kiro/hooks: %w", err)
-	}
-	hookEntries, err := fs.ReadDir(agents.AgentsFS, "hooks")
-	if err != nil {
-		return fmt.Errorf("reading embedded hooks: %w", err)
-	}
-	for _, e := range hookEntries {
-		if e.IsDir() {
-			continue
-		}
-		data, err := fs.ReadFile(agents.AgentsFS, "hooks/"+e.Name())
-		if err != nil {
-			return fmt.Errorf("reading hook %s: %w", e.Name(), err)
-		}
-		if err := os.WriteFile(filepath.Join(".kiro/hooks", e.Name()), data, 0755); err != nil {
-			return fmt.Errorf("writing hook %s: %w", e.Name(), err)
-		}
+	if err := installAgentsAndHooks(); err != nil {
+		return err
 	}
 
 	// Update .gitignore
@@ -616,6 +567,94 @@ func appendToGitignore(entry string) error {
 	}
 	_, err = f.WriteString(entry + "\n")
 	return err
+}
+
+func installTemplates() error {
+	if err := os.MkdirAll(".loom/templates", 0755); err != nil {
+		return fmt.Errorf("creating .loom/templates: %w", err)
+	}
+	entries, err := fs.ReadDir(templates.TemplatesFS, ".")
+	if err != nil {
+		return fmt.Errorf("reading embedded templates: %w", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(templates.TemplatesFS, e.Name())
+		if err != nil {
+			return fmt.Errorf("reading template %s: %w", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(".loom/templates", e.Name()), data, 0644); err != nil {
+			return fmt.Errorf("writing template %s: %w", e.Name(), err)
+		}
+	}
+	return nil
+}
+
+func installAgentsAndHooks() error {
+	if err := os.MkdirAll(".kiro/agents", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/agents: %w", err)
+	}
+	if err := os.MkdirAll(".kiro/agents/prompts", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/agents/prompts: %w", err)
+	}
+	// Copy prompt templates
+	tplEntries, err := fs.ReadDir(templates.TemplatesFS, ".")
+	if err != nil {
+		return fmt.Errorf("reading embedded templates: %w", err)
+	}
+	for _, e := range tplEntries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		data, err := fs.ReadFile(templates.TemplatesFS, e.Name())
+		if err != nil {
+			continue
+		}
+		role := strings.TrimSuffix(e.Name(), ".md")
+		if err := os.WriteFile(filepath.Join(".kiro/agents/prompts", "loom-"+role+".md"), data, 0644); err != nil {
+			return fmt.Errorf("writing prompt %s: %w", e.Name(), err)
+		}
+	}
+	// Copy agent definitions
+	agentEntries, err := fs.ReadDir(agents.AgentsFS, ".")
+	if err != nil {
+		return fmt.Errorf("reading embedded agents: %w", err)
+	}
+	for _, e := range agentEntries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(agents.AgentsFS, e.Name())
+		if err != nil {
+			return fmt.Errorf("reading agent %s: %w", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(".kiro/agents", e.Name()), data, 0644); err != nil {
+			return fmt.Errorf("writing agent %s: %w", e.Name(), err)
+		}
+	}
+	// Install hooks
+	if err := os.MkdirAll(".kiro/hooks", 0755); err != nil {
+		return fmt.Errorf("creating .kiro/hooks: %w", err)
+	}
+	hookEntries, err := fs.ReadDir(agents.AgentsFS, "hooks")
+	if err != nil {
+		return fmt.Errorf("reading embedded hooks: %w", err)
+	}
+	for _, e := range hookEntries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := fs.ReadFile(agents.AgentsFS, "hooks/"+e.Name())
+		if err != nil {
+			return fmt.Errorf("reading hook %s: %w", e.Name(), err)
+		}
+		if err := os.WriteFile(filepath.Join(".kiro/hooks", e.Name()), data, 0755); err != nil {
+			return fmt.Errorf("writing hook %s: %w", e.Name(), err)
+		}
+	}
+	return nil
 }
 
 func runTask(cmd *cobra.Command, args []string) error {
