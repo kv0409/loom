@@ -88,6 +88,8 @@ func (d *Daemon) handleConn(conn net.Conn) {
 		resp = d.apiMessage(req)
 	case "kill":
 		resp = d.apiKill(req)
+	case "cancel":
+		resp = d.apiCancel(req)
 	case "output":
 		resp = d.apiOutput(req)
 	default:
@@ -124,6 +126,29 @@ func (d *Daemon) apiKill(req Request) Response {
 	}
 	if err := agent.Kill(d.LoomRoot, req.AgentID, req.Cleanup); err != nil {
 		return errResp("kill failed: " + err.Error())
+	}
+	return okResp(nil)
+}
+
+func (d *Daemon) apiCancel(req Request) Response {
+	a, err := agent.Load(d.LoomRoot, req.AgentID)
+	if err != nil {
+		return errResp("agent not found: " + req.AgentID)
+	}
+	if a.Config.KiroMode != "acp" {
+		return errResp("session/cancel only supported for ACP agents")
+	}
+	if a.ACPSessionID == "" {
+		return errResp("agent has no active ACP session")
+	}
+	d.mu.Lock()
+	c := d.acpClients[req.AgentID]
+	d.mu.Unlock()
+	if c == nil {
+		return errResp("no ACP client for agent")
+	}
+	if err := c.CancelSession(a.ACPSessionID); err != nil {
+		return errResp("cancel failed: " + err.Error())
 	}
 	return okResp(nil)
 }
