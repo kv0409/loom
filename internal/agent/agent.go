@@ -255,6 +255,8 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	if cleanupWorktree && a.WorktreeName != "" {
 		worktree.Remove(loomRoot, a.WorktreeName)
 	}
+	// Purge mail inbox for the dead agent
+	os.RemoveAll(filepath.Join(loomRoot, "mail", "inbox", id))
 	return Deregister(loomRoot, id)
 }
 
