@@ -79,13 +79,14 @@ func (d *Daemon) Start() error {
 		return err
 	}
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
 	go func() { defer wg.Done(); d.watchInboxGC() }()
 	go func() { defer wg.Done(); d.watchPendingAgents() }()
 	go func() { defer wg.Done(); d.watchACPOutput() }()
+	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -290,11 +291,57 @@ func (d *Daemon) watchIssues() {
 	}
 }
 
-// watchDoneIssues is intentionally a no-op. Auto-killing agents on issue
-// "done" transitions caused a race condition where builders were destroyed
-// before their code was committed or merged (see DEC-028, DEC-029).
-// Leads now manage builder lifecycle explicitly via "loom agent kill --cleanup".
-func (d *Daemon) watchDoneIssues() {}
+// watchDoneIssues polls parent issues and auto-closes them when all children
+// are done or cancelled. It does NOT kill agents (see DEC-028, DEC-029).
+func (d *Daemon) watchDoneIssues() {
+	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
+			if err != nil {
+				continue
+			}
+			for _, iss := range issues {
+				if len(iss.Children) == 0 {
+					continue
+				}
+				if iss.Status == "done" || iss.Status == "cancelled" {
+					continue
+				}
+				allResolved := true
+				for _, childID := range iss.Children {
+					child, err := issue.Load(d.LoomRoot, childID)
+					if err != nil {
+						allResolved = false
+						break
+					}
+					if child.Status != "done" && child.Status != "cancelled" {
+						allResolved = false
+						break
+					}
+				}
+				if !allResolved {
+					continue
+				}
+				issue.Close(d.LoomRoot, iss.ID, "all children resolved")
+				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
+				target := iss.Assignee
+				if target == "" {
+					target = "orchestrator"
+				}
+				a, err := agent.Load(d.LoomRoot, target)
+				if err != nil {
+					continue
+				}
+				d.notify(a, msg)
+			}
+		}
+	}
+}
 
 func (d *Daemon) watchMail() {
 	const renotifyInterval = 30 * time.Second
