@@ -436,7 +436,7 @@ func runDash(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	m := dashboard.New(root)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, dashboard.ProgramOptions()...)
 	_, err = p.Run()
 	return err
 }

@@ -16,6 +16,8 @@ func (m Model) renderMemory() string {
 			e.ID, e.Type, truncate(e.Title, 36), memory.ByField(e))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
 		}
 		content += line + "\n"
 	}

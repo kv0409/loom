@@ -35,6 +35,8 @@ func (m Model) renderWorktrees() string {
 			truncate(slugFromWorktree(wt.Name), 30), truncate(wt.Branch, 30), wt.Agent, wt.Issue)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
 		}
 		content += line + "\n"
 	}
