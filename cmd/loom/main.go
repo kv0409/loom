@@ -1568,6 +1568,7 @@ func runGC(cmd *cobra.Command, args []string) error {
 
 	// Dead agent registrations
 	agents, _ := agent.List(root)
+	liveAgents := make(map[string]bool)
 	deadCount := 0
 	for _, a := range agents {
 		if a.Status == "dead" {
@@ -1581,9 +1582,62 @@ func runGC(cmd *cobra.Command, args []string) error {
 				fmt.Printf("Removed dead agent: %s\n", a.ID)
 			}
 			deadCount++
+		} else {
+			liveAgents[a.ID] = true
 		}
 	}
 	total += deadCount
+
+	// Stale mail inboxes for non-existent agents
+	inboxDir := filepath.Join(root, "mail", "inbox")
+	if entries, err := os.ReadDir(inboxDir); err == nil {
+		for _, e := range entries {
+			if e.IsDir() && !liveAgents[e.Name()] {
+				dir := filepath.Join(inboxDir, e.Name())
+				if dryRun {
+					fmt.Printf("[dry-run] Would remove stale inbox: %s\n", e.Name())
+				} else {
+					os.RemoveAll(dir)
+					fmt.Printf("Removed stale inbox: %s\n", e.Name())
+				}
+				total++
+			}
+		}
+	}
+
+	// Orphan worktrees (not associated with any registered agent)
+	if orphans, err := worktree.Cleanup(root); err == nil {
+		for _, name := range orphans {
+			if dryRun {
+				fmt.Printf("[dry-run] Would remove orphan worktree: %s\n", name)
+			} else {
+				if err := worktree.Remove(root, name); err != nil {
+					fmt.Fprintf(os.Stderr, "Failed to remove worktree %s: %v\n", name, err)
+					continue
+				}
+				fmt.Printf("Removed orphan worktree: %s\n", name)
+			}
+			total++
+		}
+	}
+
+	// Stale locks held by non-existent agents
+	if locks, err := lock.ListLocks(root); err == nil {
+		for _, l := range locks {
+			if !liveAgents[l.Agent] {
+				if dryRun {
+					fmt.Printf("[dry-run] Would release stale lock: %s (agent %s)\n", l.File, l.Agent)
+				} else {
+					if err := lock.Release(root, l.File); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to release lock %s: %v\n", l.File, err)
+						continue
+					}
+					fmt.Printf("Released stale lock: %s (agent %s)\n", l.File, l.Agent)
+				}
+				total++
+			}
+		}
+	}
 
 	if dryRun {
 		fmt.Printf("\nDry run: %d items would be cleaned\n", total)
