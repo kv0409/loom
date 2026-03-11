@@ -23,7 +23,7 @@ func (m Model) renderAgents() string {
 		}
 	}
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-10s %%-12s %%-22s %%-14s %%s", idWidth)
+	fmtStr := fmt.Sprintf("  %%-%ds %%-12s %%-12s %%-22s %%-14s %%s", idWidth)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
