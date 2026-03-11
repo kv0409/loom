@@ -318,8 +318,10 @@ func (d *Daemon) watchIssues() {
 }
 
 // watchDoneIssues polls parent issues and auto-closes them when all children
-// are done or cancelled. It does NOT kill agents (see DEC-028, DEC-029).
+// are done or cancelled. It also notifies agents assigned to resolved issues
+// to wrap up, and grace-kills them after 2 minutes if they're still alive.
 func (d *Daemon) watchDoneIssues() {
+	notifiedAgents := make(map[string]time.Time) // agentID → when notified
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -331,11 +333,18 @@ func (d *Daemon) watchDoneIssues() {
 			if err != nil {
 				continue
 			}
+
+			// Build set of resolved issue IDs.
+			resolved := make(map[string]bool)
 			for _, iss := range issues {
-				if len(iss.Children) == 0 {
-					continue
-				}
 				if iss.Status == "done" || iss.Status == "cancelled" {
+					resolved[iss.ID] = true
+				}
+			}
+
+			// Auto-close parents with all children resolved.
+			for _, iss := range issues {
+				if len(iss.Children) == 0 || iss.Status == "done" || iss.Status == "cancelled" {
 					continue
 				}
 				allResolved := true
@@ -354,6 +363,7 @@ func (d *Daemon) watchDoneIssues() {
 					continue
 				}
 				issue.Close(d.LoomRoot, iss.ID, "all children resolved")
+				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
 				target := iss.Assignee
 				if target == "" {
@@ -364,6 +374,45 @@ func (d *Daemon) watchDoneIssues() {
 					continue
 				}
 				d.notify(a, msg)
+			}
+
+			// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
+			agents, err := agent.List(d.LoomRoot)
+			if err != nil {
+				continue
+			}
+			for _, a := range agents {
+				if a.Status != "active" || a.Role == "orchestrator" {
+					continue
+				}
+				onResolved := false
+				for _, issID := range a.AssignedIssues {
+					if resolved[issID] {
+						onResolved = true
+						break
+					}
+				}
+				if !onResolved {
+					continue
+				}
+				if t, ok := notifiedAgents[a.ID]; ok {
+					if time.Since(t) > 2*time.Minute {
+						log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
+						agent.Kill(d.LoomRoot, a.ID, false)
+						delete(notifiedAgents, a.ID)
+					}
+					continue
+				}
+				notifiedAgents[a.ID] = time.Now()
+				log.Printf("[daemon] notifying %s: assigned issue resolved, wrap up", a.ID)
+				d.notify(a, "[LOOM] Your assigned issue is resolved. Wrap up any final work and exit.")
+			}
+
+			// Clean up tracking for agents that are gone.
+			for id := range notifiedAgents {
+				if _, err := agent.Load(d.LoomRoot, id); err != nil {
+					delete(notifiedAgents, id)
+				}
 			}
 		}
 	}
