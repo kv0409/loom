@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -1701,6 +1702,31 @@ func runGC(cmd *cobra.Command, args []string) error {
 		}
 	}
 	total += deadCount
+
+	// Orphaned kiro-cli ACP processes not tracked by any registered agent
+	knownPIDs := make(map[int]bool)
+	for _, a := range agents {
+		if a.PID > 0 {
+			knownPIDs[a.PID] = true
+		}
+	}
+	if out, err := exec.Command("pgrep", "-f", "kiro-cli acp").Output(); err == nil {
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			pid, err := strconv.Atoi(strings.TrimSpace(line))
+			if err != nil || pid <= 0 || knownPIDs[pid] {
+				continue
+			}
+			if dryRun {
+				fmt.Printf("[dry-run] Would kill orphaned kiro-cli ACP process: %d\n", pid)
+			} else {
+				syscall.Kill(-pid, syscall.SIGTERM)
+				time.Sleep(100 * time.Millisecond)
+				syscall.Kill(-pid, syscall.SIGKILL)
+				fmt.Printf("Killed orphaned kiro-cli ACP process: %d\n", pid)
+			}
+			total++
+		}
+	}
 
 	// Stale mail inboxes for non-existent agents
 	inboxDir := filepath.Join(root, "mail", "inbox")
