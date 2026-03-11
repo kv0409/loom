@@ -37,6 +37,9 @@ func (m Model) renderAgents() string {
 			issues = truncate(strings.Join(a.AssignedIssues, ","), 14)
 		}
 		hb := relTime(a.Heartbeat)
+		if a.NudgeCount > 0 {
+			hb += fmt.Sprintf(" ⚡%d", a.NudgeCount)
+		}
 		statusCol := fmt.Sprintf("%s %-10s", statusIndicator(a.Status), a.Status)
 
 		// Build tree prefix (2-char indent per level).
@@ -96,6 +99,11 @@ func (m Model) renderAgentDetail() string {
 	}
 	if a.WorktreeName != "" {
 		s += fmt.Sprintf("\n  " + headerStyle.Render("WORKTREE") + ": %s\n", slugFromWorktree(a.WorktreeName))
+	}
+
+	if a.NudgeCount > 0 {
+		s += "\n  " + headerStyle.Render("NUDGES") + "\n"
+		s += fmt.Sprintf("  Count: %d  Last: %s\n", a.NudgeCount, relTime(a.LastNudge))
 	}
 
 	// ACP output
