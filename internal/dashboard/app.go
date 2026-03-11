@@ -442,14 +442,14 @@ var helpBarTabs = []struct {
 	label string
 	view  view
 }{
-	{"agents", viewAgents},
-	{"issues", viewIssues},
-	{"mail", viewMail},
-	{"decisions", viewMemory},
-	{"worktrees", viewWorktrees},
-	{"board", viewKanban},
-	{"activity", viewActivity},
-	{"logs", viewLogs},
+	{"[a]gents", viewAgents},
+	{"[i]ssues", viewIssues},
+	{"[m]ail", viewMail},
+	{"[d]ecisions", viewMemory},
+	{"[w]orktrees", viewWorktrees},
+	{"[b]oard", viewKanban},
+	{"[t]activity", viewActivity},
+	{"[l]ogs", viewLogs},
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
