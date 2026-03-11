@@ -541,6 +541,24 @@ func isListView(v view) bool {
 // mouseToListIndex converts a screen Y coordinate to a list item index.
 // Layout: row 0 = title, row 1 = panel border, row 2 = column header, row 3 = separator, row 4+ = items.
 func (m Model) mouseToListIndex(y int) int {
-	// Title line + panel top border + header + separator = 4 rows of overhead
-	return y - 4
+	idx := y - 4
+	if m.view == viewIssues {
+		// displayIssues inserts 3 extra lines (blank + RECENTLY DONE + separator)
+		// between active and done sections. Adjust index for items past the gap.
+		activeCount := 0
+		for _, iss := range m.displayIssues() {
+			if iss.Status != "done" && iss.Status != "cancelled" {
+				activeCount++
+			}
+		}
+		display := m.displayIssues()
+		if activeCount < len(display) && idx > activeCount {
+			// Clicks on the 3 separator lines map to nothing useful
+			if idx <= activeCount+3 {
+				return -1
+			}
+			idx -= 3
+		}
+	}
+	return idx
 }
