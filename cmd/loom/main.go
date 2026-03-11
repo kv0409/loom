@@ -1321,7 +1321,7 @@ func runWorktreeCleanup(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	for _, name := range orphaned {
-		if err := worktree.Remove(root, name); err != nil {
+		if err := worktree.Remove(root, name, true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to remove %s: %v\n", name, err)
 			continue
 		}
@@ -1772,7 +1772,7 @@ func runGC(cmd *cobra.Command, args []string) error {
 			if dryRun {
 				fmt.Printf("[dry-run] Would remove orphan worktree: %s\n", name)
 			} else {
-				if err := worktree.Remove(root, name); err != nil {
+				if err := worktree.Remove(root, name, true); err != nil {
 					fmt.Fprintf(os.Stderr, "Failed to remove worktree %s: %v\n", name, err)
 					continue
 				}
@@ -2181,7 +2181,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 		wts, _ := worktree.List(root)
 		for _, wt := range wts {
 			fmt.Printf("Removing worktree %s...\n", wt.Name)
-			worktree.Remove(root, wt.Name)
+			worktree.Remove(root, wt.Name, true)
 		}
 
 		// Kill the tmux session

@@ -34,6 +34,7 @@ type Issue struct {
 	CreatedAt   time.Time      `yaml:"created_at"`
 	UpdatedAt   time.Time      `yaml:"updated_at"`
 	ClosedAt    *time.Time     `yaml:"closed_at,omitempty"`
+	MergedAt    *time.Time     `yaml:"merged_at,omitempty"`
 	CloseReason string         `yaml:"close_reason,omitempty"`
 	Children    []string       `yaml:"children,omitempty"`
 	History     []HistoryEntry `yaml:"history"`

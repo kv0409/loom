@@ -64,10 +64,23 @@ func Create(loomRoot string, issueID string, slug string, agent string) (*Worktr
 	}, nil
 }
 
-func Remove(loomRoot string, name string) error {
-	root := projectRoot(loomRoot)
-	wtPath := filepath.Join(".loom", "worktrees", name)
+// ErrUnmergedBranch is returned when Remove is called on a branch that has not been merged.
+var ErrUnmergedBranch = fmt.Errorf("branch has unmerged commits")
 
+// Remove deletes a worktree and its branch. If force is false, it refuses to
+// delete a branch that has not been merged into HEAD (checked via git merge-base --is-ancestor).
+func Remove(loomRoot string, name string, force bool) error {
+	root := projectRoot(loomRoot)
+
+	if !force {
+		cmd := exec.Command("git", "merge-base", "--is-ancestor", name, "HEAD")
+		cmd.Dir = root
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%w: refusing to delete branch %s (use force to override)", ErrUnmergedBranch, name)
+		}
+	}
+
+	wtPath := filepath.Join(".loom", "worktrees", name)
 	cmd := exec.Command("git", "worktree", "remove", wtPath)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {

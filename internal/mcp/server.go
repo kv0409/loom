@@ -306,7 +306,8 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 
 	case "loom_worktree_remove":
 		name := str(args, "name")
-		if err := worktree.Remove(s.LoomRoot, name); err != nil {
+		force := boolVal(args, "force")
+		if err := worktree.Remove(s.LoomRoot, name, force); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Removed worktree %s", name), nil
@@ -374,7 +375,7 @@ func toolDefs() []toolDef {
 			props{"id": propStr("Agent ID to kill"), "cleanup": propBool("Also remove the agent's worktree and delete its branch")},
 			"id")},
 		{Name: "loom_worktree_remove", Description: "Remove a worktree directory and delete its branch", InputSchema: obj(
-			props{"name": propStr("Worktree name (e.g. LOOM-001-01-login-form)")},
+			props{"name": propStr("Worktree name (e.g. LOOM-001-01-login-form)"), "force": propBool("Force removal even if branch is unmerged")},
 			"name")},
 	}
 }
