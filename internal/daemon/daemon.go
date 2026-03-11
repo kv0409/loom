@@ -133,7 +133,9 @@ func (d *Daemon) watchPendingAgents() {
 			}
 			for _, a := range agents {
 				if a.Status == "pending-acp" {
-					d.activateACPAgent(a)
+					a.Status = "activating"
+					agent.Save(d.LoomRoot, a)
+					go d.activateACPAgent(a)
 				}
 			}
 		}
@@ -372,7 +374,7 @@ func (d *Daemon) watchHeartbeats() {
 				continue
 			}
 			for _, a := range agents {
-				if a.Status == "dead" || a.Status == "done" {
+				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
 					continue
 				}
 				if d.isAlive(a) {

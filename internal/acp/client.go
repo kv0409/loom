@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // Client manages a kiro-cli ACP subprocess and its JSON-RPC lifecycle.
@@ -28,6 +29,9 @@ type Client struct {
 	// Output buffer for dashboard.
 	outMu         sync.Mutex
 	lastResponses []string
+
+	waitOnce sync.Once
+	waitErr  error
 }
 
 // jsonRPCRequest is a JSON-RPC 2.0 request.
@@ -101,6 +105,10 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 	if err != nil {
 		return nil, fmt.Errorf("acp: stdout pipe: %w", err)
 	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, fmt.Errorf("acp: stderr pipe: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("acp: start %s: %w", command, err)
@@ -114,10 +122,17 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 
 	// Background reader: dispatches responses and captures notifications.
 	go c.readLoop(bufio.NewReader(stdoutPipe))
+	// Capture stderr for debugging.
 	go func() {
-		cmd.Wait()
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			log.Printf("[acp-stderr] %s", scanner.Text())
+		}
+	}()
+	go func() {
+		c.waitOnce.Do(func() { c.waitErr = cmd.Wait() })
+		log.Printf("[acp] process exited: pid=%d err=%v", cmd.Process.Pid, c.waitErr)
 		c.exited.Store(true)
-		// Unblock any waiting callers.
 		c.pendingMu.Lock()
 		for id, ch := range c.pending {
 			close(ch)
@@ -169,29 +184,25 @@ func (c *Client) readLoop(r *bufio.Reader) {
 // handleNotification processes server notifications and captures output.
 func (c *Client) handleNotification(n *jsonRPCNotification) {
 	switch n.Method {
-	case "session/notification":
-		// Extract update type and text content.
+	case "session/update":
 		var params struct {
 			Update struct {
-				Type    string `json:"type"`
-				Content string `json:"content"`
-				Text    string `json:"text"`
+				SessionUpdate string `json:"sessionUpdate"`
+				Content       struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"content"`
 			} `json:"update"`
 		}
 		if err := json.Unmarshal(n.Params, &params); err != nil {
 			return
 		}
-		text := params.Update.Text
-		if text == "" {
-			text = params.Update.Content
+		if params.Update.Content.Text != "" {
+			c.appendOutput(fmt.Sprintf("[%s] %s", params.Update.SessionUpdate, params.Update.Content.Text))
 		}
-		if text != "" {
-			c.appendOutput(fmt.Sprintf("[%s] %s", params.Update.Type, text))
-		}
-	case "_kiro.dev/metadata":
-		// Context usage — could track but skip for now.
+	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available":
+		// Internal kiro events — skip.
 	default:
-		// Log unknown notifications for debugging.
 		log.Printf("[acp-notif] %s", n.Method)
 	}
 }
@@ -240,7 +251,13 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 	}
 
 	// Wait for the background reader to deliver our response.
-	resp, ok := <-ch
+	var resp jsonRPCResponse
+	var ok bool
+	select {
+	case resp, ok = <-ch:
+	case <-time.After(30 * time.Second):
+		return fmt.Errorf("acp: %s: timed out after 30s", method)
+	}
 	if !ok {
 		return fmt.Errorf("acp: %s: connection closed", method)
 	}
@@ -316,7 +333,7 @@ func (c *Client) NewSession() (string, error) {
 func (c *Client) SendPrompt(sessionID string, text string) error {
 	params := map[string]interface{}{
 		"sessionId": sessionID,
-		"content": []map[string]string{
+		"prompt": []map[string]string{
 			{"type": "text", "text": text},
 		},
 	}
@@ -341,7 +358,8 @@ func (c *Client) RecentOutput(n int) []string {
 // Close shuts down the subprocess.
 func (c *Client) Close() error {
 	c.stdin.Close()
-	return c.cmd.Wait()
+	c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+	return c.waitErr
 }
 
 // PID returns the OS process ID of the kiro-cli subprocess.
