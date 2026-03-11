@@ -185,3 +185,8 @@ func (c *Client) Close() error {
 	c.stdin.Close()
 	return c.cmd.Wait()
 }
+
+// PID returns the OS process ID of the kiro-cli subprocess.
+func (c *Client) PID() int {
+	return c.cmd.Process.Pid
+}

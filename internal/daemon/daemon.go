@@ -65,12 +65,13 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 
 func (d *Daemon) Start() error {
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { defer wg.Done(); d.watchInboxGC() }()
+	go func() { defer wg.Done(); d.watchPendingAgents() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -101,6 +102,88 @@ func (d *Daemon) UnregisterACPClient(agentID string) {
 		delete(d.acpClients, agentID)
 	}
 	d.mu.Unlock()
+}
+
+func (d *Daemon) watchPendingAgents() {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			agents, err := agent.List(d.LoomRoot)
+			if err != nil {
+				continue
+			}
+			for _, a := range agents {
+				if a.Status == "pending-acp" {
+					d.activateACPAgent(a)
+				}
+			}
+		}
+	}
+}
+
+func (d *Daemon) activateACPAgent(a *agent.Agent) {
+	projectRoot := filepath.Dir(d.LoomRoot)
+
+	env := append(os.Environ(),
+		"LOOM_AGENT_ID="+a.ID,
+		"LOOM_ROOT="+d.LoomRoot,
+		"LOOM_PROJECT_ROOT="+projectRoot,
+		"LOOM_ROLE="+a.Role,
+	)
+	if a.SpawnedBy != "" {
+		env = append(env, "LOOM_PARENT_AGENT="+a.SpawnedBy)
+	}
+	if a.WorktreeName != "" {
+		env = append(env, "LOOM_WORKTREE="+filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName))
+	}
+
+	extraArgs := []string{"--agent", "loom-" + a.Role}
+
+	workDir := projectRoot
+	if a.Role == "builder" && a.WorktreeName != "" {
+		workDir = filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
+	}
+
+	c, err := acp.NewClient(d.Config.Kiro.Command, workDir, env, extraArgs...)
+	if err != nil {
+		a.Status = "dead"
+		agent.Save(d.LoomRoot, a)
+		return
+	}
+
+	if _, err := c.Initialize(); err != nil {
+		c.Close()
+		a.Status = "dead"
+		agent.Save(d.LoomRoot, a)
+		return
+	}
+
+	sessionID, err := c.NewSession()
+	if err != nil {
+		c.Close()
+		a.Status = "dead"
+		agent.Save(d.LoomRoot, a)
+		return
+	}
+
+	if a.InitialTask != "" {
+		if _, err := c.SendPrompt(sessionID, a.InitialTask); err != nil {
+			c.Close()
+			a.Status = "dead"
+			agent.Save(d.LoomRoot, a)
+			return
+		}
+	}
+
+	d.RegisterACPClient(a.ID, c)
+	a.PID = c.PID()
+	a.ACPSessionID = sessionID
+	a.Status = "active"
+	agent.Save(d.LoomRoot, a)
 }
 
 func (d *Daemon) watchIssues() {
