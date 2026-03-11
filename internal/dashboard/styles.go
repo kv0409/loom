@@ -13,54 +13,88 @@ func slugFromWorktree(name string) string {
 	return wtPrefixRe.ReplaceAllString(name, "")
 }
 
+// Tokyo Night truecolor palette
 var (
-	green  = lipgloss.Color("2")
-	yellow = lipgloss.Color("3")
-	red    = lipgloss.Color("1")
-	cyan   = lipgloss.Color("6")
-	gray   = lipgloss.Color("8")
-	white  = lipgloss.Color("15")
-
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(white)
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(white)
-	activeStyle   = lipgloss.NewStyle().Foreground(green)
-	blockedStyle  = lipgloss.NewStyle().Foreground(yellow)
-	reviewStyle   = lipgloss.NewStyle().Foreground(cyan)
-	deadStyle     = lipgloss.NewStyle().Foreground(red)
-	idleStyle     = lipgloss.NewStyle().Foreground(gray)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
-	helpStyle     = lipgloss.NewStyle().Foreground(gray)
-	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(gray)
+	colBlue    = lipgloss.Color("#7AA2F7")
+	colGreen   = lipgloss.Color("#9ECE6A")
+	colYellow  = lipgloss.Color("#E0AF68")
+	colRed     = lipgloss.Color("#F7768E")
+	colCyan    = lipgloss.Color("#7DCFFF")
+	colMagenta = lipgloss.Color("#BB9AF7")
+	colOrange  = lipgloss.Color("#FF9E64")
+	colTeal    = lipgloss.Color("#73DACA")
+	colGray    = lipgloss.Color("#565F89")
+	colFg      = lipgloss.Color("#C0CAF5")
+	colSubtle  = lipgloss.Color("#414868")
+	colSelBg   = lipgloss.Color("#292E42")
 )
 
+// Semantic styles
+var (
+	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(colMagenta)
+	activeStyle   = lipgloss.NewStyle().Foreground(colGreen)
+	blockedStyle  = lipgloss.NewStyle().Foreground(colRed)
+	reviewStyle   = lipgloss.NewStyle().Foreground(colCyan)
+	deadStyle     = lipgloss.NewStyle().Foreground(colRed)
+	idleStyle     = lipgloss.NewStyle().Foreground(colGray)
+	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
+	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
+	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
+)
+
+// Panel header colors by section type
+var (
+	panelAgents   = lipgloss.NewStyle().Bold(true).Foreground(colTeal)
+	panelIssues   = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
+	panelMail     = lipgloss.NewStyle().Bold(true).Foreground(colOrange)
+	panelMemory   = lipgloss.NewStyle().Bold(true).Foreground(colMagenta)
+	panelWorktree = lipgloss.NewStyle().Bold(true).Foreground(colCyan)
+	panelDiff     = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
+	panelActivity = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
+	panelLogs     = lipgloss.NewStyle().Bold(true).Foreground(colGray)
+)
+
+// Status-specific colors and glyphs
+var statusColors = map[string]lipgloss.Color{
+	"open":        colFg,
+	"assigned":    colBlue,
+	"in-progress": colTeal,
+	"active":      colGreen,
+	"done":        colGreen,
+	"blocked":     colRed,
+	"review":      colCyan,
+	"error":       colRed,
+	"dead":        colOrange,
+	"cancelled":   colGray,
+}
+
+var statusGlyphs = map[string]string{
+	"open":        "○",
+	"assigned":    "◆",
+	"in-progress": "▶",
+	"active":      "▶",
+	"done":        "✔",
+	"blocked":     "⛔",
+	"review":      "◎",
+	"error":       "✖",
+	"dead":        "✖",
+	"cancelled":   "─",
+}
+
 func statusStyle(status string) lipgloss.Style {
-	switch status {
-	case "active", "in-progress", "assigned", "done":
-		return activeStyle
-	case "blocked":
-		return blockedStyle
-	case "review":
-		return reviewStyle
-	case "dead", "error", "cancelled":
-		return deadStyle
-	default:
-		return idleStyle
+	if c, ok := statusColors[status]; ok {
+		return lipgloss.NewStyle().Foreground(c)
 	}
+	return idleStyle
 }
 
 func statusIndicator(status string) string {
-	switch status {
-	case "blocked":
-		return blockedStyle.Render("⚠")
-	case "review":
-		return reviewStyle.Render("⚠")
-	case "dead", "error", "cancelled":
-		return deadStyle.Render("●")
-	case "active", "in-progress", "assigned", "done":
-		return activeStyle.Render("●")
-	default:
-		return idleStyle.Render("●")
+	glyph := "●"
+	if g, ok := statusGlyphs[status]; ok {
+		glyph = g
 	}
+	return statusStyle(status).Render(glyph)
 }
 
 func truncateLines(s string, maxW int) string {
@@ -84,18 +118,43 @@ func panel(title string, content string, width int) string {
 	if title != "" {
 		lines := splitLines(s)
 		if len(lines) > 0 {
-			t := titleStyle.Render(" " + title + " ")
+			t := panelTitleStyle(title).Render(" " + title + " ")
 			tLen := lipgloss.Width(t)
-			borderColor := lipgloss.NewStyle().Foreground(gray)
+			bc := lipgloss.NewStyle().Foreground(colSubtle)
 			remaining := innerW - tLen - 1
 			if remaining < 0 {
 				remaining = 0
 			}
-			lines[0] = borderColor.Render("╭─") + t + borderColor.Render(strings.Repeat("─", remaining)+"╮")
+			lines[0] = bc.Render("╭─") + t + bc.Render(strings.Repeat("─", remaining)+"╮")
 			s = joinLines(lines)
 		}
 	}
 	return s
+}
+
+// panelTitleStyle picks a color based on panel title keyword.
+func panelTitleStyle(title string) lipgloss.Style {
+	t := strings.ToUpper(title)
+	switch {
+	case strings.Contains(t, "AGENT"):
+		return panelAgents
+	case strings.Contains(t, "ISSUE"), strings.Contains(t, "KANBAN"):
+		return panelIssues
+	case strings.Contains(t, "MAIL"):
+		return panelMail
+	case strings.Contains(t, "MEMORY"):
+		return panelMemory
+	case strings.Contains(t, "WORKTREE"):
+		return panelWorktree
+	case strings.Contains(t, "DIFF"):
+		return panelDiff
+	case strings.Contains(t, "ACTIVITY"):
+		return panelActivity
+	case strings.Contains(t, "LOG"):
+		return panelLogs
+	default:
+		return titleStyle
+	}
 }
 
 func splitLines(s string) []string {
