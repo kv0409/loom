@@ -876,6 +876,24 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("at least one of --status, --priority, or --assignee is required")
 	}
 
+	if status == "cancelled" {
+		cancelled, err := issue.Cancel(root, args[0])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Cancelled %s\n", args[0])
+		for _, ci := range cancelled {
+			if ci.PreviousAssignee == "" {
+				continue
+			}
+			msg := fmt.Sprintf("[LOOM] Issue %s cancelled. Stop work immediately.", ci.IssueID)
+			if err := daemon.Message(root, ci.PreviousAssignee, msg); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not notify %s: %v\n", ci.PreviousAssignee, err)
+			}
+		}
+		return nil
+	}
+
 	_, err = issue.Update(root, args[0], issue.UpdateOpts{
 		Status: status, Priority: priority, Assignee: assignee,
 	})
