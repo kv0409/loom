@@ -460,6 +460,14 @@ func (c *Client) SendPrompt(sessionID string, text string) error {
 	return c.send("session/prompt", params)
 }
 
+// CancelSession cancels an in-progress prompt on the given session.
+func (c *Client) CancelSession(sessionID string) error {
+	params := map[string]interface{}{
+		"sessionId": sessionID,
+	}
+	return c.call("session/cancel", params, nil)
+}
+
 // RecentOutput returns the last n captured output lines.
 func (c *Client) RecentOutput(n int) []string {
 	c.outMu.Lock()

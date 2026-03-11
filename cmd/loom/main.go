@@ -176,7 +176,13 @@ func main() {
 		Hidden: true,
 		RunE:   runAgentHeartbeat,
 	}
-	agentCmd.AddCommand(agentShowCmd, agentHeartbeatCmd)
+	agentCancelCmd := &cobra.Command{
+		Use:   "cancel <name>",
+		Short: "Cancel in-progress ACP prompt",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runAgentCancel,
+	}
+	agentCmd.AddCommand(agentShowCmd, agentHeartbeatCmd, agentCancelCmd)
 
 	attachCmd := &cobra.Command{
 		Use:   "attach <name>",
@@ -1437,6 +1443,18 @@ func runAgentHeartbeat(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("LOOM_AGENT_ID not set")
 	}
 	return agent.UpdateHeartbeat(root, id)
+}
+
+func runAgentCancel(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	if err := daemon.Cancel(root, args[0]); err != nil {
+		return err
+	}
+	fmt.Printf("Cancelled session for %s\n", args[0])
+	return nil
 }
 
 func runAttach(cmd *cobra.Command, args []string) error {

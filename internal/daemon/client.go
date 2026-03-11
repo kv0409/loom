@@ -44,6 +44,12 @@ func Kill(loomRoot, agentID string, cleanup bool) error {
 	return err
 }
 
+// Cancel sends a session/cancel to an ACP agent via the daemon.
+func Cancel(loomRoot, agentID string) error {
+	_, err := call(loomRoot, Request{Action: "cancel", AgentID: agentID})
+	return err
+}
+
 // Output retrieves recent output lines from an agent via the daemon.
 func Output(loomRoot, agentID string, lines int) (string, error) {
 	resp, err := call(loomRoot, Request{Action: "output", AgentID: agentID, Lines: lines})
