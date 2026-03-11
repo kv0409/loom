@@ -61,6 +61,7 @@ func main() {
 	startCmd.Flags().Bool("resume", false, "Auto-resume without prompting")
 	startCmd.Flags().Bool("fresh", false, "Discard previous state")
 	startCmd.Flags().String("mode", "", "Kiro mode for orchestrator: chat|acp")
+	startCmd.Flags().Bool("no-dashboard", false, "Skip auto-opening the dashboard")
 	startCmd.GroupID = "lifecycle"
 
 	stopCmd := &cobra.Command{
@@ -77,6 +78,7 @@ func main() {
 		Short: "Hot-reload daemon without killing agents",
 		RunE:  runRestart,
 	}
+	restartCmd.Flags().Bool("no-dashboard", false, "Skip auto-opening the dashboard")
 	restartCmd.GroupID = "lifecycle"
 
 	statusCmd := &cobra.Command{
@@ -431,15 +433,45 @@ func stub(use, short string) *cobra.Command {
 	}
 }
 
+func dashPidFile(root string) string {
+	return filepath.Join(root, "dashboard.pid")
+}
+
+func isDashboardRunning(root string) bool {
+	data, err := os.ReadFile(dashPidFile(root))
+	if err != nil {
+		return false
+	}
+	var pid int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil {
+		return false
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
+}
+
+func launchDashboard(root string) error {
+	if isDashboardRunning(root) {
+		fmt.Println("Dashboard is already running.")
+		return nil
+	}
+	os.WriteFile(dashPidFile(root), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+	defer os.Remove(dashPidFile(root))
+	m := dashboard.New(root)
+	p := tea.NewProgram(m, dashboard.ProgramOptions()...)
+	_, err := p.Run()
+	return err
+}
+
 func runDash(cmd *cobra.Command, args []string) error {
 	root, err := config.FindLoomRoot()
 	if err != nil {
 		return err
 	}
-	m := dashboard.New(root)
-	p := tea.NewProgram(m, dashboard.ProgramOptions()...)
-	_, err = p.Run()
-	return err
+	return launchDashboard(root)
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -1882,6 +1914,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Dash:   loom dash\n")
 		fmt.Printf("  Stop:   loom stop\n")
 		fmt.Printf("  Tmux:   tmux attach -t %s\n", session)
+
+		noDash, _ := cmd.Flags().GetBool("no-dashboard")
+		if !noDash {
+			return launchDashboard(root)
+		}
 		return nil
 	}
 
@@ -1981,6 +2018,11 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("signaling daemon: %w", err)
 	}
 	fmt.Printf("Sent SIGHUP to daemon (pid %d) — reloading\n", pid)
+
+	noDash, _ := cmd.Flags().GetBool("no-dashboard")
+	if !noDash {
+		return launchDashboard(root)
+	}
 	return nil
 }
 
