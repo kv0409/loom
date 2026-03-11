@@ -232,6 +232,13 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	}
 
 	d.RegisterACPClient(a.ID, c)
+
+	// Re-load from disk to avoid clobbering concurrent heartbeat updates.
+	a, err = agent.Load(d.LoomRoot, a.ID)
+	if err != nil {
+		log.Printf("[acp] %s: re-load failed: %v", a.ID, err)
+		return
+	}
 	a.PID = c.PID()
 	a.ACPSessionID = sessionID
 	a.Status = "active"
