@@ -6,13 +6,24 @@ import (
 )
 
 func (m Model) renderMail() string {
-	content := fmt.Sprintf("  %-8s %-14s %-8s %s\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
+	// Proportional column widths.
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	timeW := max(5, avail*10/100)
+	routeW := max(8, avail*18/100)
+	typeW := max(5, avail*10/100)
+	subjW := max(10, avail-timeW-routeW-typeW)
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", timeW, routeW, typeW)
+	content := fmt.Sprintf(fmtStr+"\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, msg := range m.data.messages {
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
-		line := fmt.Sprintf("  %-8s %-14s %-8s %s",
-			msg.Timestamp.Format("15:04"), truncate(route, 14), msg.Type, truncate(msg.Subject, 35))
+		line := fmt.Sprintf(fmtStr,
+			msg.Timestamp.Format("15:04"), truncate(route, routeW), msg.Type, truncate(msg.Subject, subjW))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
 		} else if i == m.hoverRow {

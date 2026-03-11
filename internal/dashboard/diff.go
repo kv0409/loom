@@ -28,11 +28,22 @@ func fetchDiff(wtPath string) string {
 }
 
 func (m Model) renderWorktrees() string {
-	content := fmt.Sprintf("  %-30s %-30s %-15s %s\n", "NAME", "BRANCH", "AGENT", "ISSUE")
+	// Proportional column widths.
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	nameW := max(10, avail*30/100)
+	branchW := max(10, avail*30/100)
+	agentW := max(8, avail*16/100)
+	issueW := max(6, avail-nameW-branchW-agentW)
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW)
+	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	for i, wt := range m.data.worktrees {
-		line := fmt.Sprintf("  %-30s %-30s %-15s %s",
-			truncate(slugFromWorktree(wt.Name), 30), truncate(wt.Branch, 30), wt.Agent, wt.Issue)
+		line := fmt.Sprintf(fmtStr,
+			truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW))
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		} else if i == m.hoverRow {
