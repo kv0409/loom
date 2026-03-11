@@ -63,6 +63,8 @@ func (m Model) renderAgents() string {
 		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
 		} else {
 			line = statusStyle(a.Status).Render(line)
 		}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -70,16 +71,25 @@ type Model struct {
 	selectedWorktree int
 	diffContent      string
 	lr               *logReader
+	lastClickTime    time.Time
+	lastClickRow     int
+	hoverRow         int // -1 = no hover
 }
 
 type tickMsg time.Time
 
 func New(loomRoot string) Model {
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot)}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), hoverRow: -1}
 }
 
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.refresh(), tickCmd())
+}
+
+// ProgramOptions returns the tea.ProgramOption set needed by the dashboard,
+// including alt-screen and mouse support.
+func ProgramOptions() []tea.ProgramOption {
+	return []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseAllMotion()}
 }
 
 func tickCmd() tea.Cmd {
@@ -133,6 +143,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -148,6 +160,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.hoverRow = -1
+
 	// Nudge mode captures all input
 	if m.nudgeMode {
 		switch msg.String() {
@@ -423,4 +437,130 @@ func (m Model) helpBar() string {
 		base += " | [n]udge [m]essage [o]utput [x]kill [Enter]attach"
 	}
 	return helpStyle.Render(base)
+}
+
+// helpBarTabs maps substrings in the help bar to views for mouse click targeting.
+var helpBarTabs = []struct {
+	label string
+	view  view
+}{
+	{"[a]gents", viewAgents},
+	{"[i]ssues", viewIssues},
+	{"[m]ail", viewMail},
+	{"[d]ecisions", viewMemory},
+	{"[w]orktrees", viewWorktrees},
+	{"[b]oard", viewKanban},
+	{"[t]activity", viewActivity},
+	{"[l]ogs", viewLogs},
+}
+
+func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	x, y := msg.X, msg.Y
+	lastRow := m.height - 1
+
+	switch {
+	case msg.Button == tea.MouseButtonWheelUp:
+		m.cursor--
+		if m.cursor < 0 {
+			m.cursor = 0
+		}
+		return m, nil
+
+	case msg.Button == tea.MouseButtonWheelDown:
+		m.cursor++
+		m.clampCursor()
+		return m, nil
+
+	case msg.Button == tea.MouseButtonLeft:
+		// Click on help bar → switch view
+		if y >= lastRow {
+			bar := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs"
+			for _, tab := range helpBarTabs {
+				idx := strings.Index(bar, tab.label)
+				if idx >= 0 && x >= idx && x < idx+len(tab.label) {
+					m.view = tab.view
+					m.cursor = 0
+					m.hoverRow = -1
+					return m, nil
+				}
+			}
+			return m, nil
+		}
+
+		// Click on list items in list views
+		if isListView(m.view) {
+			item := m.mouseToListIndex(y)
+			if item >= 0 && item < m.listLen() {
+				now := time.Now()
+				doubleClick := item == m.lastClickRow && now.Sub(m.lastClickTime) < 400*time.Millisecond
+				m.cursor = item
+				m.lastClickRow = item
+				m.lastClickTime = now
+				if doubleClick {
+					return m.handleEnter()
+				}
+			}
+			return m, nil
+		}
+
+		// Diff/logs: click sets scroll position
+		if m.view == viewDiff || m.view == viewLogs {
+			item := m.mouseToListIndex(y)
+			if item >= 0 {
+				m.cursor = item
+				m.clampCursor()
+			}
+			return m, nil
+		}
+
+	case msg.Button == tea.MouseButtonNone:
+		// Motion — update hover row
+		if isListView(m.view) {
+			item := m.mouseToListIndex(y)
+			if item >= 0 && item < m.listLen() {
+				m.hoverRow = item
+			} else {
+				m.hoverRow = -1
+			}
+		} else {
+			m.hoverRow = -1
+		}
+		_ = x // suppress unused
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func isListView(v view) bool {
+	switch v {
+	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees:
+		return true
+	}
+	return false
+}
+
+// mouseToListIndex converts a screen Y coordinate to a list item index.
+// Layout: row 0 = title, row 1 = panel border, row 2 = column header, row 3 = separator, row 4+ = items.
+func (m Model) mouseToListIndex(y int) int {
+	idx := y - 4
+	if m.view == viewIssues {
+		// displayIssues inserts 3 extra lines (blank + RECENTLY DONE + separator)
+		// between active and done sections. Adjust index for items past the gap.
+		activeCount := 0
+		for _, iss := range m.displayIssues() {
+			if iss.Status != "done" && iss.Status != "cancelled" {
+				activeCount++
+			}
+		}
+		display := m.displayIssues()
+		if activeCount < len(display) && idx > activeCount {
+			// Clicks on the 3 separator lines map to nothing useful
+			if idx <= activeCount+3 {
+				return -1
+			}
+			idx -= 3
+		}
+	}
+	return idx
 }

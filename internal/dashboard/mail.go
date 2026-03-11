@@ -15,6 +15,8 @@ func (m Model) renderMail() string {
 			msg.Timestamp.Format("15:04"), truncate(route, 14), msg.Type, truncate(msg.Subject, 35))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
 		}
 		content += line + "\n"
 	}

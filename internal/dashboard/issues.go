@@ -53,6 +53,8 @@ func (m Model) renderIssues() string {
 			iss.ID, iss.Type, statusCol, truncate(iss.Title, 36), iss.Assignee)
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
 		} else {
 			line = statusStyle(iss.Status).Render(line)
 		}
