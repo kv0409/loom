@@ -11,8 +11,20 @@ import (
 )
 
 func (m Model) renderAgents() string {
-	content := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s\n",
-		"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
+	// Compute ID column width from actual tree data.
+	idWidth := 16
+	for i, a := range m.data.agents {
+		w := len(a.ID)
+		if i < len(m.data.agentTree) {
+			w += m.data.agentTree[i].depth * 2
+		}
+		if w > idWidth {
+			idWidth = w
+		}
+	}
+
+	fmtStr := fmt.Sprintf("  %%-%ds %%-10s %%-12s %%-22s %%-14s %%s", idWidth)
+	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
 	for i, a := range m.data.agents {
@@ -27,29 +39,28 @@ func (m Model) renderAgents() string {
 		hb := relTime(a.Heartbeat)
 		statusCol := fmt.Sprintf("%s %-10s", statusIndicator(a.Status), a.Status)
 
-		// Build tree prefix
+		// Build tree prefix (2-char indent per level).
 		prefix := ""
 		if i < len(m.data.agentTree) {
 			node := m.data.agentTree[i]
 			for d := 0; d < node.depth-1; d++ {
 				if d < len(node.ancestors) && node.ancestors[d] {
-					prefix += "    "
+					prefix += "  "
 				} else {
-					prefix += "│   "
+					prefix += "│ "
 				}
 			}
 			if node.depth > 0 {
 				if node.isLast {
-					prefix += "└── "
+					prefix += "└ "
 				} else {
-					prefix += "├── "
+					prefix += "├ "
 				}
 			}
 		}
 
 		id := prefix + a.ID
-		line := fmt.Sprintf("  %-16s %-10s %-12s %-22s %-14s %s",
-			id, a.Role, statusCol, wt, issues, hb)
+		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
 			line = selectedStyle.Render(line)
 		} else {
