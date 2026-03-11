@@ -39,7 +39,7 @@ func (m Model) renderWorktrees() string {
 		content += line + "\n"
 	}
 	if len(m.data.worktrees) == 0 {
-		content += "  (none)\n"
+		content += "  No worktrees active. Builders create them automatically.\n"
 	}
 	return panel(fmt.Sprintf("WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees)), content, m.width-2)
 }
