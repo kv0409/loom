@@ -299,7 +299,7 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 // KillProcess kills the OS process (group) for a dead agent by PID.
 // Returns true if a process was found and signalled.
 func KillProcess(a *Agent) bool {
-	if a.PID <= 0 {
+	if a.PID <= 0 || a.Config.KiroMode != "acp" {
 		return false
 	}
 	// Check if process is still alive.

@@ -1687,7 +1687,7 @@ func runGC(cmd *cobra.Command, args []string) error {
 	for _, a := range agents {
 		if a.Status == "dead" {
 			if dryRun {
-				fmt.Printf("[dry-run] Would remove dead agent: %s (pid %d)\n", a.ID, a.PID)
+				fmt.Printf("[dry-run] Would kill and remove dead agent: %s (pid %d)\n", a.ID, a.PID)
 			} else {
 				if agent.KillProcess(a) {
 					fmt.Printf("Killed orphaned process: %s (pid %d)\n", a.ID, a.PID)
