@@ -105,6 +105,17 @@ func (d *Daemon) UnregisterACPClient(agentID string) {
 	d.mu.Unlock()
 }
 
+// GetACPOutput returns the last n response texts for the given agent.
+func (d *Daemon) GetACPOutput(agentID string, n int) []string {
+	d.mu.Lock()
+	c := d.acpClients[agentID]
+	d.mu.Unlock()
+	if c == nil {
+		return nil
+	}
+	return c.RecentOutput(n)
+}
+
 func (d *Daemon) watchPendingAgents() {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

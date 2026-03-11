@@ -20,6 +20,9 @@ type Client struct {
 	mu     sync.Mutex // serialises writes
 	nextID atomic.Int64
 	exited atomic.Bool
+
+	outMu         sync.Mutex
+	lastResponses []string // last 50 responses
 }
 
 // jsonRPCRequest is a JSON-RPC 2.0 request.
@@ -183,7 +186,42 @@ func (c *Client) SendPrompt(sessionID string, text string) (*PromptResult, error
 	if err := c.call("session/prompt", params, &res); err != nil {
 		return nil, err
 	}
+	c.recordResponse(&res)
 	return &res, nil
+}
+
+// recordResponse extracts text content from a PromptResult and appends to the buffer.
+func (c *Client) recordResponse(res *PromptResult) {
+	var texts []string
+	for _, b := range res.Content {
+		if b.Type == "text" && b.Text != "" {
+			texts = append(texts, b.Text)
+		}
+	}
+	if len(texts) == 0 {
+		return
+	}
+	c.outMu.Lock()
+	c.lastResponses = append(c.lastResponses, texts...)
+	if len(c.lastResponses) > 50 {
+		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
+	}
+	c.outMu.Unlock()
+}
+
+// RecentOutput returns the last n captured response texts.
+func (c *Client) RecentOutput(n int) []string {
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+	if n <= 0 || len(c.lastResponses) == 0 {
+		return nil
+	}
+	if n > len(c.lastResponses) {
+		n = len(c.lastResponses)
+	}
+	out := make([]string, n)
+	copy(out, c.lastResponses[len(c.lastResponses)-n:])
+	return out
 }
 
 // Close shuts down the subprocess. It closes stdin and waits for exit.
