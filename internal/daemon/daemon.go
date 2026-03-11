@@ -27,21 +27,17 @@ type Daemon struct {
 	mu         sync.Mutex
 	acpClients map[string]*acp.Client
 	apiLn      net.Listener
-
-	// Stale heartbeat tracking
-	nudgeCounts map[string]int       // agent ID → consecutive nudges sent
-	lastSeen    map[string]time.Time // agent ID → last observed heartbeat timestamp
+	lastSeen   map[string]time.Time // ephemeral: detect heartbeat changes between ticks
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
 	return &Daemon{
-		LoomRoot:    loomRoot,
-		Config:      cfg,
-		stop:        make(chan struct{}),
-		done:        make(chan struct{}),
-		acpClients:  make(map[string]*acp.Client),
-		nudgeCounts: make(map[string]int),
-		lastSeen:    make(map[string]time.Time),
+		LoomRoot:   loomRoot,
+		Config:     cfg,
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
+		acpClients: make(map[string]*acp.Client),
+		lastSeen:   make(map[string]time.Time),
 	}
 }
 
@@ -118,10 +114,9 @@ func (d *Daemon) Reload() error {
 	}
 	d.Config = cfg
 
-	// Fresh channels and tracking state.
+	// Fresh channels.
 	d.stop = make(chan struct{})
 	d.done = make(chan struct{})
-	d.nudgeCounts = make(map[string]int)
 	d.lastSeen = make(map[string]time.Time)
 
 	log.Println("[daemon] reload: restarting goroutines")
@@ -430,7 +425,6 @@ func (d *Daemon) watchHeartbeats() {
 			}
 			for _, a := range agents {
 				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
-					delete(d.nudgeCounts, a.ID)
 					delete(d.lastSeen, a.ID)
 					continue
 				}
@@ -439,8 +433,8 @@ func (d *Daemon) watchHeartbeats() {
 						d.UnregisterACPClient(a.ID)
 					}
 					a.Status = "dead"
+					a.NudgeCount = 0
 					agent.Save(d.LoomRoot, a)
-					delete(d.nudgeCounts, a.ID)
 					delete(d.lastSeen, a.ID)
 					parentID := a.SpawnedBy
 					if parentID == "" {
@@ -457,7 +451,6 @@ func (d *Daemon) watchHeartbeats() {
 				// Agent is alive — check for stale heartbeat.
 				prev, tracked := d.lastSeen[a.ID]
 				if !tracked {
-					// First time seeing this agent; seed tracking.
 					d.lastSeen[a.ID] = a.Heartbeat
 					continue
 				}
@@ -465,7 +458,10 @@ func (d *Daemon) watchHeartbeats() {
 				// Heartbeat was refreshed since last check — reset nudge count.
 				if a.Heartbeat.After(prev) {
 					d.lastSeen[a.ID] = a.Heartbeat
-					d.nudgeCounts[a.ID] = 0
+					if a.NudgeCount > 0 {
+						a.NudgeCount = 0
+						agent.Save(d.LoomRoot, a)
+					}
 					continue
 				}
 
@@ -474,18 +470,18 @@ func (d *Daemon) watchHeartbeats() {
 					continue
 				}
 
-				count := d.nudgeCounts[a.ID]
-				if count < 2 {
+				if a.NudgeCount < 2 {
 					d.notify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
-					d.nudgeCounts[a.ID] = count + 1
-					if count+1 == 2 {
+					a.NudgeCount++
+					a.LastNudge = time.Now()
+					agent.Save(d.LoomRoot, a)
+					if a.NudgeCount == 2 {
 						if parentID := a.SpawnedBy; parentID != "" {
 							parent, err := agent.Load(d.LoomRoot, parentID)
 							if err == nil {
 								d.notify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
 							}
 						}
-						d.nudgeCounts[a.ID] = 3 // prevent repeat notifications
 					}
 				}
 			}

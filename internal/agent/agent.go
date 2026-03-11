@@ -31,6 +31,8 @@ type Agent struct {
 	WorktreeName   string      `yaml:"worktree,omitempty"`
 	ACPSessionID   string      `yaml:"acp_session_id,omitempty"`
 	InitialTask    string      `yaml:"initial_task,omitempty"`
+	NudgeCount     int         `yaml:"nudge_count,omitempty"`
+	LastNudge      time.Time   `yaml:"last_nudge,omitempty"`
 	Config         AgentConfig `yaml:"config"`
 }
 
