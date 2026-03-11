@@ -2,9 +2,11 @@ package dashboard
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type logLine struct {
@@ -12,74 +14,113 @@ type logLine struct {
 	Text     string
 }
 
-// readLogs is called from refresh() (tea.Cmd), not from View().
-func readLogs(loomRoot string) []logLine {
-	data, err := os.ReadFile(filepath.Join(loomRoot, "logs", "daemon.log"))
+// logReader tracks file offset for incremental reads.
+type logReader struct {
+	mu      sync.Mutex
+	path    string
+	offset  int64
+	lines   []logLine
+	partial string // incomplete line from last read
+}
+
+func newLogReader(loomRoot string) *logReader {
+	return &logReader{path: filepath.Join(loomRoot, "logs", "daemon.log")}
+}
+
+const maxLogLines = 200
+
+// read returns all accumulated log lines, reading only new bytes since last call.
+func (r *logReader) read() []logLine {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	f, err := os.Open(r.path)
 	if err != nil {
-		return nil
+		return r.lines
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return r.lines
 	}
 
-	var lines []logLine
-	for _, line := range strings.Split(string(data), "\n") {
+	// Handle truncation/rotation: file shrank → reset
+	if info.Size() < r.offset {
+		r.offset = 0
+		r.lines = nil
+		r.partial = ""
+	}
+
+	if info.Size() == r.offset {
+		return r.lines
+	}
+
+	if _, err := f.Seek(r.offset, io.SeekStart); err != nil {
+		return r.lines
+	}
+
+	buf, err := io.ReadAll(f)
+	if err != nil {
+		return r.lines
+	}
+	r.offset += int64(len(buf))
+
+	// Prepend any partial line from previous read
+	text := r.partial + string(buf)
+	r.partial = ""
+
+	rawLines := strings.Split(text, "\n")
+
+	// Last element may be incomplete if file didn't end with newline
+	if len(rawLines) > 0 && !strings.HasSuffix(text, "\n") {
+		r.partial = rawLines[len(rawLines)-1]
+		rawLines = rawLines[:len(rawLines)-1]
+	}
+
+	for _, line := range rawLines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
-		cat, text, ok := classifyLogLine(trimmed)
+		cat, t, ok := classifyLogLine(trimmed)
 		if !ok {
-			continue // skip noise
+			continue
 		}
-		lines = append(lines, logLine{Category: cat, Text: text})
+		r.lines = append(r.lines, logLine{Category: cat, Text: t})
 	}
 
-	if len(lines) > 200 {
-		lines = lines[len(lines)-200:]
+	// Cap stored lines
+	if len(r.lines) > maxLogLines {
+		r.lines = r.lines[len(r.lines)-maxLogLines:]
 	}
-	return lines
+
+	return r.lines
 }
 
 // classifyLogLine returns (category, display text, keep).
-// Returns keep=false for noisy lines that should be filtered out.
 func classifyLogLine(line string) (string, string, bool) {
-	// Skip notification spam
 	if strings.Contains(line, "[acp-notif]") {
 		return "", "", false
 	}
-
-	// Agent lifecycle events
-	if strings.Contains(line, "[acp] activating agent") {
-		return "lifecycle", line, true
-	}
-	if strings.Contains(line, "calling Initialize") ||
+	if strings.Contains(line, "[acp] activating agent") ||
+		strings.Contains(line, "calling Initialize") ||
 		strings.Contains(line, "calling NewSession") ||
-		strings.Contains(line, "sending initial task") {
+		strings.Contains(line, "sending initial task") ||
+		strings.Contains(line, "process exited") ||
+		strings.Contains(line, "session=") {
 		return "lifecycle", line, true
 	}
-	if strings.Contains(line, "process exited") {
-		return "lifecycle", line, true
-	}
-
-	// Errors
 	if strings.Contains(line, "failed") || strings.Contains(line, "Failed") ||
 		strings.Contains(line, "error") || strings.Contains(line, "Error") {
 		return "error", line, true
 	}
-
-	// Stderr from kiro-cli
 	if strings.Contains(line, "[acp-stderr]") {
 		return "stderr", line, true
 	}
-
-	// Warnings
 	if strings.Contains(line, "Warning") || strings.Contains(line, "WARNING") {
 		return "warn", line, true
 	}
-
-	// Session info
-	if strings.Contains(line, "session=") {
-		return "lifecycle", line, true
-	}
-
 	return "", "", false
 }
 
