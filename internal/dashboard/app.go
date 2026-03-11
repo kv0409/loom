@@ -160,6 +160,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	m.hoverRow = -1
+
 	// Nudge mode captures all input
 	if m.nudgeMode {
 		switch msg.String() {
