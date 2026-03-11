@@ -70,9 +70,11 @@ type jsonRPCNotification struct {
 }
 
 // serverRequest is a JSON-RPC 2.0 request sent from server to client.
+// ID is json.RawMessage because kiro-cli sends string UUIDs for permission
+// request IDs, not integers.
 type serverRequest struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
+	ID      json.RawMessage `json:"id"`
 	Method  string          `json:"method"`
 	Params  json.RawMessage `json:"params,omitempty"`
 }
@@ -176,21 +178,34 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			continue
 		}
 
-		// Try to parse as a response (has "id" field).
-		var resp jsonRPCResponse
-		if err := json.Unmarshal(line, &resp); err != nil {
+		// Probe the raw JSON to determine message type.
+		// Server requests have a "method" field; responses do not.
+		var probe struct {
+			ID     json.RawMessage `json:"id"`
+			Method string          `json:"method"`
+		}
+		if err := json.Unmarshal(line, &probe); err != nil {
 			continue
 		}
 
-		if resp.ID != 0 {
-			// Check if it's a server→client request (has both id and method).
+		hasID := len(probe.ID) > 0 && string(probe.ID) != "null"
+
+		if hasID && probe.Method != "" {
+			// Server→client request (e.g. permission prompt). ID may be string UUID.
 			var req serverRequest
-			_ = json.Unmarshal(line, &req)
-			if req.Method != "" {
-				c.handleServerRequest(&req)
+			if err := json.Unmarshal(line, &req); err != nil {
 				continue
 			}
-			// It's a response to a request — deliver to waiting caller.
+			c.handleServerRequest(&req)
+			continue
+		}
+
+		if hasID {
+			// Response to one of our requests (integer ID).
+			var resp jsonRPCResponse
+			if err := json.Unmarshal(line, &resp); err != nil {
+				continue
+			}
 			c.pendingMu.Lock()
 			ch, ok := c.pending[resp.ID]
 			c.pendingMu.Unlock()
@@ -200,7 +215,7 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			continue
 		}
 
-		// It's a notification — extract useful text for the output buffer.
+		// Notification (no ID).
 		var notif jsonRPCNotification
 		if err := json.Unmarshal(line, &notif); err != nil {
 			continue
@@ -253,16 +268,21 @@ func (c *Client) handleServerRequest(req *serverRequest) {
 	log.Printf("[acp-permission] agent=%s method=%s tool=%q command=%q decision=%s", c.AgentID, req.Method, tool, command, action)
 
 	// Send JSON-RPC response back to kiro-cli.
-	var result interface{}
-	if approved {
-		result = map[string]bool{"approved": true}
-	} else {
-		result = map[string]bool{"approved": false}
+	// kiro-cli expects: {"outcome": {"outcome": "selected", "optionId": "allow_once"|"deny"}}
+	optionID := "allow_once"
+	if !approved {
+		optionID = "deny"
+	}
+	result := map[string]interface{}{
+		"outcome": map[string]string{
+			"outcome":  "selected",
+			"optionId": optionID,
+		},
 	}
 	resp := struct {
-		JSONRPC string      `json:"jsonrpc"`
-		ID      int64       `json:"id"`
-		Result  interface{} `json:"result"`
+		JSONRPC string          `json:"jsonrpc"`
+		ID      json.RawMessage `json:"id"`
+		Result  interface{}     `json:"result"`
 	}{
 		JSONRPC: "2.0",
 		ID:      req.ID,
