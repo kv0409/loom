@@ -408,7 +408,7 @@ func (d *Daemon) watchDoneIssues() {
 				if t, ok := notifiedAgents[a.ID]; ok {
 					if time.Since(t) > 2*time.Minute {
 						log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
-						agent.Kill(d.LoomRoot, a.ID, false)
+						agent.Kill(d.LoomRoot, a.ID, true)
 						delete(notifiedAgents, a.ID)
 					}
 					continue
