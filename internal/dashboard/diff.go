@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	diffAdd  = lipgloss.NewStyle().Foreground(green)
-	diffDel  = lipgloss.NewStyle().Foreground(red)
-	diffHunk = lipgloss.NewStyle().Foreground(gray)
+	diffAdd  = lipgloss.NewStyle().Foreground(colGreen)
+	diffDel  = lipgloss.NewStyle().Foreground(colRed)
+	diffHunk = lipgloss.NewStyle().Foreground(colCyan)
 )
 
 func fetchDiff(wtPath string) string {
