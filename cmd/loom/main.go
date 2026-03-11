@@ -1369,9 +1369,15 @@ func runNudge(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	msg := "[LOOM] Nudge: " + args[1]
-	if err := tmux.RunInPane(a.TmuxTarget, msg); err != nil {
-		return err
+	if a.Config.KiroMode == "acp" {
+		if err := daemon.Nudge(root, args[0], args[1]); err != nil {
+			return err
+		}
+	} else {
+		msg := "[LOOM] Nudge: " + args[1]
+		if err := tmux.RunInPane(a.TmuxTarget, msg); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("Nudged %s\n", args[0])
 	return nil
@@ -1383,8 +1389,18 @@ func runKill(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cleanup, _ := cmd.Flags().GetBool("cleanup")
-	if err := agent.Kill(root, args[0], cleanup); err != nil {
+	a, err := agent.Load(root, args[0])
+	if err != nil {
 		return err
+	}
+	if a.Config.KiroMode == "acp" {
+		if err := daemon.Kill(root, args[0], cleanup); err != nil {
+			return err
+		}
+	} else {
+		if err := agent.Kill(root, args[0], cleanup); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("Killed %s\n", args[0])
 	return nil
