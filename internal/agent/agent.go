@@ -319,6 +319,9 @@ func unassignIssues(loomRoot string, a *Agent) {
 			continue
 		}
 		iss.Assignee = ""
+		if iss.Status == "assigned" || iss.Status == "in-progress" {
+			iss.Status = "open"
+		}
 		issue.Save(loomRoot, iss)
 	}
 }
