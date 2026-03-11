@@ -69,12 +69,13 @@ type Model struct {
 	messageInput     string
 	selectedWorktree int
 	diffContent      string
+	lr               *logReader
 }
 
 type tickMsg time.Time
 
 func New(loomRoot string) Model {
-	return Model{loomRoot: loomRoot, width: 80, height: 24}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot)}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -87,6 +88,7 @@ func tickCmd() tea.Cmd {
 
 func (m Model) refresh() tea.Cmd {
 	root := m.loomRoot
+	lr := m.lr
 	return func() tea.Msg {
 		var d data
 		d.agents, _ = agent.List(root)
@@ -103,7 +105,7 @@ func (m Model) refresh() tea.Cmd {
 		d.unread = countUnread(root)
 		d.agents, d.agentTree = sortAgentTree(d.agents)
 		d.activity = fetchActivity(root, d.agents)
-		d.logs = readLogs(root)
+		d.logs = lr.read()
 		return d
 	}
 }
