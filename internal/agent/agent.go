@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/karanagi/loom/internal/config"
+	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/store"
 	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
@@ -196,6 +197,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		if err := Register(loomRoot, a); err != nil {
 			return nil, fmt.Errorf("registering agent: %w", err)
 		}
+		assignIssues(loomRoot, a)
 		return a, nil
 	}
 
@@ -211,6 +213,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		tmux.KillWindow(target)
 		return nil, fmt.Errorf("registering agent: %w", err)
 	}
+	assignIssues(loomRoot, a)
 
 	if err := createWorktree(); err != nil {
 		Deregister(loomRoot, id)
@@ -287,7 +290,35 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	}
 	// Purge mail inbox for the dead agent
 	os.RemoveAll(filepath.Join(loomRoot, "mail", "inbox", id))
+	unassignIssues(loomRoot, a)
 	return Deregister(loomRoot, id)
+}
+
+// assignIssues sets the assignee on each of the agent's assigned issues.
+func assignIssues(loomRoot string, a *Agent) {
+	for _, issID := range a.AssignedIssues {
+		iss, err := issue.Load(loomRoot, issID)
+		if err != nil {
+			continue
+		}
+		opts := issue.UpdateOpts{Assignee: a.ID}
+		if iss.Status == "open" {
+			opts.Status = "assigned"
+		}
+		issue.Update(loomRoot, issID, opts)
+	}
+}
+
+// unassignIssues clears the assignee on each of the agent's assigned issues.
+func unassignIssues(loomRoot string, a *Agent) {
+	for _, issID := range a.AssignedIssues {
+		iss, err := issue.Load(loomRoot, issID)
+		if err != nil || iss.Assignee != a.ID {
+			continue
+		}
+		iss.Assignee = ""
+		issue.Save(loomRoot, iss)
+	}
 }
 
 func listChildren(loomRoot, parentID string) ([]*Agent, error) {
