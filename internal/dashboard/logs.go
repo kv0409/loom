@@ -8,33 +8,28 @@ import (
 )
 
 type logLine struct {
-	Agent string
-	Text  string
+	Category string
+	Text     string
 }
 
 // readLogs is called from refresh() (tea.Cmd), not from View().
 func readLogs(loomRoot string) []logLine {
-	logsDir := filepath.Join(loomRoot, "logs")
-	entries, err := os.ReadDir(logsDir)
+	data, err := os.ReadFile(filepath.Join(loomRoot, "logs", "daemon.log"))
 	if err != nil {
 		return nil
 	}
 
 	var lines []logLine
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".log") {
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
-		agentID := strings.TrimSuffix(e.Name(), ".log")
-		data, err := os.ReadFile(filepath.Join(logsDir, e.Name()))
-		if err != nil {
-			continue
+		cat, text, ok := classifyLogLine(trimmed)
+		if !ok {
+			continue // skip noise
 		}
-		for _, line := range strings.Split(string(data), "\n") {
-			if trimmed := strings.TrimSpace(line); trimmed != "" {
-				lines = append(lines, logLine{Agent: agentID, Text: trimmed})
-			}
-		}
+		lines = append(lines, logLine{Category: cat, Text: text})
 	}
 
 	if len(lines) > 200 {
@@ -43,29 +38,74 @@ func readLogs(loomRoot string) []logLine {
 	return lines
 }
 
-func (m Model) renderLogs() string {
-	filter := ""
-	if m.logFilter > 0 && m.logFilter <= len(m.data.agents) {
-		filter = m.data.agents[m.logFilter-1].ID
+// classifyLogLine returns (category, display text, keep).
+// Returns keep=false for noisy lines that should be filtered out.
+func classifyLogLine(line string) (string, string, bool) {
+	// Skip notification spam
+	if strings.Contains(line, "[acp-notif]") {
+		return "", "", false
 	}
 
-	filterLabel := "all agents"
+	// Agent lifecycle events
+	if strings.Contains(line, "[acp] activating agent") {
+		return "lifecycle", line, true
+	}
+	if strings.Contains(line, "calling Initialize") ||
+		strings.Contains(line, "calling NewSession") ||
+		strings.Contains(line, "sending initial task") {
+		return "lifecycle", line, true
+	}
+	if strings.Contains(line, "process exited") {
+		return "lifecycle", line, true
+	}
+
+	// Errors
+	if strings.Contains(line, "failed") || strings.Contains(line, "Failed") ||
+		strings.Contains(line, "error") || strings.Contains(line, "Error") {
+		return "error", line, true
+	}
+
+	// Stderr from kiro-cli
+	if strings.Contains(line, "[acp-stderr]") {
+		return "stderr", line, true
+	}
+
+	// Warnings
+	if strings.Contains(line, "Warning") || strings.Contains(line, "WARNING") {
+		return "warn", line, true
+	}
+
+	// Session info
+	if strings.Contains(line, "session=") {
+		return "lifecycle", line, true
+	}
+
+	return "", "", false
+}
+
+func (m Model) renderLogs() string {
+	filter := ""
+	categories := []string{"", "lifecycle", "error", "stderr", "warn"}
+	if m.logFilter > 0 && m.logFilter < len(categories) {
+		filter = categories[m.logFilter]
+	}
+
+	filterLabel := "all"
 	if filter != "" {
 		filterLabel = filter
 	}
-	header := fmt.Sprintf("  Filter: [%s]  (f to cycle)\n", filterLabel)
+	header := fmt.Sprintf("  Filter: [%s]  (f to cycle: all → lifecycle → error → stderr → warn)\n", filterLabel)
 	header += "  " + strings.Repeat("─", m.width-6) + "\n"
 
-	// Filter from pre-fetched data
 	var lines []logLine
 	for _, l := range m.data.logs {
-		if filter == "" || l.Agent == filter {
+		if filter == "" || l.Category == filter {
 			lines = append(lines, l)
 		}
 	}
 
 	if len(lines) == 0 {
-		header += "  (no log files found in .loom/logs/)\n"
+		header += "  (no matching log entries)\n"
 		return panel("LOGS", header, m.width-2)
 	}
 
@@ -81,9 +121,22 @@ func (m Model) renderLogs() string {
 	content := header
 	for i := start; i < len(lines); i++ {
 		l := lines[i]
-		agentTag := idleStyle.Render(fmt.Sprintf("[%-14s]", l.Agent))
-		content += fmt.Sprintf("  %s %s\n", agentTag, truncate(l.Text, m.width-22))
+		tag := categoryTag(l.Category)
+		content += fmt.Sprintf("  %s %s\n", tag, truncate(l.Text, m.width-16))
 	}
 
-	return panel(fmt.Sprintf("LOGS (%d lines)", len(lines)), content, m.width-2)
+	return panel(fmt.Sprintf("LOGS (%d events)", len(lines)), content, m.width-2)
+}
+
+func categoryTag(cat string) string {
+	switch cat {
+	case "error":
+		return deadStyle.Render(fmt.Sprintf("%-10s", "ERROR"))
+	case "stderr":
+		return idleStyle.Render(fmt.Sprintf("%-10s", "STDERR"))
+	case "warn":
+		return idleStyle.Render(fmt.Sprintf("%-10s", "WARN"))
+	default:
+		return activeStyle.Render(fmt.Sprintf("%-10s", cat))
+	}
 }

@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/karanagi/loom/internal/agent"
@@ -14,12 +16,28 @@ type activityEntry struct {
 }
 
 // fetchActivity is called from refresh() (tea.Cmd), not from View().
-func fetchActivity(agents []*agent.Agent) []activityEntry {
+func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 	var entries []activityEntry
 	for _, a := range agents {
-		if a.TmuxTarget == "" || a.Status == "dead" {
+		if a.Status == "dead" {
 			continue
 		}
+
+		// ACP agents: read from .output files
+		if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+			outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
+			raw, err := os.ReadFile(outPath)
+			if err != nil {
+				continue
+			}
+			text := assembleChunks(string(raw))
+			if text != "" {
+				entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
+			}
+			continue
+		}
+
+		// Chat agents: tmux pane scraping
 		out, err := tmux.CapturePane(a.TmuxTarget)
 		if err != nil {
 			continue
@@ -29,6 +47,29 @@ func fetchActivity(agents []*agent.Agent) []activityEntry {
 		}
 	}
 	return entries
+}
+
+// assembleChunks joins [agent_message_chunk] fragments into readable text.
+func assembleChunks(raw string) string {
+	var parts []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Strip the [agent_message_chunk] prefix
+		if after, ok := strings.CutPrefix(line, "[agent_message_chunk]"); ok {
+			parts = append(parts, strings.TrimLeft(after, " "))
+		} else {
+			parts = append(parts, line)
+		}
+	}
+	joined := strings.Join(parts, "")
+	// Trim to last ~200 chars for readability
+	if len(joined) > 200 {
+		joined = "…" + joined[len(joined)-199:]
+	}
+	return joined
 }
 
 func parseActivityLines(raw string) []string {
@@ -71,7 +112,7 @@ func (m Model) renderActivity() string {
 		return panel("ACTIVITY", "  (no activity detected)\n", m.width-2)
 	}
 
-	content := fmt.Sprintf("  %-16s %s\n", "AGENT", "ACTIVITY")
+	content := fmt.Sprintf("  %-16s %s\n", "AGENT", "RECENT OUTPUT")
 	content += "  " + strings.Repeat("─", m.width-6) + "\n"
 
 	visible := m.height - 8
@@ -89,5 +130,5 @@ func (m Model) renderActivity() string {
 		content += fmt.Sprintf("  %s %s\n", agentLabel, truncate(e.Line, m.width-22))
 	}
 
-	return panel(fmt.Sprintf("ACTIVITY (%d entries)", len(entries)), content, m.width-2)
+	return panel(fmt.Sprintf("ACTIVITY (%d agents)", len(entries)), content, m.width-2)
 }

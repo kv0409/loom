@@ -102,7 +102,7 @@ func (m Model) refresh() tea.Cmd {
 		d.memories, _ = memory.List(root, memory.ListOpts{})
 		d.unread = countUnread(root)
 		d.agents, d.agentTree = sortAgentTree(d.agents)
-		d.activity = fetchActivity(d.agents)
+		d.activity = fetchActivity(root, d.agents)
 		d.logs = readLogs(root)
 		return d
 	}
@@ -250,10 +250,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "f":
 		if m.view == viewLogs {
-			m.logFilter++
-			if m.logFilter > len(m.data.agents) {
-				m.logFilter = 0
-			}
+			m.logFilter = (m.logFilter + 1) % 5 // all, lifecycle, error, stderr, warn
 			return m, nil
 		}
 	case "n":
