@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -288,7 +289,9 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 		syscall.Kill(-a.PID, syscall.SIGKILL)
 	}
 	if cleanupWorktree && a.WorktreeName != "" {
-		worktree.Remove(loomRoot, a.WorktreeName, true)
+		if err := worktree.Remove(loomRoot, a.WorktreeName, false); err != nil {
+			log.Printf("[agent] preserving worktree %s: %v", a.WorktreeName, err)
+		}
 	}
 	// Purge mail inbox for the dead agent
 	os.RemoveAll(filepath.Join(loomRoot, "mail", "inbox", id))

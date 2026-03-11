@@ -401,6 +401,15 @@ func main() {
 	mcpServerCmd.Flags().String("agent-id", "", "Agent ID for this MCP server instance (falls back to LOOM_AGENT_ID env var)")
 	mcpServerCmd.Flags().String("loom-root", "", "Path to .loom directory (auto-detected if omitted)")
 
+	mergeCmd := &cobra.Command{
+		Use:   "merge <issue-id>",
+		Short: "Squash-merge an issue's worktree branch into main",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runMerge,
+	}
+	mergeCmd.Flags().StringP("message", "m", "", "Commit message (auto-generated if omitted)")
+	mergeCmd.Flags().Bool("cleanup", false, "Remove worktree and branch after merge")
+
 	mergesCmd := &cobra.Command{
 		Use:   "merges",
 		Short: "Show merge queue status",
@@ -423,7 +432,7 @@ func main() {
 		spawnCmd,
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
-		gcCmd, exportCmd, mcpServerCmd, mergesCmd,
+		gcCmd, exportCmd, mcpServerCmd, mergeCmd, mergesCmd,
 		updateCmd,
 	)
 
@@ -2271,6 +2280,91 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 	fmt.Printf("Mail: %d undelivered\n", undelivered)
+	return nil
+}
+
+func runMerge(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	projectRoot := filepath.Dir(root)
+	issueID := args[0]
+
+	// Find the worktree/branch for this issue.
+	wts, err := worktree.List(root)
+	if err != nil {
+		return err
+	}
+	var wt *worktree.Worktree
+	for _, w := range wts {
+		if w.Issue == issueID {
+			wt = w
+			break
+		}
+	}
+	if wt == nil {
+		// Also check git branches directly (worktree may have been removed but branch kept).
+		out, err := exec.Command("git", "-C", projectRoot, "branch", "--list", issueID+"-*").Output()
+		if err == nil {
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				branch := strings.TrimSpace(strings.TrimPrefix(line, "* "))
+				if branch != "" && strings.HasPrefix(branch, issueID) {
+					wt = &worktree.Worktree{Name: branch, Branch: branch, Issue: issueID}
+					break
+				}
+			}
+		}
+	}
+	if wt == nil {
+		return fmt.Errorf("no worktree or branch found for issue %s", issueID)
+	}
+
+	// Merge.
+	mergeCmd := exec.Command("git", "merge", "--squash", wt.Branch)
+	mergeCmd.Dir = projectRoot
+	if out, err := mergeCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git merge --squash %s: %s", wt.Branch, strings.TrimSpace(string(out)))
+	}
+
+	// Commit.
+	msg, _ := cmd.Flags().GetString("message")
+	if msg == "" {
+		msg = fmt.Sprintf("Merge %s (%s)", wt.Branch, issueID)
+	}
+	commitCmd := exec.Command("git", "commit", "-m", msg)
+	commitCmd.Dir = projectRoot
+	commitOut, err := commitCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git commit: %s", strings.TrimSpace(string(commitOut)))
+	}
+
+	// Get the commit hash.
+	hashCmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	hashCmd.Dir = projectRoot
+	hashOut, _ := hashCmd.Output()
+	hash := strings.TrimSpace(string(hashOut))
+
+	// Set merged_at on the issue.
+	iss, err := issue.Load(root, issueID)
+	if err == nil {
+		now := time.Now()
+		iss.MergedAt = &now
+		issue.Save(root, iss)
+	}
+
+	fmt.Printf("Merged %s → %s\n", wt.Branch, hash)
+
+	// Optionally clean up.
+	cleanup, _ := cmd.Flags().GetBool("cleanup")
+	if cleanup {
+		if err := worktree.Remove(root, wt.Name, true); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: cleanup failed: %v\n", err)
+		} else {
+			fmt.Printf("Removed worktree %s\n", wt.Name)
+		}
+	}
+
 	return nil
 }
 
