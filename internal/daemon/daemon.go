@@ -73,11 +73,10 @@ func (d *Daemon) Start() error {
 		return err
 	}
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(6)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
-	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { defer wg.Done(); d.watchInboxGC() }()
 	go func() { defer wg.Done(); d.watchPendingAgents() }()
 	go func() { defer wg.Done(); d.watchACPOutput() }()
@@ -285,50 +284,11 @@ func (d *Daemon) watchIssues() {
 	}
 }
 
-func (d *Daemon) watchDoneIssues() {
-	// Track last-known status for each issue to detect transitions to "done".
-	statusCache := make(map[string]string)
-	existing, _ := issue.List(d.LoomRoot, issue.ListOpts{All: true})
-	for _, iss := range existing {
-		statusCache[iss.ID] = iss.Status
-	}
-	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-d.stop:
-			return
-		case <-ticker.C:
-			issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
-			if err != nil {
-				continue
-			}
-			for _, iss := range issues {
-				prev := statusCache[iss.ID]
-				statusCache[iss.ID] = iss.Status
-				if iss.Status != "done" || prev == "done" {
-					continue
-				}
-				// Issue just transitioned to done — kill assigned agents.
-				agents, err := agent.List(d.LoomRoot)
-				if err != nil {
-					continue
-				}
-				for _, a := range agents {
-					for _, aid := range a.AssignedIssues {
-						if aid == iss.ID {
-							agent.Kill(d.LoomRoot, a.ID, true)
-							if a.Config.KiroMode == "acp" {
-								d.UnregisterACPClient(a.ID)
-							}
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-}
+// watchDoneIssues is intentionally a no-op. Auto-killing agents on issue
+// "done" transitions caused a race condition where builders were destroyed
+// before their code was committed or merged (see DEC-028, DEC-029).
+// Leads now manage builder lifecycle explicitly via "loom agent kill --cleanup".
+func (d *Daemon) watchDoneIssues() {}
 
 func (d *Daemon) watchMail() {
 	const renotifyInterval = 30 * time.Second
