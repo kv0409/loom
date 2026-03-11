@@ -105,7 +105,7 @@ func DefaultConfig() *Config {
 		},
 		Kiro: KiroConfig{
 			Command:     "kiro-cli",
-			DefaultMode: "chat",
+			DefaultMode: "acp",
 		},
 		MCP: MCPConfig{
 			Enabled: true,
