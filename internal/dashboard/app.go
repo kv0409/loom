@@ -61,6 +61,7 @@ type Model struct {
 	view             view
 	data             data
 	cursor           int
+	cursors          map[view]int // per-view cursor positions
 	width            int
 	height           int
 	logFilter        int // 0=all, 1=lifecycle, 2=error, 3=stderr, 4=warn
@@ -81,7 +82,15 @@ type Model struct {
 type tickMsg time.Time
 
 func New(loomRoot string) Model {
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), hoverRow: -1}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), hoverRow: -1, cursors: make(map[view]int)}
+}
+
+// switchView saves the current cursor position and switches to the target view,
+// restoring its previously saved cursor position.
+func (m *Model) switchView(target view) {
+	m.cursors[m.view] = m.cursor
+	m.view = target
+	m.cursor = m.cursors[target]
 }
 
 func (m Model) Init() tea.Cmd {
@@ -220,26 +229,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		switch m.view {
 		case viewAgentDetail:
-			m.view = viewAgents
-			m.cursor = 0
+			m.switchView(viewAgents)
 		case viewIssueDetail:
-			m.view = viewIssues
-			m.cursor = 0
+			m.switchView(viewIssues)
 		case viewDiff:
 			m.view = viewWorktrees
 			m.cursor = m.selectedWorktree
 		default:
-			m.view = viewOverview
-			m.cursor = 0
+			m.switchView(viewOverview)
 		}
 		return m, nil
 	case "a":
-		m.view = viewAgents
-		m.cursor = 0
+		m.switchView(viewAgents)
 		return m, nil
 	case "i":
-		m.view = viewIssues
-		m.cursor = 0
+		m.switchView(viewIssues)
 		return m, nil
 	case "m":
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
@@ -247,24 +251,19 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.messageInput = ""
 			return m, nil
 		}
-		m.view = viewMail
-		m.cursor = 0
+		m.switchView(viewMail)
 		return m, nil
 	case "d":
-		m.view = viewMemory
-		m.cursor = 0
+		m.switchView(viewMemory)
 		return m, nil
 	case "w":
-		m.view = viewWorktrees
-		m.cursor = 0
+		m.switchView(viewWorktrees)
 		return m, nil
 	case "t":
-		m.view = viewActivity
-		m.cursor = 0
+		m.switchView(viewActivity)
 		return m, nil
 	case "l":
-		m.view = viewLogs
-		m.cursor = 0
+		m.switchView(viewLogs)
 		return m, nil
 	case "f":
 		if m.view == viewLogs {
@@ -296,8 +295,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case "tab":
-		m.view = nextView(m.view)
-		m.cursor = 0
+		m.switchView(nextView(m.view))
 		return m, nil
 	case "j", "down":
 		if m.view == viewAgentDetail {
@@ -308,8 +306,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clampCursor()
 		return m, nil
 	case "b":
-		m.view = viewKanban
-		m.cursor = 0
+		m.switchView(viewKanban)
 		return m, nil
 	case "k", "up":
 		if m.view == viewAgentDetail {
@@ -334,6 +331,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	switch m.view {
 	case viewAgents:
 		if len(m.data.agents) > 0 {
+			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
 		}
@@ -351,10 +349,12 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	case viewIssues:
 		if len(m.displayIssues()) > 0 {
+			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
 		}
 	case viewWorktrees:
 		if m.cursor < len(m.data.worktrees) {
+			m.cursors[m.view] = m.cursor
 			m.selectedWorktree = m.cursor
 			m.diffContent = fetchDiff(m.data.worktrees[m.cursor].Path)
 			m.view = viewDiff
@@ -531,8 +531,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			for _, tab := range helpBarTabs {
 				idx := strings.Index(bar, tab.label)
 				if idx >= 0 && x >= idx && x < idx+len(tab.label) {
-					m.view = tab.view
-					m.cursor = 0
+					m.switchView(tab.view)
 					m.hoverRow = -1
 					return m, nil
 				}
