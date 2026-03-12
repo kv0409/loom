@@ -353,6 +353,18 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.view = viewDiff
 			m.cursor = 0
 		}
+	case viewActivity:
+		if m.cursor < len(m.data.activity) {
+			aid := m.data.activity[m.cursor].AgentID
+			for i, a := range m.data.agents {
+				if a.ID == aid {
+					m.cursor = i
+					m.view = viewAgentDetail
+					m.detailScroll = 0
+					break
+				}
+			}
+		}
 	}
 	return m, nil
 }
@@ -379,6 +391,8 @@ func (m Model) listLen() int {
 		return len(m.data.memories)
 	case viewWorktrees:
 		return len(m.data.worktrees)
+	case viewActivity:
+		return len(m.data.activity)
 	case viewDiff:
 		lines := len(splitLines(m.diffContent))
 		if lines > 0 {
@@ -566,7 +580,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func isListView(v view) bool {
 	switch v {
-	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees:
+	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity:
 		return true
 	}
 	return false

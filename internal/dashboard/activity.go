@@ -139,8 +139,15 @@ func (m Model) renderActivity() string {
 
 	for i := start; i < len(entries); i++ {
 		e := entries[i]
-		agentLabel := idleStyle.Render(fmt.Sprintf("%-*s", agentW, truncate(e.AgentID, agentW)))
-		content += fmt.Sprintf("  %s %s\n", agentLabel, truncate(e.Line, lineW))
+		line := fmt.Sprintf("  %-*s %s", agentW, truncate(e.AgentID, agentW), truncate(e.Line, lineW))
+		if i == m.cursor {
+			line = selectedStyle.Render("▸" + line[1:])
+		} else if i == m.hoverRow {
+			line = hoverStyle.Render(line)
+		} else {
+			line = idleStyle.Render(line)
+		}
+		content += line + "\n"
 	}
 
 	return panel(fmt.Sprintf("ACTIVITY (%d agents)", len(entries)), content, m.width-2)
