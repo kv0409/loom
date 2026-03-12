@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/karanagi/loom/internal/worktree"
 )
 
 var (
@@ -16,7 +17,8 @@ var (
 )
 
 func fetchDiff(wtPath string) string {
-	cmd := exec.Command("git", "diff", "main...HEAD")
+	base := worktree.DefaultBranch(wtPath)
+	cmd := exec.Command("git", "diff", base+"...HEAD")
 	cmd.Dir = wtPath
 	out, err := cmd.Output()
 	if err != nil {

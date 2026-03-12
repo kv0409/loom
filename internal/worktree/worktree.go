@@ -278,8 +278,22 @@ func Show(loomRoot string, name string) (*Worktree, *DiffStats, error) {
 // DiffStatsFor returns diff stats for a worktree path.
 func DiffStatsFor(wtPath string) (*DiffStats, error) { return diffStats(wtPath) }
 
+// DefaultBranch detects the repo's default branch via origin/HEAD, falling back to "main".
+func DefaultBranch(wtPath string) string {
+	cmd := exec.Command("git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short")
+	cmd.Dir = wtPath
+	out, err := cmd.Output()
+	if err == nil {
+		if branch := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(string(out)), "origin/")); branch != "" {
+			return branch
+		}
+	}
+	return "main"
+}
+
 func diffStats(wtPath string) (*DiffStats, error) {
-	cmd := exec.Command("git", "diff", "--stat", "main...HEAD")
+	base := DefaultBranch(wtPath)
+	cmd := exec.Command("git", "diff", "--stat", base+"...HEAD")
 	cmd.Dir = wtPath
 	out, err := cmd.Output()
 	if err != nil {
