@@ -159,10 +159,7 @@ func (m Model) renderIssueDetail() string {
 		}
 	}
 
-	viewH := m.height - 6
-	if viewH < 1 {
-		viewH = 1
-	}
+	viewH := detailViewH(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

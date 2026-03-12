@@ -29,18 +29,7 @@ func (m Model) renderMemory() string {
 		content += renderEmpty("No memory entries yet", m.width-6)
 	}
 
-	visibleRows := m.height - 9 // header + tab bar + panel chrome + help bar (2 lines)
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
-	start := m.cursor - visibleRows + 1
-	if start < 0 {
-		start = 0
-	}
-	end := start + visibleRows
-	if end > len(memories) {
-		end = len(memories)
-	}
+	start, end := listViewport(m.cursor, len(memories), m.height-9)
 
 	for i := start; i < end; i++ {
 		e := memories[i]
@@ -129,10 +118,7 @@ func (m Model) renderMemoryDetail() string {
 		lines = append(lines, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
 	}
 
-	viewH := m.height - 6
-	if viewH < 1 {
-		viewH = 1
-	}
+	viewH := detailViewH(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

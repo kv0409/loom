@@ -114,10 +114,7 @@ func (m Model) renderDiff() string {
 		}
 	}
 
-	viewH := m.height - 6
-	if viewH < 1 {
-		viewH = 1
-	}
+	viewH := detailViewH(m.height)
 	viewContent, clampedScroll, total := renderViewport(styledLines, m.diffScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

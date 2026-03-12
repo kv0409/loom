@@ -27,18 +27,7 @@ func (m Model) renderMail() string {
 		content += renderEmpty("No messages yet", m.width-6)
 	}
 
-	visibleRows := m.height - 9
-	if visibleRows < 1 {
-		visibleRows = 1
-	}
-	start := m.cursor - visibleRows + 1
-	if start < 0 {
-		start = 0
-	}
-	end := start + visibleRows
-	if end > len(messages) {
-		end = len(messages)
-	}
+	start, end := listViewport(m.cursor, len(messages), m.height-9)
 
 	for i := start; i < end; i++ {
 		msg := messages[i]
@@ -91,10 +80,7 @@ func (m Model) renderMailDetail() string {
 		lines = append(lines, "  (no body)")
 	}
 
-	viewH := m.height - 6
-	if viewH < 1 {
-		viewH = 1
-	}
+	viewH := detailViewH(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

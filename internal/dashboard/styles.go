@@ -307,3 +307,30 @@ func statusPill(status string) string {
 	return statusPillStyle(status).Width(statusPillWidth).Render(status)
 }
 
+// detailViewH returns the number of visible lines for a detail-view panel
+// given the terminal height. Accounts for title bar, panel chrome, and help bar.
+func detailViewH(height int) int {
+	h := height - 6
+	if h < 1 {
+		h = 1
+	}
+	return h
+}
+
+// listViewport returns the start and end indices for a cursor-following list
+// viewport. visibleRows is the number of rows available for list items.
+func listViewport(cursor, total, visibleRows int) (start, end int) {
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	start = cursor - visibleRows + 1
+	if start < 0 {
+		start = 0
+	}
+	end = start + visibleRows
+	if end > total {
+		end = total
+	}
+	return start, end
+}
+
