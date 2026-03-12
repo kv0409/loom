@@ -440,14 +440,19 @@ func (d *Daemon) watchDoneIssues() {
 				if a.Status != "active" || a.Role == "orchestrator" {
 					continue
 				}
-				onResolved := false
+				// Only notify/kill if the agent has at least one assigned issue
+				// AND all of its assigned issues are resolved.
+				if len(a.AssignedIssues) == 0 {
+					continue
+				}
+				allResolved := true
 				for _, issID := range a.AssignedIssues {
-					if resolved[issID] {
-						onResolved = true
+					if !resolved[issID] {
+						allResolved = false
 						break
 					}
 				}
-				if !onResolved {
+				if !allResolved {
 					continue
 				}
 				if t, ok := notifiedAgents[a.ID]; ok {
