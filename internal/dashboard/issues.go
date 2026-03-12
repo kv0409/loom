@@ -29,7 +29,7 @@ func (m Model) displayIssues() []*issue.Issue {
 }
 
 func (m Model) renderIssues() string {
-	display := m.displayIssues()
+	display := m.filteredIssues()
 
 	// Count active issues for the separator position.
 	activeCount := 0
@@ -71,11 +71,15 @@ func (m Model) renderIssues() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("ISSUES (%d active)", activeCount), content, m.width-2)
+	title := fmt.Sprintf("ISSUES (%d active)", activeCount)
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("ISSUES (%d/%d) filter: %s", len(display), len(m.displayIssues()), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }
 
 func (m Model) renderIssueDetail() string {
-	display := m.displayIssues()
+	display := m.filteredIssues()
 	if m.cursor >= len(display) {
 		return "No issue selected"
 	}

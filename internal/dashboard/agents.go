@@ -11,12 +11,18 @@ import (
 )
 
 func (m Model) renderAgents() string {
+	agents := m.filteredAgents()
+
 	// Compute ID column width from actual tree data.
 	idWidth := 16
-	for i, a := range m.data.agents {
+	for _, a := range agents {
 		w := len(a.ID)
-		if i < len(m.data.agentTree) {
-			w += m.data.agentTree[i].depth * 2
+		// Find original index for tree data
+		for oi, oa := range m.data.agents {
+			if oa == a && oi < len(m.data.agentTree) {
+				w += m.data.agentTree[oi].depth * 2
+				break
+			}
 		}
 		if w > idWidth {
 			idWidth = w
@@ -39,7 +45,7 @@ func (m Model) renderAgents() string {
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
-	for i, a := range m.data.agents {
+	for i, a := range agents {
 		wt := "—"
 		if a.WorktreeName != "" {
 			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
@@ -54,23 +60,26 @@ func (m Model) renderAgents() string {
 		}
 		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusStyle(a.Status).Render(fmt.Sprintf("%-*s", statusW, truncate(a.Status, statusW))))
 
-		// Build tree prefix (2-char indent per level).
+		// Build tree prefix — find original index for tree data.
 		prefix := ""
-		if i < len(m.data.agentTree) {
-			node := m.data.agentTree[i]
-			for d := 0; d < node.depth-1; d++ {
-				if d < len(node.ancestors) && node.ancestors[d] {
-					prefix += "  "
-				} else {
-					prefix += "│ "
+		for oi, oa := range m.data.agents {
+			if oa == a && oi < len(m.data.agentTree) {
+				node := m.data.agentTree[oi]
+				for d := 0; d < node.depth-1; d++ {
+					if d < len(node.ancestors) && node.ancestors[d] {
+						prefix += "  "
+					} else {
+						prefix += "│ "
+					}
 				}
-			}
-			if node.depth > 0 {
-				if node.isLast {
-					prefix += "└ "
-				} else {
-					prefix += "├ "
+				if node.depth > 0 {
+					if node.isLast {
+						prefix += "└ "
+					} else {
+						prefix += "├ "
+					}
 				}
+				break
 			}
 		}
 
@@ -84,14 +93,19 @@ func (m Model) renderAgents() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), content, m.width-2)
+	title := fmt.Sprintf("AGENTS (%d)", len(m.data.agents))
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("AGENTS (%d/%d) filter: %s", len(agents), len(m.data.agents), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }
 
 func (m Model) renderAgentDetail() string {
-	if m.cursor >= len(m.data.agents) {
+	agents := m.filteredAgents()
+	if m.cursor >= len(agents) {
 		return "No agent selected"
 	}
-	a := m.data.agents[m.cursor]
+	a := agents[m.cursor]
 
 	// Build all lines, then apply scroll viewport.
 	var lines []string

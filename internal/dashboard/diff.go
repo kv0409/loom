@@ -29,6 +29,8 @@ func fetchDiff(wtPath string) string {
 }
 
 func (m Model) renderWorktrees() string {
+	worktrees := m.filteredWorktrees()
+
 	// Proportional column widths.
 	avail := m.width - 6
 	if avail < 40 {
@@ -43,7 +45,7 @@ func (m Model) renderWorktrees() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
 	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE", "DIFF")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
-	for i, wt := range m.data.worktrees {
+	for i, wt := range worktrees {
 		diffStr := ""
 		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
 			diffStr = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
@@ -72,10 +74,14 @@ func (m Model) renderWorktrees() string {
 			content += line + "\n"
 		}
 	}
-	if len(m.data.worktrees) == 0 {
+	if len(worktrees) == 0 {
 		content += "  No worktrees active. Builders create them automatically.\n"
 	}
-	return panel(fmt.Sprintf("WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees)), content, m.width-2)
+	title := fmt.Sprintf("WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }
 
 func (m Model) renderDiff() string {

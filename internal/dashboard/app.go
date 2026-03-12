@@ -83,6 +83,8 @@ type Model struct {
 	diffScroll       int // scroll offset for diff view
 	flashMsg         string
 	flashIsErr       bool
+	searchMode       bool
+	searchQuery      string
 }
 
 type tickMsg time.Time
@@ -102,6 +104,8 @@ func (m *Model) switchView(target view) {
 	m.cursors[m.view] = m.cursor
 	m.view = target
 	m.cursor = m.cursors[target]
+	m.searchQuery = ""
+	m.searchMode = false
 }
 
 func (m *Model) setFlash(msg string, isErr bool) tea.Cmd {
@@ -197,8 +201,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.nudgeMode {
 		switch msg.String() {
 		case "enter":
-			if m.cursor < len(m.data.agents) && m.nudgeInput != "" {
-				a := m.data.agents[m.cursor]
+			agents := m.filteredAgents()
+			if m.cursor < len(agents) && m.nudgeInput != "" {
+				a := agents[m.cursor]
 				err := daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
 				m.nudgeMode = false
 				m.nudgeInput = ""
@@ -228,8 +233,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.killConfirm {
 		switch msg.String() {
 		case "y", "Y":
-			if m.cursor < len(m.data.agents) {
-				a := m.data.agents[m.cursor]
+			agents := m.filteredAgents()
+			if m.cursor < len(agents) {
+				a := agents[m.cursor]
 				err := daemon.Kill(m.loomRoot, a.ID, false)
 				m.killConfirm = false
 				if err != nil {
@@ -248,8 +254,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.messageMode {
 		switch msg.String() {
 		case "enter":
-			if m.cursor < len(m.data.agents) && m.messageInput != "" {
-				a := m.data.agents[m.cursor]
+			agents := m.filteredAgents()
+			if m.cursor < len(agents) && m.messageInput != "" {
+				a := agents[m.cursor]
 				err := daemon.Message(m.loomRoot, a.ID, m.messageInput)
 				m.messageMode = false
 				m.messageInput = ""
@@ -275,6 +282,34 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Search mode captures all input
+	if m.searchMode {
+		switch msg.String() {
+		case "enter":
+			m.searchMode = false
+			m.cursor = 0
+			m.clampCursor()
+		case "esc":
+			m.searchMode = false
+			m.searchQuery = ""
+			m.cursor = 0
+			m.clampCursor()
+		case "backspace":
+			if len(m.searchQuery) > 0 {
+				m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+				m.cursor = 0
+				m.clampCursor()
+			}
+		default:
+			if len(msg.String()) == 1 || msg.String() == " " {
+				m.searchQuery += msg.String()
+				m.cursor = 0
+				m.clampCursor()
+			}
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -292,7 +327,13 @@ case viewMailDetail:
 			m.view = viewWorktrees
 			m.cursor = m.selectedWorktree
 		default:
-			m.switchView(viewOverview)
+			if m.searchQuery != "" {
+				m.searchQuery = ""
+				m.cursor = 0
+				m.clampCursor()
+			} else {
+				m.switchView(viewOverview)
+			}
 		}
 		return m, nil
 	case "a":
@@ -333,21 +374,27 @@ case viewMailDetail:
 			return m, nil
 		}
 	case "n":
-		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
+		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
 			m.nudgeInput = ""
 			return m, nil
 		}
 	case "x":
-		if m.view == viewAgents && m.cursor < len(m.data.agents) {
+		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.killConfirm = true
 			return m, nil
 		}
 	case "o":
-		if m.view == viewAgents && m.cursor < len(m.data.agents) {
+		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
+			return m, nil
+		}
+	case "/":
+		if isListView(m.view) {
+			m.searchMode = true
+			m.searchQuery = ""
 			return m, nil
 		}
 	case "tab":
@@ -397,14 +444,16 @@ case viewMailDetail:
 func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	switch m.view {
 	case viewAgents:
-		if len(m.data.agents) > 0 {
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
 		}
 	case viewAgentDetail:
-		if m.cursor < len(m.data.agents) {
-			a := m.data.agents[m.cursor]
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			a := agents[m.cursor]
 			// ACP agents have no tmux pane — Enter is a no-op in detail view
 			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
 				c := exec.Command("loom", "attach", a.ID)
@@ -415,33 +464,39 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			}
 		}
 	case viewIssues:
-		if len(m.displayIssues()) > 0 {
+		if len(m.filteredIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
 			m.detailScroll = 0
 		}
 	case viewMail:
-		if m.cursor < len(m.data.messages) {
+		messages := m.filteredMessages()
+		if m.cursor < len(messages) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewMailDetail
 			m.detailScroll = 0
 		}
 	case viewWorktrees:
-		if m.cursor < len(m.data.worktrees) {
+		worktrees := m.filteredWorktrees()
+		if m.cursor < len(worktrees) {
 			m.cursors[m.view] = m.cursor
 			m.selectedWorktree = m.cursor
-			m.diffContent = fetchDiff(m.data.worktrees[m.cursor].Path)
+			m.diffContent = fetchDiff(worktrees[m.cursor].Path)
 			m.view = viewDiff
 			m.diffScroll = 0
+			m.cursor = 0
 		}
 	case viewMemory:
-		if m.cursor < len(m.data.memories) {
+		memories := m.filteredMemories()
+		if m.cursor < len(memories) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewMemoryDetail
 		}
 	case viewActivity:
-		if m.cursor < len(m.data.activity) {
-			aid := m.data.activity[m.cursor].AgentID
+		activity := m.filteredActivity()
+		if m.cursor < len(activity) {
+			aid := activity[m.cursor].AgentID
+			m.searchQuery = ""
 			for i, a := range m.data.agents {
 				if a.ID == aid {
 					m.cursors[viewAgents] = i
@@ -469,19 +524,19 @@ func (m *Model) clampCursor() {
 func (m Model) listLen() int {
 	switch m.view {
 	case viewAgents, viewAgentDetail:
-		return len(m.data.agents)
+		return len(m.filteredAgents())
 	case viewIssues, viewIssueDetail:
-		return len(m.displayIssues())
+		return len(m.filteredIssues())
 	case viewMail:
-		return len(m.data.messages)
-case viewMailDetail:
+		return len(m.filteredMessages())
+	case viewMailDetail:
 		return len(m.data.messages)
 	case viewMemory, viewMemoryDetail:
-		return len(m.data.memories)
+		return len(m.filteredMemories())
 	case viewWorktrees:
-		return len(m.data.worktrees)
+		return len(m.filteredWorktrees())
 	case viewActivity:
-		return len(m.data.activity)
+		return len(m.filteredActivity())
 	case viewDiff:
 		return 0
 	}
@@ -531,24 +586,30 @@ func (m Model) View() string {
 	}
 
 	help := m.helpBar()
+	if m.searchMode {
+		help = helpStyle.Render(fmt.Sprintf(" /%s█  [Enter]filter [Esc]cancel", m.searchQuery))
+	}
 	if m.nudgeMode {
 		agentName := ""
-		if m.cursor < len(m.data.agents) {
-			agentName = m.data.agents[m.cursor].ID
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█  [Enter]send [Esc]cancel", agentName, m.nudgeInput))
 	}
 	if m.messageMode {
 		agentName := ""
-		if m.cursor < len(m.data.agents) {
-			agentName = m.data.agents[m.cursor].ID
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█  [Enter]send [Esc]cancel", agentName, m.messageInput))
 	}
 	if m.killConfirm {
 		agentName := ""
-		if m.cursor < len(m.data.agents) {
-			agentName = m.data.agents[m.cursor].ID
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
 	}
@@ -571,12 +632,13 @@ func (m Model) helpBar() string {
 			parts = append(parts, helpStyle.Render(tab.label))
 		}
 	}
-	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [q]uit")
+	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
 	base := " " + strings.Join(parts, " ") + suffix
 	if m.view == viewAgentDetail {
 		extra := " | [n]udge [j/k]scroll"
-		if m.cursor < len(m.data.agents) {
-			a := m.data.agents[m.cursor]
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			a := agents[m.cursor]
 			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
 				extra += " [Enter]attach"
 			}
@@ -725,12 +787,12 @@ func (m Model) mouseToListIndex(y int) int {
 		// displayIssues inserts 3 extra lines (blank + RECENTLY DONE + separator)
 		// between active and done sections. Adjust index for items past the gap.
 		activeCount := 0
-		for _, iss := range m.displayIssues() {
+		for _, iss := range m.filteredIssues() {
 			if iss.Status != "done" && iss.Status != "cancelled" {
 				activeCount++
 			}
 		}
-		display := m.displayIssues()
+		display := m.filteredIssues()
 		if activeCount < len(display) && idx > activeCount {
 			// Clicks on the 3 separator lines map to nothing useful
 			if idx <= activeCount+3 {

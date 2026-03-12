@@ -8,6 +8,8 @@ import (
 )
 
 func (m Model) renderMemory() string {
+	memories := m.filteredMemories()
+
 	// Proportional column widths.
 	avail := m.width - 6
 	if avail < 40 {
@@ -31,12 +33,12 @@ func (m Model) renderMemory() string {
 		start = 0
 	}
 	end := start + visibleRows
-	if end > len(m.data.memories) {
-		end = len(m.data.memories)
+	if end > len(memories) {
+		end = len(memories)
 	}
 
 	for i := start; i < end; i++ {
-		e := m.data.memories[i]
+		e := memories[i]
 		line := fmt.Sprintf(fmtStr,
 			truncate(e.ID, idW), truncate(e.Type, typeW), truncate(e.Title, titleW), truncate(memory.ByField(e), byW))
 		if i == m.cursor {
@@ -47,14 +49,19 @@ func (m Model) renderMemory() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("MEMORY (%d entries)", len(m.data.memories)), content, m.width-2)
+	title := fmt.Sprintf("MEMORY (%d entries)", len(m.data.memories))
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("MEMORY (%d/%d) filter: %s", len(memories), len(m.data.memories), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }
 
 func (m Model) renderMemoryDetail() string {
-	if m.cursor >= len(m.data.memories) {
+	memories := m.filteredMemories()
+	if m.cursor >= len(memories) {
 		return "No memory entry selected"
 	}
-	e := m.data.memories[m.cursor]
+	e := memories[m.cursor]
 
 	s := fmt.Sprintf("  %s\n", titleStyle.Render(e.Title))
 	s += fmt.Sprintf("  ID: %-12s Type: %-12s By: %s\n", e.ID, e.Type, memory.ByField(e))

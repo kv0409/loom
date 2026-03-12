@@ -114,7 +114,7 @@ func isActivityLine(line string) bool {
 }
 
 func (m Model) renderActivity() string {
-	entries := m.data.activity
+	entries := m.filteredActivity()
 
 	if len(entries) == 0 {
 		return panel("ACTIVITY", "  (no activity detected)\n", m.width-2)
@@ -150,5 +150,9 @@ func (m Model) renderActivity() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("ACTIVITY (%d agents)", len(entries)), content, m.width-2)
+	title := fmt.Sprintf("ACTIVITY (%d agents)", len(entries))
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }

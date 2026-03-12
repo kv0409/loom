@@ -6,6 +6,8 @@ import (
 )
 
 func (m Model) renderMail() string {
+	messages := m.filteredMessages()
+
 	// Proportional column widths.
 	avail := m.width - 6
 	if avail < 40 {
@@ -29,12 +31,12 @@ func (m Model) renderMail() string {
 		start = 0
 	}
 	end := start + visibleRows
-	if end > len(m.data.messages) {
-		end = len(m.data.messages)
+	if end > len(messages) {
+		end = len(messages)
 	}
 
 	for i := start; i < end; i++ {
-		msg := m.data.messages[i]
+		msg := messages[i]
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
 		line := fmt.Sprintf(fmtStr,
 			msg.Timestamp.Format("15:04"), truncate(route, routeW), msg.Type, truncate(msg.Subject, subjW))
@@ -46,14 +48,19 @@ func (m Model) renderMail() string {
 		content += line + "\n"
 	}
 
-	return panel(fmt.Sprintf("MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread), content, m.width-2)
+	title := fmt.Sprintf("MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)
+	if m.searchQuery != "" {
+		title = fmt.Sprintf("MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchQuery)
+	}
+	return panel(title, content, m.width-2)
 }
 
 func (m Model) renderMailDetail() string {
-	if m.cursor >= len(m.data.messages) {
+	messages := m.filteredMessages()
+	if m.cursor >= len(messages) {
 		return "No message selected"
 	}
-	msg := m.data.messages[m.cursor]
+	msg := messages[m.cursor]
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(msg.Subject)))
