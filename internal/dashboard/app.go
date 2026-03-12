@@ -72,6 +72,7 @@ type Model struct {
 	nudgeInput       string
 	messageMode      bool
 	messageInput     string
+	killConfirm      bool
 	selectedWorktree int
 	diffContent      string
 	lr               *logReader
@@ -200,6 +201,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Kill confirm mode captures all input
+	if m.killConfirm {
+		switch msg.String() {
+		case "y", "Y":
+			if m.cursor < len(m.data.agents) {
+				a := m.data.agents[m.cursor]
+				daemon.Kill(m.loomRoot, a.ID, false)
+			}
+			m.killConfirm = false
+		default:
+			m.killConfirm = false
+		}
+		return m, nil
+	}
+
 	// Message mode captures all input
 	if m.messageMode {
 		switch msg.String() {
@@ -290,8 +306,7 @@ case viewMailDetail:
 		}
 	case "x":
 		if m.view == viewAgents && m.cursor < len(m.data.agents) {
-			a := m.data.agents[m.cursor]
-			daemon.Kill(m.loomRoot, a.ID, false)
+			m.killConfirm = true
 			return m, nil
 		}
 	case "o":
@@ -484,6 +499,13 @@ func (m Model) View() string {
 			agentName = m.data.agents[m.cursor].ID
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█  [Enter]send [Esc]cancel", agentName, m.messageInput))
+	}
+	if m.killConfirm {
+		agentName := ""
+		if m.cursor < len(m.data.agents) {
+			agentName = m.data.agents[m.cursor].ID
+		}
+		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
 	}
 	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
 }
