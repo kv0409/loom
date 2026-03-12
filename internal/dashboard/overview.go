@@ -55,7 +55,7 @@ func (m Model) renderOverview() string {
 	}
 	innerW := colW - 2
 
-	panelCount := 5
+	panelCount := 6
 	budget := m.overviewRowBudget(panelCount)
 	agentBudget := budget + budget/2 // agents get 1.5x budget (primary panel)
 
@@ -157,12 +157,15 @@ func (m Model) renderOverview() string {
 	}
 	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
 
+	// Live activity section
+	actPanel := m.renderActivityOverview(colW, budget)
+
 	if stacked {
-		return lipgloss.JoinVertical(lipgloss.Left, agentPanel, issuePanel, wtPanel, mailPanel, memPanel)
+		return lipgloss.JoinVertical(lipgloss.Left, agentPanel, issuePanel, wtPanel, mailPanel, memPanel, actPanel)
 	}
 
 	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
-	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel)
+	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel, actPanel)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 }
@@ -194,6 +197,39 @@ func timeAgo(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
+}
+
+// renderActivityOverview builds a compact live activity panel for the overview.
+func (m Model) renderActivityOverview(colW, budget int) string {
+	var lines []string
+
+	// Recent mail (last few from→to with type)
+	msgs := m.data.messages
+	mailLimit := min(3, len(msgs))
+	for i := 0; i < mailLimit; i++ {
+		msg := msgs[i]
+		lines = append(lines, fmt.Sprintf("  📬 %s %s→%s [%s]",
+			idleStyle.Render(msg.Timestamp.Format("15:04")),
+			truncate(msg.From, 12), truncate(msg.To, 12), msg.Type))
+	}
+
+	// Recent agent tool calls from activity data
+	toolLimit := min(3, len(m.data.activity))
+	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
+		e := m.data.activity[i]
+		lines = append(lines, fmt.Sprintf("  ⚡ %-12s %s",
+			truncate(e.AgentID, 12), truncate(e.Line, colW-20)))
+	}
+
+	content := capContent(lines, budget)
+	if content == "" {
+		content = "  (no recent activity)\n"
+	}
+	unique := map[string]struct{}{}
+	for _, e := range m.data.activity {
+		unique[e.AgentID] = struct{}{}
+	}
+	return panel(fmt.Sprintf("ACTIVITY (%d agents, %d msgs)", len(unique), len(m.data.messages)), content, colW)
 }
 
 func truncate(s string, n int) string {
