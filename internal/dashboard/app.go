@@ -64,6 +64,7 @@ type Model struct {
 	width            int
 	height           int
 	logFilter        int // 0=all, 1=lifecycle, 2=error, 3=stderr, 4=warn
+	logAgentFilter   int // 0=all, 1..N = specific agent
 	nudgeMode        bool
 	nudgeInput       string
 	messageMode      bool
@@ -268,6 +269,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "f":
 		if m.view == viewLogs {
 			m.logFilter = (m.logFilter + 1) % 5 // all, lifecycle, error, stderr, warn
+			return m, nil
+		}
+	case "F":
+		if m.view == viewLogs {
+			n := m.countLogAgents()
+			m.logAgentFilter = (m.logAgentFilter + 1) % (n + 1) // 0=all, 1..n=agent
 			return m, nil
 		}
 	case "n":

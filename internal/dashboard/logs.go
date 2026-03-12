@@ -5,12 +5,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
 
 type logLine struct {
 	Category string
+	Agent    string
 	Text     string
 }
 
@@ -28,6 +30,8 @@ func newLogReader(loomRoot string) *logReader {
 }
 
 const maxLogLines = 200
+
+var agentRe = regexp.MustCompile(`\[acp\]\s+(\S+?):|activating agent (\S+)`)
 
 // read returns all accumulated log lines, reading only new bytes since last call.
 func (r *logReader) read() []logLine {
@@ -87,7 +91,7 @@ func (r *logReader) read() []logLine {
 		if !ok {
 			continue
 		}
-		r.lines = append(r.lines, logLine{Category: cat, Text: t})
+		r.lines = append(r.lines, logLine{Category: cat, Agent: extractAgent(trimmed), Text: t})
 	}
 
 	// Cap stored lines
@@ -124,25 +128,81 @@ func classifyLogLine(line string) (string, string, bool) {
 	return "", "", false
 }
 
+// extractAgent pulls an agent identifier from a log line.
+func extractAgent(line string) string {
+	m := agentRe.FindStringSubmatch(line)
+	if m == nil {
+		return ""
+	}
+	if m[1] != "" {
+		return m[1]
+	}
+	return m[2]
+}
+
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j] < s[j-1]; j-- {
+			s[j], s[j-1] = s[j-1], s[j]
+		}
+	}
+}
+
+func (m Model) countLogAgents() int {
+	seen := map[string]bool{}
+	for _, l := range m.data.logs {
+		if l.Agent != "" {
+			seen[l.Agent] = true
+		}
+	}
+	return len(seen)
+}
+
 func (m Model) renderLogs() string {
+	// Collect unique agents from log data
+	agentSet := map[string]bool{}
+	for _, l := range m.data.logs {
+		if l.Agent != "" {
+			agentSet[l.Agent] = true
+		}
+	}
+	agents := make([]string, 0, len(agentSet))
+	for a := range agentSet {
+		agents = append(agents, a)
+	}
+	sortStrings(agents)
+
 	filter := ""
 	categories := []string{"", "lifecycle", "error", "stderr", "warn"}
 	if m.logFilter > 0 && m.logFilter < len(categories) {
 		filter = categories[m.logFilter]
 	}
 
+	agentFilter := ""
+	if m.logAgentFilter > 0 && m.logAgentFilter <= len(agents) {
+		agentFilter = agents[m.logAgentFilter-1]
+	}
+
 	filterLabel := "all"
 	if filter != "" {
 		filterLabel = filter
 	}
-	header := fmt.Sprintf("  Filter: [%s]  (f to cycle: all → lifecycle → error → stderr → warn)\n", filterLabel)
+	agentLabel := "all"
+	if agentFilter != "" {
+		agentLabel = agentFilter
+	}
+	header := fmt.Sprintf("  Filter: [%s]  Agent: [%s]  (f=category, F=agent)\n", filterLabel, agentLabel)
 	header += "  " + strings.Repeat("─", m.width-6) + "\n"
 
 	var lines []logLine
 	for _, l := range m.data.logs {
-		if filter == "" || l.Category == filter {
-			lines = append(lines, l)
+		if filter != "" && l.Category != filter {
+			continue
 		}
+		if agentFilter != "" && l.Agent != agentFilter {
+			continue
+		}
+		lines = append(lines, l)
 	}
 
 	if len(lines) == 0 {
