@@ -57,36 +57,45 @@ func (m Model) renderOverview() string {
 
 	panelCount := 5
 	budget := m.overviewRowBudget(panelCount)
+	agentBudget := budget + budget/2 // agents get 1.5x budget (primary panel)
 
-	// Agent table
-	aIdW := min(18, max(8, (innerW-6)*3/5))
-	aRoleW := max(4, innerW-6-aIdW-4)
+	// Agent table (primary — prominent with age, heartbeat, task)
+	aIdW := min(16, max(8, (innerW-12)*2/5))
+	aRoleW := max(4, min(10, (innerW-12)/5))
+	aAgeW := max(4, 6)
+	aHbW := max(4, 6)
 	var agentLines []string
 	for _, a := range m.data.agents {
-		ago := timeAgo(a.Heartbeat)
-		agentLines = append(agentLines, fmt.Sprintf("  %s %-*s %-*s %s",
+		hb := timeAgo(a.Heartbeat)
+		age := timeAgo(a.SpawnedAt)
+		task := idleStyle.Render("idle")
+		if len(a.AssignedIssues) > 0 {
+			task = activeStyle.Render(a.AssignedIssues[0])
+		}
+		agentLines = append(agentLines, fmt.Sprintf("  %s %-*s %-*s %s %s %s",
 			statusIndicator(a.Status), aIdW, truncate(a.ID, aIdW),
-			aRoleW, truncate(a.Role, aRoleW), idleStyle.Render(ago)))
+			aRoleW, truncate(a.Role, aRoleW),
+			idleStyle.Render(fmt.Sprintf("⏱%-*s", aAgeW, age)),
+			heartbeatStyle(hb).Render(fmt.Sprintf("♥%-*s", aHbW, hb)),
+			task))
 	}
-	agentContent := capContent(agentLines, budget)
+	agentContent := capContent(agentLines, agentBudget)
 	if agentContent == "" {
 		agentContent = "  No agents running. Use loom spawn to start.\n"
 	}
 	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
-	// Issues (non-done)
-	iIdW := min(12, max(6, (innerW-6)/4))
-	iStatusW := min(11, max(6, (innerW-6)/5))
-	iTitleW := max(6, innerW-6-iIdW-iStatusW)
+	// Issues (simplified — indicator + ID + title only, no status text)
+	iIdW := min(14, max(6, (innerW-4)/4))
+	iTitleW := max(6, innerW-4-iIdW)
 	var issueLines []string
 	for _, iss := range m.data.issues {
 		if iss.Status == "done" || iss.Status == "cancelled" {
 			continue
 		}
-		issueLines = append(issueLines, fmt.Sprintf("  %s %-*s %-*s %s",
+		issueLines = append(issueLines, fmt.Sprintf("  %s %-*s %s",
 			statusIndicator(iss.Status), iIdW, truncate(iss.ID, iIdW),
-			iTitleW, truncate(iss.Title, iTitleW),
-			statusStyle(iss.Status).Render(truncate(iss.Status, iStatusW))))
+			truncate(iss.Title, iTitleW)))
 	}
 	issueContent := capContent(issueLines, budget)
 	if issueContent == "" {
@@ -94,18 +103,18 @@ func (m Model) renderOverview() string {
 	}
 	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", len(issueLines)), issueContent, colW)
 
-	// Worktrees
-	wtSlugW := min(22, max(8, (innerW-4)/3))
-	wtBranchW := min(20, max(6, (innerW-4)/3))
+	// Worktrees (simplified — name + issue only, no branch/diff)
+	wtSlugW := max(8, (innerW-4)*2/3)
+	wtIssueW := max(6, innerW-4-wtSlugW)
 	var wtLines []string
 	for _, wt := range m.data.worktrees {
-		diffStr := ""
-		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
-			diffStr = fmt.Sprintf(" %df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
+		issueID := wt.Issue
+		if issueID == "" {
+			issueID = "—"
 		}
-		wtLines = append(wtLines, fmt.Sprintf("  %-*s %s%s",
+		wtLines = append(wtLines, fmt.Sprintf("  %-*s %s",
 			wtSlugW, truncate(slugFromWorktree(wt.Name), wtSlugW),
-			idleStyle.Render(truncate(wt.Branch, wtBranchW)), activeStyle.Render(diffStr)))
+			idleStyle.Render(truncate(issueID, wtIssueW))))
 	}
 	wtContent := capContent(wtLines, budget)
 	if wtContent == "" {
@@ -156,6 +165,20 @@ func (m Model) renderOverview() string {
 	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+}
+
+// heartbeatStyle returns a color style based on heartbeat freshness string.
+func heartbeatStyle(ago string) lipgloss.Style {
+	if strings.HasSuffix(ago, "s") || ago == "never" {
+		if ago == "never" {
+			return lipgloss.NewStyle().Foreground(colRed)
+		}
+		return lipgloss.NewStyle().Foreground(colGreen)
+	}
+	if strings.HasSuffix(ago, "m") {
+		return lipgloss.NewStyle().Foreground(colYellow)
+	}
+	return lipgloss.NewStyle().Foreground(colRed)
 }
 
 func timeAgo(t time.Time) string {
