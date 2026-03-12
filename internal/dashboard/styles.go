@@ -80,11 +80,19 @@ var statusGlyphs = map[string]string{
 	"in-progress": "▶",
 	"active":      "▶",
 	"done":        "✔",
-	"blocked":     "⛔",
+	"blocked":     "⊘",
 	"review":      "◎",
 	"error":       "✖",
 	"dead":        "✖",
 	"cancelled":   "─",
+}
+
+// typeGlyphs maps issue types to single-width Unicode icons.
+var typeGlyphs = map[string]string{
+	"epic":  "◈",
+	"task":  "●",
+	"bug":   "⊘",
+	"spike": "◇",
 }
 
 func statusStyle(status string) lipgloss.Style {
@@ -116,6 +124,13 @@ func statusIndicator(status string) string {
 		glyph = g
 	}
 	return statusStyle(status).Render(glyph)
+}
+
+func typeGlyph(issueType string) string {
+	if g, ok := typeGlyphs[issueType]; ok {
+		return g
+	}
+	return "●"
 }
 
 func truncateLines(s string, maxW int) string {
@@ -158,21 +173,21 @@ func panelIcon(title string) string {
 	t := strings.ToUpper(title)
 	switch {
 	case strings.Contains(t, "AGENT"):
-		return "🤖 "
+		return "◈ "
 	case strings.Contains(t, "ISSUE"):
-		return "📋 "
+		return "◇ "
 	case strings.Contains(t, "MAIL"):
-		return "📬 "
+		return "▸ "
 	case strings.Contains(t, "MEMORY"):
-		return "🧠 "
+		return "◉ "
 	case strings.Contains(t, "ACTIVITY"):
-		return "📊 "
+		return "▪ "
 	case strings.Contains(t, "LOG"):
-		return "📝 "
+		return "≡ "
 	case strings.Contains(t, "WORKTREE"), strings.Contains(t, "DIFF"):
-		return "🌳 "
+		return "⌥ "
 	case strings.Contains(t, "KANBAN"), strings.Contains(t, "BOARD"):
-		return "📌 "
+		return "▦ "
 	default:
 		return ""
 	}

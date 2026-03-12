@@ -208,7 +208,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	mailLimit := min(3, len(msgs))
 	for i := 0; i < mailLimit; i++ {
 		msg := msgs[i]
-		lines = append(lines, fmt.Sprintf("  📬 %s %s→%s [%s]",
+		lines = append(lines, fmt.Sprintf("  ▸ %s %s→%s [%s]",
 			idleStyle.Render(msg.Timestamp.Format("15:04")),
 			truncate(msg.From, 12), truncate(msg.To, 12), msg.Type))
 	}
@@ -217,7 +217,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	toolLimit := min(3, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		lines = append(lines, fmt.Sprintf("  ⚡ %-12s %s",
+		lines = append(lines, fmt.Sprintf("  ↯ %-12s %s",
 			truncate(e.AgentID, 12), truncate(e.Line, colW-20)))
 	}
 

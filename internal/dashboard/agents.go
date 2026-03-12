@@ -56,7 +56,7 @@ func (m Model) renderAgents() string {
 		}
 		hb := relTime(a.Heartbeat)
 		if a.NudgeCount > 0 {
-			hb += fmt.Sprintf(" ⚡%d", a.NudgeCount)
+			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
 		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillStyle(a.Status).Render(truncate(a.Status, statusW)))
 
