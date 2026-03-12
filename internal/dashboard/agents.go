@@ -144,7 +144,7 @@ func (m Model) renderAgentDetail() string {
 		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, relTime(a.LastNudge)))
 	}
 
-	// ACP output — chat-style messages
+	// ACP output — rendered by event type
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
 		lines = append(lines, "")
 		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
@@ -155,28 +155,41 @@ func (m Model) renderAgentDetail() string {
 				maxW = 40
 			}
 			events := acp.ReadOutputFile(raw)
-			for i, ev := range events {
+			// Group contiguous token_chunk events into single blocks.
+			type group struct {
+				kind      acp.Kind
+				timestamp string
+				content   string
+			}
+			var groups []group
+			for _, ev := range events {
+				if ev.Kind == acp.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == acp.TokenChunk {
+					groups[len(groups)-1].content += ev.Content
+				} else {
+					groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content})
+				}
+			}
+			for i, g := range groups {
 				if i > 0 {
 					lines = append(lines, "")
 				}
-				ts := idleStyle.Render(fmt.Sprintf("  ── %s ──", ev.Timestamp))
-				lines = append(lines, ts)
-				for _, bodyLine := range strings.Split(ev.Content, "\n") {
-					if bodyLine == "" {
-						lines = append(lines, "")
-						continue
+				switch g.kind {
+				case acp.ToolSummary:
+					line := g.content
+					if len(line) > maxW {
+						line = line[:maxW]
 					}
-					for len(bodyLine) > maxW {
-						cut := maxW
-						if sp := strings.LastIndex(bodyLine[:cut], " "); sp > 0 {
-							cut = sp
-						}
-						lines = append(lines, "  "+bodyLine[:cut])
-						bodyLine = strings.TrimSpace(bodyLine[cut:])
+					lines = append(lines, idleStyle.Render("  ⚙ "+line))
+				case acp.TokenChunk:
+					if g.timestamp != "" {
+						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
 					}
-					if bodyLine != "" {
-						lines = append(lines, "  "+bodyLine)
+					lines = append(lines, wrapEventContent(g.content, maxW))
+				default: // CompleteMessage
+					if g.timestamp != "" {
+						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
 					}
+					lines = append(lines, wrapEventContent(g.content, maxW))
 				}
 			}
 		} else {
@@ -222,6 +235,39 @@ func (m Model) renderAgentDetail() string {
 		hint = " [Enter]attach"
 	}
 	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, m.width-2)
+}
+
+// wrapEventContent word-wraps content into indented lines for the detail view.
+func wrapEventContent(content string, maxW int) string {
+	var sb strings.Builder
+	for i, bodyLine := range strings.Split(content, "\n") {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		if bodyLine == "" {
+			continue
+		}
+		first := true
+		for len(bodyLine) > maxW {
+			cut := maxW
+			if sp := strings.LastIndex(bodyLine[:cut], " "); sp > 0 {
+				cut = sp
+			}
+			if !first {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString("  " + bodyLine[:cut])
+			bodyLine = strings.TrimSpace(bodyLine[cut:])
+			first = false
+		}
+		if bodyLine != "" {
+			if !first {
+				sb.WriteByte('\n')
+			}
+			sb.WriteString("  " + bodyLine)
+		}
+	}
+	return sb.String()
 }
 
 func relTime(t time.Time) string {
