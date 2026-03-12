@@ -215,6 +215,11 @@ func Load(loomRoot string) (*Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	// Backfill defaults for sections missing from existing config files.
+	defaults := DefaultConfig()
+	if cfg.Models == (ModelsConfig{}) {
+		cfg.Models = defaults.Models
+	}
 	return cfg, nil
 }
 
