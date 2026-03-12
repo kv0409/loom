@@ -58,22 +58,28 @@ func assembleChunks(raw string) string {
 func assembleChunksN(raw string, maxLen int) string {
 	var parts []string
 	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
-		// Strip known prefixes from the notification handler.
-		// Format is "[prefix] content" — remove prefix + the single format space,
-		// but preserve any content-leading spaces (they're word boundaries).
-		for _, prefix := range []string{"[agent_message_chunk] ", "[session_update] "} {
-			if after, ok := strings.CutPrefix(line, prefix); ok {
-				line = after
-				break
+
+		// Robustly strip any bracketed prefix like [agent_message_chunk] or [session_update].
+		// We look for a '[' at the start, then a ']', then skip one optional space.
+		content := trimmed
+		if strings.HasPrefix(trimmed, "[") {
+			if end := strings.Index(trimmed, "]"); end > 0 {
+				content = strings.TrimPrefix(trimmed[end+1:], " ")
 			}
 		}
-		parts = append(parts, line)
+
+		parts = append(parts, content)
 	}
+
+	// Joining chunks without space is usually correct for streaming text,
+	// but we should ensure we don't collapse actual lines if the raw input
+	// had meaningful line breaks between different types of updates.
 	joined := strings.Join(parts, "")
+
 	if maxLen > 0 && len(joined) > maxLen {
 		joined = "…" + joined[len(joined)-(maxLen-1):]
 	}

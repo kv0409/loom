@@ -177,7 +177,7 @@ func (d *Daemon) watchPendingAgents() {
 }
 
 func (d *Daemon) watchACPOutput() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -191,7 +191,7 @@ func (d *Daemon) watchACPOutput() {
 			}
 			d.mu.Unlock()
 			for _, id := range ids {
-				lines := d.GetACPOutput(id, 10)
+				lines := d.GetACPOutput(id, 50)
 				if len(lines) == 0 {
 					continue
 				}
