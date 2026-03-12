@@ -2029,6 +2029,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Kill any orphaned daemon processes from previous runs to prevent
+	// dual-daemon races where two daemons mark each other's agents dead.
+	daemon.KillStaleDaemons()
+
 	// Start daemon goroutines
 	d := daemon.New(root, cfg)
 	if err := d.Start(); err != nil {
@@ -2217,6 +2221,10 @@ func runStop(cmd *cobra.Command, args []string) error {
 		// Process may already be dead from tmux kill
 		daemon.ReleaseLock(root)
 	}
+
+	// Kill any orphaned daemon processes that survived previous stops.
+	daemon.KillStaleDaemons()
+
 	fmt.Printf("Loom stopped (pid %d)\n", pid)
 	return nil
 }

@@ -494,6 +494,10 @@ func (d *Daemon) watchHeartbeats() {
 					continue
 				}
 				if !d.isAlive(a) {
+					d.mu.Lock()
+					_, hasClient := d.acpClients[a.ID]
+					d.mu.Unlock()
+					log.Printf("[heartbeat] marking %s dead: isAlive=false (mode=%s hasClient=%v pid=%d)", a.ID, a.Config.KiroMode, hasClient, a.PID)
 					if a.Config.KiroMode == "acp" {
 						d.UnregisterACPClient(a.ID)
 					}
