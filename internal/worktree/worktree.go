@@ -76,11 +76,11 @@ func HasDirtyFiles(wtPath string) bool {
 	return len(strings.TrimSpace(string(out))) > 0
 }
 
-// isMerged checks whether a branch has been integrated into HEAD.
+// IsMerged checks whether a branch has been integrated into HEAD.
 // It first tries git merge-base --is-ancestor (works for regular merges).
 // If that fails and the merge strategy is "squash", it falls back to checking
 // whether the associated issue has MergedAt set.
-func isMerged(loomRoot, branchName string) bool {
+func IsMerged(loomRoot, branchName string) bool {
 	root := projectRoot(loomRoot)
 
 	// Strategy 1: git merge-base --is-ancestor (works for regular merges).
@@ -109,13 +109,59 @@ func isMerged(loomRoot, branchName string) bool {
 // ErrUnmergedBranch is returned when Remove is called on a branch that has not been merged.
 var ErrUnmergedBranch = fmt.Errorf("branch has unmerged commits")
 
+// SalvageCommit commits all dirty/untracked files with a [loom-salvage] message,
+// preserving them in git history on the feature branch before worktree removal.
+func SalvageCommit(wtPath string, agentID string) error {
+	addCmd := exec.Command("git", "add", "-A")
+	addCmd.Dir = wtPath
+	if _, err := addCmd.CombinedOutput(); err != nil {
+		return err
+	}
+	msg := fmt.Sprintf("[loom-salvage] uncommitted work from agent %s", agentID)
+	commitCmd := exec.Command("git", "commit", "-m", msg, "--allow-empty")
+	commitCmd.Dir = wtPath
+	_, err := commitCmd.CombinedOutput()
+	return err
+}
+
+// ForceRemove passes --force to git worktree remove. Used as a fallback when
+// normal Remove fails (e.g. dirty worktree after SalvageCommit failure).
+func ForceRemove(loomRoot string, name string) error {
+	root := projectRoot(loomRoot)
+	wtPath := filepath.Join(".loom", "worktrees", name)
+	cmd := exec.Command("git", "worktree", "remove", "--force", wtPath)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git worktree remove --force: %s", strings.TrimSpace(string(out)))
+	}
+	cmd = exec.Command("git", "branch", "-D", name)
+	cmd.Dir = root
+	cmd.CombinedOutput() // ignore error (branch may already be gone)
+	return nil
+}
+
+// ListForIssue returns all worktrees for a given issue (not just the first match).
+func ListForIssue(loomRoot string, issueID string) ([]*Worktree, error) {
+	all, err := List(loomRoot)
+	if err != nil {
+		return nil, err
+	}
+	var result []*Worktree
+	for _, wt := range all {
+		if wt.Issue == issueID {
+			result = append(result, wt)
+		}
+	}
+	return result, nil
+}
+
 // Remove deletes a worktree and its branch. If force is false, it refuses to
 // delete a branch that has not been merged into HEAD (checked via git merge-base --is-ancestor).
 func Remove(loomRoot string, name string, force bool) error {
 	root := projectRoot(loomRoot)
 
 	if !force {
-		if !isMerged(loomRoot, name) {
+		if !IsMerged(loomRoot, name) {
 			return fmt.Errorf("%w: refusing to delete branch %s (use force to override)", ErrUnmergedBranch, name)
 		}
 	}

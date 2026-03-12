@@ -42,7 +42,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 
 7. **Clean up agents**: After merging, kill the builder and reviewer agents:
    ```
-   loom agent kill <BUILDER-ID>
+   loom agent kill <BUILDER-ID> --cleanup
    loom agent kill <REVIEWER-ID>
    ```
 
@@ -64,7 +64,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 - **Reviewer PASS**: The reviewer marks the issue `done`. Merge the builder's branch and clean up:
   ```
   loom merge <TASK-ID> --cleanup -m "feat(scope): description (TASK-ID)"
-  loom agent kill <BUILDER-ID>
+  loom agent kill <BUILDER-ID> --cleanup
   loom agent kill <REVIEWER-ID>
   ```
 - **Reviewer FAIL**: The reviewer marks the issue back to `in-progress` with a comment. The builder continues working. Nudge the builder if needed:
@@ -86,6 +86,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 
 - `[LOOM] New mail` → Run `loom mail read` and process each message.
 - `[LOOM] Nudge: ...` → Follow the guidance from your parent or the human.
+- `[LOOM] Agent <ID> is dead (worktree cleaned up)` → The dead builder's worktree was salvaged and removed. Spawn a replacement if needed.
 - `[LOOM] Shutdown` → Let active builders finish their current commit, then stop.
 
 ## Constraints

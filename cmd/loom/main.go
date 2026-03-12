@@ -2377,13 +2377,20 @@ func runMerge(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Merged %s → %s\n", wt.Branch, hash)
 
-	// Optionally clean up.
+	// Optionally clean up all worktrees for this issue.
 	cleanup, _ := cmd.Flags().GetBool("cleanup")
 	if cleanup {
-		if err := worktree.Remove(root, wt.Name, true); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: cleanup failed: %v\n", err)
-		} else {
-			fmt.Printf("Removed worktree %s\n", wt.Name)
+		allForIssue, _ := worktree.ListForIssue(root, issueID)
+		for _, w := range allForIssue {
+			if err := worktree.Remove(root, w.Name, true); err != nil {
+				if err2 := worktree.ForceRemove(root, w.Name); err2 != nil {
+					fmt.Fprintf(os.Stderr, "Warning: cleanup failed for %s: %v\n", w.Name, err2)
+				} else {
+					fmt.Printf("Force-removed stale worktree %s\n", w.Name)
+				}
+			} else {
+				fmt.Printf("Removed worktree %s\n", w.Name)
+			}
 		}
 	}
 

@@ -291,9 +291,12 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 	if cleanupWorktree && a.WorktreeName != "" {
 		wtPath := filepath.Join(loomRoot, "worktrees", a.WorktreeName)
 		if worktree.HasDirtyFiles(wtPath) {
-			log.Printf("[agent] preserving worktree %s: has uncommitted changes", a.WorktreeName)
-		} else if err := worktree.Remove(loomRoot, a.WorktreeName, false); err != nil {
-			log.Printf("[agent] preserving worktree %s: %v", a.WorktreeName, err)
+			worktree.SalvageCommit(wtPath, a.ID)
+		}
+		if err := worktree.Remove(loomRoot, a.WorktreeName, true); err != nil {
+			if err2 := worktree.ForceRemove(loomRoot, a.WorktreeName); err2 != nil {
+				log.Printf("[agent] failed to remove worktree %s: %v", a.WorktreeName, err2)
+			}
 		}
 	}
 	// Purge mail inbox for the dead agent

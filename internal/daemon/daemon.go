@@ -503,6 +503,17 @@ func (d *Daemon) watchHeartbeats() {
 					if a.Config.KiroMode == "acp" {
 						d.UnregisterACPClient(a.ID)
 					}
+					agent.KillProcess(a)
+					// Salvage and clean up worktree before marking dead.
+					if a.WorktreeName != "" {
+						wtPath := filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
+						if worktree.HasDirtyFiles(wtPath) {
+							worktree.SalvageCommit(wtPath, a.ID)
+						}
+						if err := worktree.Remove(d.LoomRoot, a.WorktreeName, true); err != nil {
+							worktree.ForceRemove(d.LoomRoot, a.WorktreeName)
+						}
+					}
 					a.Status = "dead"
 					a.NudgeCount = 0
 					agent.Save(d.LoomRoot, a)
@@ -515,7 +526,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err != nil {
 						continue
 					}
-					d.notify(parent, "[LOOM] Agent "+a.ID+" is dead")
+					d.notify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
 					continue
 				}
 
@@ -630,17 +641,29 @@ func (d *Daemon) runWorktreeGC() {
 					continue
 				}
 				// Done but not merged — preserve (work not integrated yet).
-				if iss.Status == "done" && iss.MergedAt == nil {
+				if iss.Status == "done" && !worktree.IsMerged(d.LoomRoot, name) {
 					continue
 				}
 			}
 			// err != nil means issue file missing — safe to remove.
 		}
 
-		// Check for dirty worktree.
+		// Check for dirty worktree — salvage if stale (>30 min).
 		wtPath := filepath.Join(d.LoomRoot, "worktrees", name)
 		if worktree.HasDirtyFiles(wtPath) {
-			log.Printf("[gc] preserving worktree %s: has uncommitted changes", name)
+			info, err := os.Stat(wtPath)
+			if err != nil {
+				continue
+			}
+			if time.Since(info.ModTime()) < 30*time.Minute {
+				log.Printf("[gc] preserving dirty worktree %s: modified %v ago", name, time.Since(info.ModTime()))
+				continue
+			}
+			log.Printf("[gc] salvaging stale dirty worktree %s", name)
+			worktree.SalvageCommit(wtPath, "gc")
+			if err := worktree.ForceRemove(d.LoomRoot, name); err != nil {
+				log.Printf("[gc] failed to force-remove worktree %s: %v", name, err)
+			}
 			continue
 		}
 
