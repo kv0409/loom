@@ -33,23 +33,43 @@ func (m Model) renderWorktrees() string {
 	if avail < 40 {
 		avail = 40
 	}
-	nameW := max(10, avail*30/100)
-	branchW := max(10, avail*30/100)
-	agentW := max(8, avail*16/100)
-	issueW := max(6, avail-nameW-branchW-agentW)
+	nameW := max(10, avail*25/100)
+	branchW := max(10, avail*25/100)
+	agentW := max(8, avail*14/100)
+	issueW := max(6, avail*14/100)
+	diffW := max(6, avail-nameW-branchW-agentW-issueW)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW)
-	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE")
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
+	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE", "DIFF")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	for i, wt := range m.data.worktrees {
-		line := fmt.Sprintf(fmtStr,
-			truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW))
-		if i == m.cursor {
-			line = selectedStyle.Render(line)
-		} else if i == m.hoverRow {
-			line = hoverStyle.Render(line)
+		diffStr := ""
+		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
+			diffStr = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
 		}
-		content += line + "\n"
+		plain := fmt.Sprintf(fmtStr,
+			truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), truncate(diffStr, diffW))
+		if diffStr != "" {
+			// Render line without diff, then append colored diff stats
+			base := fmt.Sprintf(fmtStr,
+				truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), "")
+			colored := activeStyle.Render(truncate(diffStr, diffW))
+			line := base + colored
+			if i == m.cursor {
+				line = selectedStyle.Render(plain)
+			} else if i == m.hoverRow {
+				line = hoverStyle.Render(plain)
+			}
+			content += line + "\n"
+		} else {
+			line := plain
+			if i == m.cursor {
+				line = selectedStyle.Render(line)
+			} else if i == m.hoverRow {
+				line = hoverStyle.Render(line)
+			}
+			content += line + "\n"
+		}
 	}
 	if len(m.data.worktrees) == 0 {
 		content += "  No worktrees active. Builders create them automatically.\n"
