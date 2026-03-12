@@ -596,7 +596,7 @@ var helpBarTabs = []struct {
 	{"[a]gents", viewAgents},
 	{"[i]ssues", viewIssues},
 	{"[m]ail", viewMail},
-	{"[d]ecisions", viewMemory},
+	{"[d] memory", viewMemory},
 	{"[w]orktrees", viewWorktrees},
 	{"[b]oard", viewKanban},
 	{"[t]activity", viewActivity},
@@ -645,7 +645,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonLeft:
 		// Click on help bar → switch view
 		if y >= lastRow {
-			bar := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs"
+			bar := " [a]gents [i]ssues [m]ail [d] memory [w]orktrees [b]oard [t]activity [l]ogs"
 			for _, tab := range helpBarTabs {
 				idx := strings.Index(bar, tab.label)
 				if idx >= 0 && x >= idx && x < idx+len(tab.label) {
