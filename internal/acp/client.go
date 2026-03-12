@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os/exec"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -485,11 +486,26 @@ func (c *Client) SetMode(sessionID string, mode string) error {
 	return c.call("session/set_mode", params, nil)
 }
 
+func resolveModelAlias(model string) string {
+	if strings.Contains(model, "claude-") {
+		return model
+	}
+	aliases := map[string]string{
+		"sonnet": "claude-sonnet-4.6",
+		"opus":   "claude-opus-4.5",
+		"haiku":  "claude-haiku-4.5",
+	}
+	if full, ok := aliases[model]; ok {
+		return full
+	}
+	return model
+}
+
 // SetModel changes the model for an existing session.
 func (c *Client) SetModel(sessionID string, model string) error {
 	params := map[string]interface{}{
 		"sessionId": sessionID,
-		"modelId":  model,
+		"modelId":  resolveModelAlias(model),
 	}
 	return c.call("session/set_model", params, nil)
 }
