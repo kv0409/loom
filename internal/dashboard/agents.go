@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 )
 
@@ -153,16 +154,14 @@ func (m Model) renderAgentDetail() string {
 			if maxW < 40 {
 				maxW = 40
 			}
-			msgs := parseChatMessages(string(raw))
-			for i, msg := range msgs {
+			events := acp.ParseOutput(string(raw))
+			for i, ev := range events {
 				if i > 0 {
 					lines = append(lines, "")
 				}
-				// Timestamp header
-				ts := idleStyle.Render(fmt.Sprintf("  ── %s ──", msg.time))
+				ts := idleStyle.Render(fmt.Sprintf("  ── %s ──", ev.Timestamp))
 				lines = append(lines, ts)
-				// Word-wrap body
-				for _, bodyLine := range strings.Split(msg.text, "\n") {
+				for _, bodyLine := range strings.Split(ev.Content, "\n") {
 					if bodyLine == "" {
 						lines = append(lines, "")
 						continue
@@ -223,69 +222,6 @@ func (m Model) renderAgentDetail() string {
 		hint = " [Enter]attach"
 	}
 	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, m.width-2)
-}
-
-// chatMessage represents a single timestamped output message.
-type chatMessage struct {
-	time string
-	text string
-}
-
-// parseChatMessages groups output lines by timestamp into chat messages.
-// Lines are expected in format "[HH:MM:SS] [prefix] content" from the daemon.
-// Streaming token chunks ([agent_message_chunk]) are concatenated without
-// separators to reconstruct the original text.
-func parseChatMessages(raw string) []chatMessage {
-	var msgs []chatMessage
-	lastWasChunk := false
-	for _, line := range strings.Split(raw, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		ts, body := extractTimestamp(line)
-		// Detect and strip ACP notification prefixes; track if this is a chunk.
-		isChunk := false
-		for _, prefix := range []string{"[agent_message_chunk]", "[session_update]"} {
-			if after, ok := strings.CutPrefix(body, prefix); ok {
-				body = strings.TrimLeft(after, "\t ")
-				isChunk = prefix == "[agent_message_chunk]"
-				break
-			}
-		}
-		if body == "" {
-			continue
-		}
-		// Merge consecutive lines with the same timestamp.
-		// Token chunks are concatenated without separators (they're
-		// fragments of a single sentence), other lines use newlines.
-		// Chunks also merge across timestamp boundaries into the
-		// previous chunk group to avoid splitting streamed sentences.
-		// Lines with empty timestamps are merged into the previous message.
-		if len(msgs) > 0 {
-			if isChunk && lastWasChunk {
-				msgs[len(msgs)-1].text += body
-			} else if ts == "" {
-				msgs[len(msgs)-1].text += "\n" + body
-			} else if !isChunk && msgs[len(msgs)-1].time == ts {
-				msgs[len(msgs)-1].text += "\n" + body
-			} else {
-				msgs = append(msgs, chatMessage{time: ts, text: body})
-			}
-		} else {
-			msgs = append(msgs, chatMessage{time: ts, text: body})
-		}
-		lastWasChunk = isChunk
-	}
-	return msgs
-}
-
-// extractTimestamp pulls a leading [HH:MM:SS] timestamp from a line.
-func extractTimestamp(line string) (string, string) {
-	if len(line) >= 10 && line[0] == '[' && line[9] == ']' {
-		return line[1:9], strings.TrimSpace(line[10:])
-	}
-	return "", line
 }
 
 func relTime(t time.Time) string {

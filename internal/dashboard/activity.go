@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/tmux"
 )
@@ -30,9 +31,17 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			if err != nil {
 				continue
 			}
-			text := assembleChunks(string(raw))
-			if text != "" {
-				entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
+			events := acp.ParseOutput(string(raw))
+			if len(events) > 0 {
+				last := events[len(events)-1]
+				text := last.Content
+				const maxLen = 200
+				if len(text) > maxLen {
+					text = "…" + text[len(text)-(maxLen-1):]
+				}
+				if text != "" {
+					entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
+				}
 			}
 			continue
 		}
@@ -47,43 +56,6 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 		}
 	}
 	return entries
-}
-
-// assembleChunks joins [agent_message_chunk] and [session_update] fragments into readable text.
-// maxLen <= 0 means no limit.
-func assembleChunks(raw string) string {
-	return assembleChunksN(raw, 200)
-}
-
-func assembleChunksN(raw string, maxLen int) string {
-	var parts []string
-	for _, line := range strings.Split(raw, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		// Robustly strip any bracketed prefix like [agent_message_chunk] or [session_update].
-		// We look for a '[' at the start, then a ']', then skip one optional tab or space.
-		content := trimmed
-		if strings.HasPrefix(trimmed, "[") {
-			if end := strings.Index(trimmed, "]"); end > 0 {
-				content = strings.TrimLeft(trimmed[end+1:], "\t ")
-			}
-		}
-
-		parts = append(parts, content)
-	}
-
-	// Joining chunks without space is usually correct for streaming text,
-	// but we should ensure we don't collapse actual lines if the raw input
-	// had meaningful line breaks between different types of updates.
-	joined := strings.Join(parts, "")
-
-	if maxLen > 0 && len(joined) > maxLen {
-		joined = "…" + joined[len(joined)-(maxLen-1):]
-	}
-	return joined
 }
 
 func parseActivityLines(raw string) []string {
