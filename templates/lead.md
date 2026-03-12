@@ -34,14 +34,17 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    loom mail read
    ```
 
-6. **Manage merges**: After a builder's work is reviewed and approved, merge their worktree branch.
+6. **Merge completed work**: After a reviewer approves (marks issue `done`), merge the builder's branch:
+   ```
+   loom merge <ISSUE-ID> --cleanup -m "feat(scope): description (ISSUE-ID)"
+   ```
+   This squash-merges the branch into main, sets `merged_at` on the issue, and removes the worktree/branch.
 
-7. **Clean up after merge**: After merging a builder's branch, kill the builder and reviewer agents (with worktree cleanup):
+7. **Clean up agents**: After merging, kill the builder and reviewer agents:
    ```
-   loom agent kill <BUILDER-ID> --cleanup
-   loom agent kill <REVIEWER-ID> --cleanup
+   loom agent kill <BUILDER-ID>
+   loom agent kill <REVIEWER-ID>
    ```
-   This stops their tmux windows, removes worktrees, deletes branches, and deregisters them.
 
 8. **Report up**: Notify your parent when the feature is complete or blocked:
    ```
@@ -58,10 +61,11 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
   ```
   loom spawn --role reviewer --issues <TASK-ID>
   ```
-- **Reviewer PASS**: The reviewer marks the issue `done`. Merge the builder's branch, then kill both agents:
+- **Reviewer PASS**: The reviewer marks the issue `done`. Merge the builder's branch and clean up:
   ```
-  loom agent kill <BUILDER-ID> --cleanup
-  loom agent kill <REVIEWER-ID> --cleanup
+  loom merge <TASK-ID> --cleanup -m "feat(scope): description (TASK-ID)"
+  loom agent kill <BUILDER-ID>
+  loom agent kill <REVIEWER-ID>
   ```
 - **Reviewer FAIL**: The reviewer marks the issue back to `in-progress` with a comment. The builder continues working. Nudge the builder if needed:
   ```
@@ -73,7 +77,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 
 - Builders and reviewers send mail to you — check frequently with `loom mail read`.
 - When a builder completes, spawn a reviewer for their work.
-- When a reviewer approves (PASS), merge the builder's branch, kill the builder and reviewer agents (`loom agent kill <ID> --cleanup`), and close the sub-issue.
+- When a reviewer approves (PASS), merge with `loom merge <TASK-ID> --cleanup`, kill the builder and reviewer agents (`loom agent kill <ID>`), and close the sub-issue.
 - When a reviewer rejects (FAIL), wait for the builder to fix and resubmit for review.
 - When all sub-issues are done, close the parent issue and notify your parent.
 - **Only reviewers and leads mark issues as `done`** — never builders.
