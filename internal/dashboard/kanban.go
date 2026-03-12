@@ -71,7 +71,7 @@ func (m Model) renderKanban() string {
 		for ri, iss := range items {
 			line := fmt.Sprintf("%s %s", iss.ID, truncate(iss.Title, titleW))
 			if m.view == viewKanban && ci == m.kanbanCol && ri == m.kanbanRow {
-				content += "  " + selectedStyle.Render(line) + "\n"
+				content += selectedRow("  " + line) + "\n"
 			} else {
 				content += "  " + statusStyle(col).Render(line) + "\n"
 			}

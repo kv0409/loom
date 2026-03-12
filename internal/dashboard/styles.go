@@ -263,6 +263,47 @@ func truncate(s string, n int) string {
 	return s
 }
 
+// Diff view styles
+var (
+	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
+	diffDel    = lipgloss.NewStyle().Foreground(colRed)
+	diffHunk   = lipgloss.NewStyle().Foreground(colCyan)
+	diffHeader = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
+)
+
+// Progress bar styles
+var (
+	barFill  = lipgloss.NewStyle().Foreground(colTeal)
+	barEmpty = lipgloss.NewStyle().Foreground(colSubtle)
+	barLabel = lipgloss.NewStyle().Foreground(colBlue).Bold(true)
+)
+
+// searchBoxStyle is used for the inline search input in the help bar.
+var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
+
+// heartbeatStyle returns a color style based on heartbeat freshness string.
+func heartbeatStyle(ago string) lipgloss.Style {
+	if ago == "never" {
+		return lipgloss.NewStyle().Foreground(colRed)
+	}
+	if strings.HasSuffix(ago, "s") {
+		return lipgloss.NewStyle().Foreground(colGreen)
+	}
+	if strings.HasSuffix(ago, "m") {
+		return lipgloss.NewStyle().Foreground(colYellow)
+	}
+	return lipgloss.NewStyle().Foreground(colRed)
+}
+
+// selectedRow renders line with selectedStyle, replacing the leading two-space
+// indent with a "▸ " prefix so the cursor is visible across all list views.
+func selectedRow(line string) string {
+	if len(line) >= 2 {
+		return selectedStyle.Render("▸" + line[1:])
+	}
+	return selectedStyle.Render(line)
+}
+
 var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 
 func renderEmpty(msg string, width int) string {

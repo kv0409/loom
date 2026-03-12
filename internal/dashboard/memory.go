@@ -41,7 +41,7 @@ func (m Model) renderMemory() string {
 		line := fmt.Sprintf(fmtStr,
 			truncate(e.ID, idW), truncate(e.Type, typeW), truncate(e.Title, titleW), truncate(memory.ByField(e), byW))
 		if i == m.cursor {
-			line = selectedStyle.Render("▸" + line[1:])
+			line = selectedRow(line)
 		}
 		content += line + "\n"
 	}

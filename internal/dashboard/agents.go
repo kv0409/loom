@@ -89,7 +89,7 @@ func (m Model) renderAgents() string {
 		id := prefix + a.ID
 		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
-			line = selectedStyle.Render("▸" + line[1:])
+			line = selectedRow(line)
 		}
 		content += line + "\n"
 	}

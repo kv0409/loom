@@ -704,7 +704,7 @@ func (m Model) View() string {
 		runes := []rune(m.searchQuery)
 		before := string(runes[:m.inputCursor])
 		after := string(runes[m.inputCursor:])
-		searchBox := lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
+		searchBox := searchBoxStyle
 		help = searchBox.Render(fmt.Sprintf("/ %s█%s", before, after)) + helpStyle.Render("  [Enter]filter [Esc]cancel")
 	}
 	if m.nudgeMode {

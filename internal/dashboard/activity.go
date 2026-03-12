@@ -130,7 +130,7 @@ func (m Model) renderActivity() string {
 		e := entries[i]
 		line := fmt.Sprintf("  %-*s %s", agentW, truncate(e.AgentID, agentW), truncate(e.Line, lineW))
 		if i == m.cursor {
-			line = selectedStyle.Render("▸" + line[1:])
+			line = selectedRow(line)
 		} else {
 			line = idleStyle.Render(line)
 		}

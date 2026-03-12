@@ -205,16 +205,12 @@ func (m Model) renderStatusBar(fullW int) string {
 		overflow = len(parents) - maxBars
 	}
 
-	barFill := lipgloss.NewStyle().Foreground(colTeal)
-	barEmpty := lipgloss.NewStyle().Foreground(colSubtle)
-	barLabel := lipgloss.NewStyle().Foreground(colBlue).Bold(true)
-
+	barW := 10
 	for _, p := range shown {
 		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
 		// bar width: innerW minus id(14) minus fraction(~5) minus title minus spacing
 		fractionW := len(fraction)
-		barW := 10
 		titleMaxW := innerW - 14 - 1 - barW - 1 - fractionW - 2
 		if titleMaxW < 6 {
 			titleMaxW = 6
@@ -241,20 +237,6 @@ func (m Model) renderStatusBar(fullW int) string {
 	}
 
 	return panel("[s] STATUS", content, fullW)
-}
-
-// heartbeatStyle returns a color style based on heartbeat freshness string.
-func heartbeatStyle(ago string) lipgloss.Style {
-	if strings.HasSuffix(ago, "s") || ago == "never" {
-		if ago == "never" {
-			return lipgloss.NewStyle().Foreground(colRed)
-		}
-		return lipgloss.NewStyle().Foreground(colGreen)
-	}
-	if strings.HasSuffix(ago, "m") {
-		return lipgloss.NewStyle().Foreground(colYellow)
-	}
-	return lipgloss.NewStyle().Foreground(colRed)
 }
 
 func timeAgo(t time.Time) string {

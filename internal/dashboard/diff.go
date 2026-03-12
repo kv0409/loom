@@ -5,15 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/worktree"
-)
-
-var (
-	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
-	diffDel    = lipgloss.NewStyle().Foreground(colRed)
-	diffHunk   = lipgloss.NewStyle().Foreground(colCyan)
-	diffHeader = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
 )
 
 func fetchDiff(wtPath string) string {
@@ -63,13 +55,13 @@ func (m Model) renderWorktrees() string {
 			colored := truncate(filesStr+diffAdd.Render(insStr)+diffDel.Render(delStr), diffW)
 			line := base + colored
 			if i == m.cursor {
-				line = selectedStyle.Render(plain)
+				line = selectedRow(plain)
 			}
 			content += line + "\n"
 		} else {
 			line := plain
 			if i == m.cursor {
-				line = selectedStyle.Render(line)
+				line = selectedRow(line)
 			}
 			content += line + "\n"
 		}

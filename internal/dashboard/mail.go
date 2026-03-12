@@ -40,7 +40,7 @@ func (m Model) renderMail() string {
 		line := fmt.Sprintf(fmtStr,
 			msg.Timestamp.Format("15:04"), truncate(route, routeW), msg.Type, truncate(msg.Subject, subjW))
 		if i == m.cursor {
-			line = selectedStyle.Render("▸" + line[1:])
+			line = selectedRow(line)
 		}
 		content += line + "\n"
 	}
