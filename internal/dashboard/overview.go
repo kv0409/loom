@@ -57,12 +57,25 @@ func (m Model) renderOverview() string {
 	fixedCols := 2 + 1 + aIdW + 1 + aRoleW + 1 + 2 + aAgeW + 1 + 2 + aHbW + 1
 	aTaskW := max(8, innerW-fixedCols)
 
+	// Build a map of agent ID → last ACP activity line for quick lookup.
+	lastActivity := map[string]string{}
+	for _, e := range m.data.activity {
+		lastActivity[e.AgentID] = e.Line
+	}
+
 	var agentLines []string
 	for _, a := range m.data.agents {
 		hb := timeAgo(a.Heartbeat)
 		age := timeAgo(a.SpawnedAt)
+
+		// Prefer last ACP structured event; fall back to assigned issues.
 		task := idleStyle.Render("idle")
-		if len(a.AssignedIssues) > 0 {
+		if line, ok := lastActivity[a.ID]; ok && line != "" {
+			if lipgloss.Width(line) > aTaskW {
+				line = truncate(line, aTaskW)
+			}
+			task = activeStyle.Render(line)
+		} else if len(a.AssignedIssues) > 0 {
 			taskStr := strings.Join(a.AssignedIssues, ", ")
 			if lipgloss.Width(taskStr) > aTaskW {
 				taskStr = truncate(taskStr, aTaskW)
