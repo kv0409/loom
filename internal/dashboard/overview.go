@@ -75,8 +75,8 @@ func (m Model) renderOverview() string {
 		agentLines = append(agentLines, fmt.Sprintf("  %s %-*s %-*s %s %s %s",
 			statusIndicator(a.Status), aIdW, truncate(a.ID, aIdW),
 			aRoleW, truncate(a.Role, aRoleW),
-			idleStyle.Render(fmt.Sprintf("⏱%-*s", aAgeW, age)),
-			heartbeatStyle(hb).Render(fmt.Sprintf("♥%-*s", aHbW, hb)),
+			idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW, age)),
+			heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW, hb)),
 			task))
 	}
 	agentContent := capContent(agentLines, agentBudget)
