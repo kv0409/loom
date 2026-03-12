@@ -75,6 +75,8 @@ type Model struct {
 	killConfirm      bool
 	selectedWorktree int
 	diffContent      string
+	kanbanCol        int // selected column in kanban view
+	kanbanRow        int // selected row within column
 	lr               *logReader
 	lastClickTime    time.Time
 	lastClickRow     int
@@ -443,6 +445,11 @@ case viewMailDetail:
 		m.switchView(nextView(m.view))
 		return m, nil
 	case "j", "down":
+		if m.view == viewKanban {
+			m.kanbanRow++
+			m.clampKanbanRow()
+			return m, nil
+		}
 		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll++
 			return m, nil
@@ -458,6 +465,13 @@ case viewMailDetail:
 		m.switchView(viewKanban)
 		return m, nil
 	case "k", "up":
+		if m.view == viewKanban {
+			m.kanbanRow--
+			if m.kanbanRow < 0 {
+				m.kanbanRow = 0
+			}
+			return m, nil
+		}
 		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
@@ -477,6 +491,24 @@ case viewMailDetail:
 			m.cursor = 0
 		}
 		return m, nil
+	case "h", "left":
+		if m.view == viewKanban {
+			m.kanbanCol--
+			if m.kanbanCol < 0 {
+				m.kanbanCol = 0
+			}
+			m.clampKanbanRow()
+			return m, nil
+		}
+	case "right":
+		if m.view == viewKanban {
+			m.kanbanCol++
+			if m.kanbanCol >= len(kanbanColumns) {
+				m.kanbanCol = len(kanbanColumns) - 1
+			}
+			m.clampKanbanRow()
+			return m, nil
+		}
 	case "enter":
 		return m.handleEnter()
 	}
@@ -544,6 +576,19 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					m.cursors[viewAgents] = i
 					m.cursor = i
 					m.view = viewAgentDetail
+					m.detailScroll = 0
+					break
+				}
+			}
+		}
+	case viewKanban:
+		iss := m.kanbanSelectedIssue()
+		if iss != nil {
+			for i, is := range m.data.issues {
+				if is.ID == iss.ID {
+					m.cursors[viewIssues] = i
+					m.cursor = i
+					m.view = viewIssueDetail
 					m.detailScroll = 0
 					break
 				}
@@ -704,6 +749,8 @@ func (m Model) helpBar() string {
 		base += helpStyle.Render(extra)
 	} else if m.view == viewAgents {
 		base += helpStyle.Render(" | [n]udge [o]utput [x]kill [Enter]detail")
+	} else if m.view == viewKanban {
+		base += helpStyle.Render(" | [h/←/→]column [j/k]row [Enter]detail")
 	}
 	return base
 }
