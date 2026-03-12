@@ -82,6 +82,13 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- After marking your issue `review` and sending completion mail, **stop immediately**. Do not idle, do not poll for feedback, do not wait for the reviewer.
+- If you have no pending work and no unread mail, **stop**. Your lead will respawn you if revisions are needed.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:

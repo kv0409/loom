@@ -59,6 +59,11 @@ func (m Model) renderIssues() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%s", idW, assignW)
 	header := fmt.Sprintf("  %-*s %-*s %s\n", idW, "ID", assignW, "ASSIGNEE", "TITLE")
 	content := header + "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += "\n"
+
+	if len(display) == 0 {
+		content += renderEmpty("No issues — loom issue create to add one", m.width-6)
+	}
 
 	for i, iss := range display {
 		if i == activeCount && activeCount < len(display) {
@@ -140,31 +145,12 @@ func (m Model) renderIssueDetail() string {
 		}
 	}
 
-	// Apply scroll viewport
-	viewH := m.height - 5
+	viewH := m.height - 6
 	if viewH < 1 {
 		viewH = 1
 	}
-	scroll := m.detailScroll
-	maxScroll := len(lines) - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	end := scroll + viewH
-	if end > len(lines) {
-		end = len(lines)
-	}
+	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
+	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	var s string
-	for _, l := range lines[scroll:end] {
-		s += l + "\n"
-	}
-
-	return panel("Issue: "+iss.ID, s, m.width-2)
+	return panel("Issue: "+iss.ID+scrollInfo, viewContent+"\n", m.width-2)
 }

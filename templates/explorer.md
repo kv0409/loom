@@ -46,6 +46,13 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Be precise — include file paths, function names, and line numbers.
 - Send heartbeat periodically: `loom agent heartbeat`.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- After recording your findings and sending completion mail, **stop immediately**. Do not idle waiting for follow-up.
+- Your lead will spawn a new explorer if additional exploration is needed.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:

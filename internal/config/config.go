@@ -106,6 +106,7 @@ type LimitsConfig struct {
 	MaxWorktrees            int `yaml:"max_worktrees"`
 	MaxAgentsPerLead        int `yaml:"max_agents_per_lead"`
 	HeartbeatTimeoutSeconds int `yaml:"heartbeat_timeout_seconds"`
+	IdleTimeoutSeconds      int `yaml:"idle_timeout_seconds"`
 }
 
 type MergeConfig struct {
@@ -145,6 +146,7 @@ func DefaultConfig() *Config {
 			MaxWorktrees:            4,
 			MaxAgentsPerLead:        3,
 			HeartbeatTimeoutSeconds: 300,
+			IdleTimeoutSeconds:      600,
 		},
 		Merge: MergeConfig{
 			Strategy:         "squash",

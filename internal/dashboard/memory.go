@@ -23,8 +23,13 @@ func (m Model) renderMemory() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idW, typeW, titleW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "TYPE", "TITLE", "BY")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += "\n"
 
-	visibleRows := m.height - 8 // header + tab bar + panel chrome + help bar
+	if len(memories) == 0 {
+		content += renderEmpty("No memory entries yet", m.width-6)
+	}
+
+	visibleRows := m.height - 9 // header + tab bar + panel chrome + help bar (2 lines)
 	if visibleRows < 1 {
 		visibleRows = 1
 	}

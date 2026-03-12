@@ -29,6 +29,7 @@ type Daemon struct {
 	acpClients map[string]*acp.Client
 	apiLn      net.Listener
 	lastSeen   map[string]time.Time // ephemeral: detect heartbeat changes between ticks
+	idleSince  map[string]time.Time // ephemeral: when agent became idle (no active issues)
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
@@ -39,6 +40,7 @@ func New(loomRoot string, cfg *config.Config) *Daemon {
 		done:       make(chan struct{}),
 		acpClients: make(map[string]*acp.Client),
 		lastSeen:   make(map[string]time.Time),
+		idleSince:  make(map[string]time.Time),
 	}
 }
 
@@ -120,6 +122,7 @@ func (d *Daemon) Reload() error {
 	d.stop = make(chan struct{})
 	d.done = make(chan struct{})
 	d.lastSeen = make(map[string]time.Time)
+	d.idleSince = make(map[string]time.Time)
 
 	log.Println("[daemon] reload: restarting goroutines")
 	return d.Start()
@@ -519,6 +522,10 @@ func (d *Daemon) watchHeartbeats() {
 	if timeout == 0 {
 		timeout = 300 * time.Second
 	}
+	idleTimeout := time.Duration(d.Config.Limits.IdleTimeoutSeconds) * time.Second
+	if idleTimeout == 0 {
+		idleTimeout = 600 * time.Second
+	}
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.HeartbeatIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -533,6 +540,7 @@ func (d *Daemon) watchHeartbeats() {
 			for _, a := range agents {
 				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
 					delete(d.lastSeen, a.ID)
+					delete(d.idleSince, a.ID)
 					continue
 				}
 				if !d.isAlive(a) {
@@ -558,6 +566,7 @@ func (d *Daemon) watchHeartbeats() {
 					a.NudgeCount = 0
 					agent.Save(d.LoomRoot, a)
 					delete(d.lastSeen, a.ID)
+					delete(d.idleSince, a.ID)
 					parentID := a.SpawnedBy
 					if parentID == "" {
 						continue
@@ -606,6 +615,57 @@ func (d *Daemon) watchHeartbeats() {
 						}
 					}
 				}
+			}
+
+			// Idle agent timeout: kill active non-orchestrator agents with no
+			// active (non-done/cancelled) assigned issues.
+			if idleTimeout > 0 {
+				d.checkIdleAgents(agents, idleTimeout)
+			}
+		}
+	}
+}
+
+// checkIdleAgents kills active non-orchestrator agents that have no active
+// (non-done/cancelled) assigned issues for longer than idleTimeout.
+func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duration) {
+	for _, a := range agents {
+		if a.Status != "active" || a.Role == "orchestrator" {
+			delete(d.idleSince, a.ID)
+			continue
+		}
+		// Check whether the agent has any active (non-terminal) assigned issues.
+		hasActive := false
+		for _, issID := range a.AssignedIssues {
+			iss, err := issue.Load(d.LoomRoot, issID)
+			if err != nil {
+				continue
+			}
+			if iss.Status != "done" && iss.Status != "cancelled" && iss.Status != "merged" {
+				hasActive = true
+				break
+			}
+		}
+		if hasActive {
+			delete(d.idleSince, a.ID)
+			continue
+		}
+		// Agent has no active issues — track when it became idle.
+		if _, ok := d.idleSince[a.ID]; !ok {
+			d.idleSince[a.ID] = time.Now()
+			continue
+		}
+		if time.Since(d.idleSince[a.ID]) < idleTimeout {
+			continue
+		}
+		// Idle timeout exceeded — kill the agent.
+		log.Printf("[idle-timeout] killing %s: idle for %v with no active issues", a.ID, time.Since(d.idleSince[a.ID]))
+		delete(d.idleSince, a.ID)
+		agent.Kill(d.LoomRoot, a.ID, true)
+		if parentID := a.SpawnedBy; parentID != "" {
+			parent, err := agent.Load(d.LoomRoot, parentID)
+			if err == nil {
+				d.notify(parent, "[LOOM] Agent "+a.ID+" auto-killed: idle with no active issues for "+idleTimeout.String())
 			}
 		}
 	}

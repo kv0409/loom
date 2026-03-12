@@ -123,7 +123,7 @@ func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
 
 	if len(entries) == 0 {
-		return panel("ACTIVITY", "  (no activity detected)\n", m.width-2)
+		return panel("ACTIVITY", renderEmpty("No activity detected", m.width-6), m.width-2)
 	}
 
 	// Proportional column widths.
@@ -133,8 +133,9 @@ func (m Model) renderActivity() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%s", agentW)
 	content := fmt.Sprintf(fmtStr+"\n", "AGENT", "RECENT OUTPUT")
 	content += "  " + strings.Repeat("─", m.width-6) + "\n"
+	content += "\n"
 
-	visible := m.height - 8
+	visible := m.height - 9
 	if visible < 5 {
 		visible = 5
 	}
@@ -162,3 +163,4 @@ func (m Model) renderActivity() string {
 	}
 	return panel(title, content, m.width-2)
 }
+

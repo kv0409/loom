@@ -70,6 +70,14 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 - Always check `loom memory search` before making architectural decisions.
 - Always record strategic decisions with `loom memory add decision`.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- **Kill leads immediately after they report completion.** Do not leave idle leads running.
+- **Audit for idle agents.** If an agent has no assigned work and no pending mail, kill it.
+- Do not spawn leads for issues that are not yet ready.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:

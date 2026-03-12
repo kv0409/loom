@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/issue"
@@ -41,11 +42,14 @@ var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemor
 
 const (
 	// listHeaderRows is the number of fixed rows above list items in the screen layout:
-	// row 0 = dashboard title, row 1 = panel border, row 2 = column header, row 3 = separator.
-	listHeaderRows = 4
+	// row 0 = dashboard title, row 1 = panel border, row 2 = column header, row 3 = separator, row 4 = blank line.
+	listHeaderRows = 5
 	// issuesSectionGap is the number of extra lines inserted between active and done
 	// sections in the issues view (blank + "RECENTLY DONE" + separator).
 	issuesSectionGap = 3
+
+	minTermWidth  = 60
+	minTermHeight = 15
 )
 
 type agentTreeNode struct {
@@ -648,6 +652,12 @@ func nextView(v view) view {
 }
 
 func (m Model) View() string {
+	// Minimum terminal size guard
+	if m.width < minTermWidth || m.height < minTermHeight {
+		msg := fmt.Sprintf("Terminal too small (%d×%d)\nNeed at least %d×%d", m.width, m.height, minTermWidth, minTermHeight)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
+	}
+
 	var content string
 	switch m.view {
 	case viewOverview:
@@ -680,12 +690,22 @@ func (m Model) View() string {
 		content = m.renderKanban()
 	}
 
+	// Full-width title bar with status summary
+	left := " ◈ LOOM DASHBOARD"
+	right := fmt.Sprintf("%d agents  %d unread ", len(m.data.agents), m.data.unread)
+	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if padding < 1 {
+		padding = 1
+	}
+	titleBar := titleStyle.Width(m.width).Render(left + strings.Repeat(" ", padding) + right)
+
 	help := m.helpBar()
 	if m.searchMode {
 		runes := []rune(m.searchQuery)
 		before := string(runes[:m.inputCursor])
 		after := string(runes[m.inputCursor:])
-		help = helpStyle.Render(fmt.Sprintf(" /%s█%s  [Enter]filter [Esc]cancel", before, after))
+		searchBox := lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
+		help = searchBox.Render(fmt.Sprintf("/ %s█%s", before, after)) + helpStyle.Render("  [Enter]filter [Esc]cancel")
 	}
 	if m.nudgeMode {
 		agentName := ""
@@ -722,14 +742,41 @@ func (m Model) View() string {
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
 	}
+
+	// Flash messages on their own line above help bar
+	flashLine := ""
 	if m.flashMsg != "" && !m.nudgeMode && !m.messageMode && !m.killConfirm {
 		style := flashOkStyle
 		if m.flashIsErr {
 			style = flashErrStyle
 		}
-		help = style.Render(" "+m.flashMsg) + "  " + help
+		flashLine = style.Render(" " + m.flashMsg)
 	}
-	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
+
+	// Build final output
+	var output string
+	if flashLine != "" {
+		output = fmt.Sprintf("%s\n%s\n%s\n%s", titleBar, content, flashLine, help)
+	} else {
+		output = fmt.Sprintf("%s\n%s\n%s", titleBar, content, help)
+	}
+
+	// Full-screen background fill
+	lines := strings.Split(output, "\n")
+	for len(lines) < m.height {
+		lines = append(lines, "")
+	}
+	if len(lines) > m.height {
+		lines = lines[:m.height]
+	}
+	bg := lipgloss.NewStyle().Background(colBg).Foreground(colFg)
+	for i, l := range lines {
+		w := lipgloss.Width(l)
+		if w < m.width {
+			lines[i] = l + bg.Render(strings.Repeat(" ", m.width-w))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) helpBar() string {
@@ -748,41 +795,46 @@ func (m Model) helpBar() string {
 			parts = append(parts, helpStyle.Render(label))
 		}
 	}
-	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
-	base := " " + strings.Join(parts, " ") + suffix
+	tabLine := " " + strings.Join(parts, " ") + helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
+
+	// Context-specific shortcuts on second line
+	var ctx string
 	switch m.view {
 	case viewAgentDetail:
-		extra := " | [n]udge [j/k]scroll"
+		ctx = "[n]udge [j/k]scroll"
 		agents := m.filteredAgents()
 		if m.cursor < len(agents) {
 			a := agents[m.cursor]
 			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-				extra += " [Enter]attach"
+				ctx += " [Enter]attach"
 			}
 		}
-		base += helpStyle.Render(extra)
 	case viewAgents:
-		base += helpStyle.Render(" | [n]udge [o]utput [x]kill [Enter]detail")
+		ctx = "[n]udge [o]utput [x]kill [Enter]detail"
 	case viewKanban:
-		base += helpStyle.Render(" | [h/←/→]column [j/k]row [Enter]detail")
+		ctx = "[h/←/→]column [j/k]row [Enter]detail"
 	case viewIssues:
-		base += helpStyle.Render(" | [Enter]detail")
+		ctx = "[Enter]detail"
 	case viewMail:
-		base += helpStyle.Render(" | [Enter]detail")
+		ctx = "[Enter]detail"
 	case viewWorktrees:
-		base += helpStyle.Render(" | [Enter]diff")
+		ctx = "[Enter]diff"
 	case viewMemory:
-		base += helpStyle.Render(" | [Enter]detail")
+		ctx = "[Enter]detail"
 	case viewLogs:
-		base += helpStyle.Render(" | [f]ilter [F]agent")
+		ctx = "[f]ilter [F]agent"
 	case viewActivity:
-		base += helpStyle.Render(" | [Enter]agent")
+		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMailDetail, viewMemoryDetail:
-		base += helpStyle.Render(" | [j/k]scroll")
+		ctx = "[j/k]scroll"
 	case viewDiff:
-		base += helpStyle.Render(" | [j/k]scroll")
+		ctx = "[j/k]scroll"
 	}
-	return base
+
+	if ctx != "" {
+		return tabLine + "\n" + helpStyle.Render("  │ "+ctx)
+	}
+	return tabLine + "\n" + helpStyle.Render("  │")
 }
 
 // helpBarTabs maps substrings in the help bar to views for mouse click targeting.
@@ -802,7 +854,7 @@ var helpBarTabs = []struct {
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	x, y := msg.X, msg.Y
-	lastRow := m.height - 1
+	lastRow := m.height - 2 // help bar is 2 lines; tabs are on the first
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:

@@ -201,7 +201,7 @@ func (m Model) renderLogs() string {
 		agentLabel = agentFilter
 	}
 	header := fmt.Sprintf("  Filter: [%s]  Agent: [%s]  (f=category, F=agent)\n", filterLabel, agentLabel)
-	header += "  " + strings.Repeat("─", m.width-6) + "\n"
+	header += "  " + strings.Repeat("─", m.width-6) + "\n\n"
 
 	var lines []logLine
 	for _, l := range m.data.logs {
@@ -215,11 +215,11 @@ func (m Model) renderLogs() string {
 	}
 
 	if len(lines) == 0 {
-		header += "  (no matching log entries)\n"
+		header += renderEmpty("No matching log entries", m.width-6)
 		return panel("LOGS", header, m.width-2)
 	}
 
-	visible := m.height - 8
+	visible := m.height - 9
 	if visible < 5 {
 		visible = 5
 	}

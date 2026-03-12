@@ -35,7 +35,7 @@ func (m Model) renderAgents() string {
 		avail = 40
 	}
 	roleW := max(6, avail*10/100)
-	statusW := max(8, avail*12/100)
+	statusW := statusPillWidth + 2
 	wtW := max(8, avail*22/100)
 	issueW := max(6, avail*14/100)
 	hbW := max(6, avail*10/100)
@@ -44,6 +44,11 @@ func (m Model) renderAgents() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s", idW, roleW, statusW+2, wtW, issueW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += "\n"
+
+	if len(agents) == 0 {
+		content += renderEmpty("No agents running — loom spawn to start", m.width-6)
+	}
 
 	for i, a := range agents {
 		wt := "—"
@@ -58,7 +63,7 @@ func (m Model) renderAgents() string {
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
-		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillStyle(a.Status).Render(truncate(a.Status, statusW)))
+		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
 
 		// Build tree prefix — find original index for tree data.
 		prefix := ""
@@ -208,43 +213,18 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	// Apply scroll viewport
-	totalLines := len(lines)
-	viewH := m.height - 5
+	viewH := m.height - 6
 	if viewH < 1 {
 		viewH = 1
 	}
-	scroll := m.detailScroll
-	maxScroll := totalLines - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	end := scroll + viewH
-	if end > totalLines {
-		end = totalLines
-	}
-
-	var s string
-	for _, l := range lines[scroll:end] {
-		s += l + "\n"
-	}
-
-	// Scroll indicator
-	scrollInfo := ""
-	if totalLines > viewH {
-		scrollInfo = fmt.Sprintf(" (lines %d-%d of %d)", scroll+1, end, totalLines)
-	}
+	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
+	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
 	hint := ""
 	if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
 		hint = " [Enter]attach"
 	}
-	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, s, m.width-2)
+	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, m.width-2)
 }
 
 // chatMessage represents a single timestamped output message.

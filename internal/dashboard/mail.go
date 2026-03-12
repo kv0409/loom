@@ -21,8 +21,13 @@ func (m Model) renderMail() string {
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", timeW, routeW, typeW)
 	content := fmt.Sprintf(fmtStr+"\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += "\n"
 
-	visibleRows := m.height - 8
+	if len(messages) == 0 {
+		content += renderEmpty("No messages yet", m.width-6)
+	}
+
+	visibleRows := m.height - 9
 	if visibleRows < 1 {
 		visibleRows = 1
 	}
@@ -88,31 +93,12 @@ func (m Model) renderMailDetail() string {
 		lines = append(lines, "  (no body)")
 	}
 
-	// Viewport scroll
-	viewH := m.height - 5
+	viewH := m.height - 6
 	if viewH < 1 {
 		viewH = 1
 	}
-	scroll := m.detailScroll
-	maxScroll := len(lines) - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	end := scroll + viewH
-	if end > len(lines) {
-		end = len(lines)
-	}
+	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
+	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	var s string
-	for _, l := range lines[scroll:end] {
-		s += l + "\n"
-	}
-
-	return panel("Mail: "+truncate(msg.Subject, 40), s, m.width-2)
+	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, viewContent+"\n", m.width-2)
 }

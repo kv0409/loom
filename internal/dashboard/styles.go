@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -243,3 +244,66 @@ func joinLines(lines []string) string {
 	}
 	return result
 }
+
+func truncate(s string, n int) string {
+	if lipgloss.Width(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return "..."
+	}
+	w := 0
+	for i, r := range s {
+		rw := lipgloss.Width(string(r))
+		if w+rw > n-3 {
+			return s[:i] + "..."
+		}
+		w += rw
+	}
+	return s
+}
+
+var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
+
+func renderEmpty(msg string, width int) string {
+	centered := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
+	return centered.Render(emptyMsgStyle.Render(msg)) + "\n"
+}
+
+func renderViewport(lines []string, scroll, viewH int) (string, int, int) {
+	total := len(lines)
+	maxScroll := total - viewH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	end := scroll + viewH
+	if end > total {
+		end = total
+	}
+	return strings.Join(lines[scroll:end], "\n"), scroll, total
+}
+
+func scrollIndicator(scroll, viewH, total int) string {
+	if total <= viewH {
+		return ""
+	}
+	above := scroll
+	below := total - viewH - scroll
+	if below < 0 {
+		below = 0
+	}
+	return idleStyle.Render(fmt.Sprintf(" ↑%d ↓%d", above, below))
+}
+
+const statusPillWidth = 13
+
+func statusPill(status string) string {
+	return statusPillStyle(status).Width(statusPillWidth).Render(status)
+}
+

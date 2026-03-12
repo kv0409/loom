@@ -58,6 +58,13 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Focus only on the assigned issue — do not review unrelated code.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- After sending your review verdict (PASS or FAIL) and mailing your lead, **stop immediately**. Do not idle waiting for follow-up.
+- Your lead will spawn a new reviewer if a re-review is needed.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:

@@ -11,7 +11,7 @@ import (
 // overviewRowBudget returns the max item rows each panel can show.
 // It reserves 2 rows for title+helpbar, and 3 rows border overhead per panel.
 func (m Model) overviewRowBudget(panelCount int) int {
-	usable := m.height - 2 // title bar + help bar
+	usable := m.height - 3 // title bar (1) + help bar (2)
 	var perPanel int
 	if m.width < 80 {
 		perPanel = (usable / panelCount) - 3
@@ -81,7 +81,9 @@ func (m Model) renderOverview() string {
 	}
 	agentContent := capContent(agentLines, agentBudget)
 	if agentContent == "" {
-		agentContent = "  No agents running. Use loom spawn to start.\n"
+		agentContent = renderEmpty("No agents running — loom spawn to start", innerW)
+	} else {
+		agentContent = "\n" + agentContent
 	}
 	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
@@ -99,7 +101,9 @@ func (m Model) renderOverview() string {
 	}
 	issueContent := capContent(issueLines, budget)
 	if issueContent == "" {
-		issueContent = "  No open issues. Use loom issue create to add one.\n"
+		issueContent = renderEmpty("No open issues — loom issue create to add one", innerW)
+	} else {
+		issueContent = "\n" + issueContent
 	}
 	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", len(issueLines)), issueContent, colW)
 
@@ -118,7 +122,9 @@ func (m Model) renderOverview() string {
 	}
 	wtContent := capContent(wtLines, budget)
 	if wtContent == "" {
-		wtContent = "  No worktrees active. Builders create them automatically.\n"
+		wtContent = renderEmpty("No worktrees active — builders create them automatically", innerW)
+	} else {
+		wtContent = "\n" + wtContent
 	}
 	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
@@ -134,7 +140,9 @@ func (m Model) renderOverview() string {
 	}
 	mailContent := capContent(mailLines, budget)
 	if mailContent == "" {
-		mailContent = "  No messages yet. Agents communicate via loom mail.\n"
+		mailContent = renderEmpty("No messages yet — agents communicate via loom mail", innerW)
+	} else {
+		mailContent = "\n" + mailContent
 	}
 	mailPanel := panel(fmt.Sprintf("MAIL (%d unread)", m.data.unread), mailContent, colW)
 
@@ -153,7 +161,7 @@ func (m Model) renderOverview() string {
 	if len(parts) > 0 {
 		memContent = "  " + strings.Join(parts, " · ") + "\n"
 	} else {
-		memContent = "  (empty)\n"
+		memContent = renderEmpty("empty", innerW)
 	}
 	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
 
@@ -166,6 +174,14 @@ func (m Model) renderOverview() string {
 
 	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
 	right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel, actPanel)
+
+	leftH := lipgloss.Height(left)
+	rightH := lipgloss.Height(right)
+	if leftH < rightH {
+		left += strings.Repeat("\n", rightH-leftH)
+	} else if rightH < leftH {
+		right += strings.Repeat("\n", leftH-rightH)
+	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 }
@@ -223,23 +239,15 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 
 	content := capContent(lines, budget)
 	if content == "" {
-		content = "  (no recent activity)\n"
+		content = renderEmpty("No recent activity", colW-2)
+	} else {
+		content = "\n" + content
 	}
 	unique := map[string]struct{}{}
 	for _, e := range m.data.activity {
 		unique[e.AgentID] = struct{}{}
 	}
 	return panel(fmt.Sprintf("ACTIVITY (%d agents, %d msgs)", len(unique), len(m.data.messages)), content, colW)
-}
-
-func truncate(s string, n int) string {
-	if n <= 3 {
-		return "..."
-	}
-	if len(s) > n {
-		return s[:n-3] + "..."
-	}
-	return s
 }
 
 func min(a, b int) int {

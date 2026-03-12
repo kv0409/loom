@@ -42,17 +42,34 @@ func (m Model) kanbanSelectedIssue() *issue.Issue {
 func (m Model) renderKanban() string {
 	buckets := m.kanbanBuckets()
 
-	colW := m.width/len(kanbanColumns) - 1
-	if colW < 20 {
-		colW = 20
+	minColW := 24
+	maxVisibleCols := m.width / minColW
+	if maxVisibleCols < 2 {
+		maxVisibleCols = 2
+	}
+	if maxVisibleCols > len(kanbanColumns) {
+		maxVisibleCols = len(kanbanColumns)
 	}
 
+	startCol := m.kanbanCol - maxVisibleCols/2
+	if startCol < 0 {
+		startCol = 0
+	}
+	if startCol+maxVisibleCols > len(kanbanColumns) {
+		startCol = len(kanbanColumns) - maxVisibleCols
+	}
+	visibleCols := kanbanColumns[startCol : startCol+maxVisibleCols]
+
+	colW := m.width/maxVisibleCols - 1
+	titleW := colW - 6
+
 	var cols []string
-	for ci, col := range kanbanColumns {
+	for i, col := range visibleCols {
+		ci := startCol + i
 		items := buckets[col]
 		content := ""
 		for ri, iss := range items {
-			line := fmt.Sprintf("%s %s", iss.ID, truncate(iss.Title, 18))
+			line := fmt.Sprintf("%s %s", iss.ID, truncate(iss.Title, titleW))
 			if m.view == viewKanban && ci == m.kanbanCol && ri == m.kanbanRow {
 				content += "  " + selectedStyle.Render(line) + "\n"
 			} else {
@@ -60,10 +77,24 @@ func (m Model) renderKanban() string {
 			}
 		}
 		if content == "" {
-			content = "  (empty)\n"
+			content = renderEmpty("empty", colW-4)
 		}
 		cols = append(cols, panel(fmt.Sprintf("%s (%d)", col, len(items)), content, colW))
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	board := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+
+	var indicator string
+	if startCol > 0 {
+		indicator += fmt.Sprintf("← %d more  ", startCol)
+	}
+	endCol := startCol + maxVisibleCols
+	if endCol < len(kanbanColumns) {
+		indicator += fmt.Sprintf("%d more →", len(kanbanColumns)-endCol)
+	}
+	if indicator != "" {
+		board += "\n" + helpStyle.Render("  "+indicator)
+	}
+
+	return board
 }
