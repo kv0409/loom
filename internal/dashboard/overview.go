@@ -56,6 +56,9 @@ func (m Model) renderOverview() string {
 	innerW := colW - 2
 
 	panelCount := 6
+	if stacked {
+		panelCount = 4
+	}
 	budget := m.overviewRowBudget(panelCount)
 	agentBudget := budget + budget/2 // agents get 1.5x budget (primary panel)
 
@@ -169,7 +172,10 @@ func (m Model) renderOverview() string {
 	actPanel := m.renderActivityOverview(colW, budget)
 
 	if stacked {
-		return lipgloss.JoinVertical(lipgloss.Left, agentPanel, issuePanel, wtPanel, mailPanel, memPanel, actPanel)
+		hint := lipgloss.NewStyle().
+			Foreground(colYellow).
+			Render("  ↔ resize terminal ≥ 80 cols for memory & activity panels")
+		return lipgloss.JoinVertical(lipgloss.Left, agentPanel, issuePanel, mailPanel, wtPanel, hint)
 	}
 
 	left := lipgloss.JoinVertical(lipgloss.Left, agentPanel, wtPanel, memPanel)
