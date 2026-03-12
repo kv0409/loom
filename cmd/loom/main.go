@@ -22,6 +22,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
+	"github.com/karanagi/loom/internal/nudge"
 	"github.com/karanagi/loom/internal/mcp"
 	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/internal/tmux"
@@ -192,8 +193,9 @@ func main() {
 		RunE:  runAttach,
 	}
 	nudgeCmd := &cobra.Command{
-		Use:   "nudge <name> <message>",
-		Short: "Send message to agent",
+		Use:   "nudge <agent> <type>",
+		Short: "Send predefined nudge to agent",
+		Long: "Send a predefined nudge signal to an agent.\n\nAvailable nudge types:\n" + nudgeTypeHelp(),
 		Args:  cobra.ExactArgs(2),
 		RunE:  runNudge,
 	}
@@ -1479,26 +1481,37 @@ func runAttach(cmd *cobra.Command, args []string) error {
 	return tmux.AttachSession(a.TmuxTarget)
 }
 
+func nudgeTypeHelp() string {
+	var b strings.Builder
+	for _, nt := range nudge.Types {
+		fmt.Fprintf(&b, "  %-25s %s\n", nt.Key, nt.Label)
+	}
+	return b.String()
+}
+
 func runNudge(cmd *cobra.Command, args []string) error {
 	root, err := config.FindLoomRoot()
 	if err != nil {
 		return err
+	}
+	nt := nudge.ByKey(args[1])
+	if nt == nil {
+		return fmt.Errorf("unknown nudge type %q\n\nAvailable types:\n%s", args[1], nudgeTypeHelp())
 	}
 	a, err := agent.Load(root, args[0])
 	if err != nil {
 		return err
 	}
 	if a.Config.KiroMode == "acp" {
-		if err := daemon.Nudge(root, args[0], args[1]); err != nil {
+		if err := daemon.Nudge(root, args[0], nt.Message); err != nil {
 			return err
 		}
 	} else {
-		msg := "[LOOM] Nudge: " + args[1]
-		if err := tmux.RunInPane(a.TmuxTarget, msg); err != nil {
+		if err := tmux.RunInPane(a.TmuxTarget, nt.Message); err != nil {
 			return err
 		}
 	}
-	fmt.Printf("Nudged %s\n", args[0])
+	fmt.Printf("Nudged %s: %s\n", args[0], nt.Label)
 	return nil
 }
 
