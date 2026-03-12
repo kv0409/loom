@@ -675,12 +675,19 @@ func (m Model) View() string {
 }
 
 func (m Model) helpBar() string {
+	// In agents/agent-detail views with agents present, m means "message" not "mail"
+	mIsMessage := (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0
+
 	var parts []string
 	for _, tab := range helpBarTabs {
+		label := tab.label
+		if tab.view == viewMail && mIsMessage {
+			label = "[m]essage"
+		}
 		if m.view == tab.view || (tab.view == viewAgents && m.view == viewAgentDetail) {
-			parts = append(parts, helpActiveStyle.Render(tab.label))
+			parts = append(parts, helpActiveStyle.Render(label))
 		} else {
-			parts = append(parts, helpStyle.Render(tab.label))
+			parts = append(parts, helpStyle.Render(label))
 		}
 	}
 	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
@@ -696,7 +703,7 @@ func (m Model) helpBar() string {
 		}
 		base += helpStyle.Render(extra)
 	} else if m.view == viewAgents {
-		base += helpStyle.Render(" | [n]udge [m]essage [o]utput [x]kill [Enter]detail")
+		base += helpStyle.Render(" | [n]udge [o]utput [x]kill [Enter]detail")
 	}
 	return base
 }
@@ -758,14 +765,26 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonLeft:
 		// Click on help bar → switch view
 		if y >= lastRow {
-			bar := " [a]gents [i]ssues [m]ail [d] memory [w]orktrees [b]oard [t]activity [l]ogs"
+			mIsMessage := (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0
+			offset := 1 // leading space
 			for _, tab := range helpBarTabs {
-				idx := strings.Index(bar, tab.label)
-				if idx >= 0 && x >= idx && x < idx+len(tab.label) {
-					m.switchView(tab.view)
+				label := tab.label
+				if tab.view == viewMail && mIsMessage {
+					label = "[m]essage"
+				}
+				if x >= offset && x < offset+len(label) {
+					if tab.view == viewMail && mIsMessage {
+						// In agent context, clicking [m]essage triggers message mode
+						m.messageMode = true
+						m.messageInput = ""
+						m.inputCursor = 0
+					} else {
+						m.switchView(tab.view)
+					}
 					m.hoverRow = -1
 					return m, nil
 				}
+				offset += len(label) + 1 // +1 for space separator
 			}
 			return m, nil
 		}
