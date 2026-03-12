@@ -39,6 +39,15 @@ const (
 
 var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees, viewKanban}
 
+const (
+	// listHeaderRows is the number of fixed rows above list items in the screen layout:
+	// row 0 = dashboard title, row 1 = panel border, row 2 = column header, row 3 = separator.
+	listHeaderRows = 4
+	// issuesSectionGap is the number of extra lines inserted between active and done
+	// sections in the issues view (blank + "RECENTLY DONE" + separator).
+	issuesSectionGap = 3
+)
+
 type agentTreeNode struct {
 	depth  int
 	isLast bool
@@ -918,26 +927,30 @@ func isListView(v view) bool {
 }
 
 // mouseToListIndex converts a screen Y coordinate to a list item index.
-// Layout: row 0 = title, row 1 = panel border, row 2 = column header, row 3 = separator, row 4+ = items.
+// The first listHeaderRows rows are fixed chrome (title, panel border, column header, separator).
 func (m Model) mouseToListIndex(y int) int {
-	idx := y - 4
+	idx := y - listHeaderRows
 	if m.view == viewIssues {
-		// displayIssues inserts 3 extra lines (blank + RECENTLY DONE + separator)
-		// between active and done sections. Adjust index for items past the gap.
-		activeCount := 0
-		for _, iss := range m.filteredIssues() {
-			if iss.Status != "done" && iss.Status != "cancelled" {
-				activeCount++
-			}
+		idx = m.adjustIssuesIndex(idx)
+	}
+	return idx
+}
+
+// adjustIssuesIndex accounts for the extra separator lines (blank + "RECENTLY DONE" + separator)
+// inserted between active and done sections in the issues view.
+func (m Model) adjustIssuesIndex(idx int) int {
+	display := m.filteredIssues()
+	activeCount := 0
+	for _, iss := range display {
+		if iss.Status != "done" && iss.Status != "cancelled" {
+			activeCount++
 		}
-		display := m.filteredIssues()
-		if activeCount < len(display) && idx > activeCount {
-			// Clicks on the 3 separator lines map to nothing useful
-			if idx <= activeCount+3 {
-				return -1
-			}
-			idx -= 3
+	}
+	if activeCount < len(display) && idx > activeCount {
+		if idx <= activeCount+issuesSectionGap {
+			return -1
 		}
+		idx -= issuesSectionGap
 	}
 	return idx
 }
