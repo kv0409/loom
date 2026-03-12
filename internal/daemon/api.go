@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/tmux"
 )
@@ -163,12 +164,7 @@ func (d *Daemon) apiOutput(req Request) Response {
 		lines = 50
 	}
 	if a.Config.KiroMode == "acp" {
-		events := d.GetACPOutput(req.AgentID, lines)
-		var parts []string
-		for _, ev := range events {
-			parts = append(parts, ev.Content)
-		}
-		return okResp(strings.Join(parts, "\n"))
+		return okResp(d.GetACPOutput(req.AgentID, lines))
 	}
 	if a.TmuxTarget == "" {
 		return errResp("no tmux target for agent")
@@ -177,10 +173,13 @@ func (d *Daemon) apiOutput(req Request) Response {
 	if err != nil {
 		return errResp("capture failed: " + err.Error())
 	}
-	// Trim to requested line count from the end.
 	parts := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	if len(parts) > lines {
 		parts = parts[len(parts)-lines:]
 	}
-	return okResp(strings.Join(parts, "\n"))
+	events := make([]acp.ACPEvent, len(parts))
+	for i, line := range parts {
+		events[i] = acp.ACPEvent{Kind: acp.TokenChunk, Content: line}
+	}
+	return okResp(events)
 }

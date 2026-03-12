@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+
+	"github.com/karanagi/loom/internal/acp"
 )
 
 // call dials the daemon Unix socket, sends req, and returns the response.
@@ -50,12 +52,20 @@ func Cancel(loomRoot, agentID string) error {
 	return err
 }
 
-// Output retrieves recent output lines from an agent via the daemon.
-func Output(loomRoot, agentID string, lines int) (string, error) {
+// Output retrieves recent output events from an agent via the daemon.
+func Output(loomRoot, agentID string, lines int) ([]acp.ACPEvent, error) {
 	resp, err := call(loomRoot, Request{Action: "output", AgentID: agentID, Lines: lines})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	s, _ := resp.Data.(string)
-	return s, nil
+	// resp.Data is decoded as []interface{} from JSON; re-encode and decode into []acp.ACPEvent.
+	b, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, fmt.Errorf("output marshal: %w", err)
+	}
+	var events []acp.ACPEvent
+	if err := json.Unmarshal(b, &events); err != nil {
+		return nil, fmt.Errorf("output unmarshal: %w", err)
+	}
+	return events, nil
 }
