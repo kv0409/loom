@@ -466,19 +466,29 @@ func (m Model) View() string {
 }
 
 func (m Model) helpBar() string {
-	base := " [a]gents [i]ssues [m]ail [d]ecisions [w]orktrees [b]oard [t]activity [l]ogs [Tab]cycle [Esc]back [q]uit"
+	var parts []string
+	for _, tab := range helpBarTabs {
+		if m.view == tab.view || (tab.view == viewAgents && m.view == viewAgentDetail) {
+			parts = append(parts, helpActiveStyle.Render(tab.label))
+		} else {
+			parts = append(parts, helpStyle.Render(tab.label))
+		}
+	}
+	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [q]uit")
+	base := " " + strings.Join(parts, " ") + suffix
 	if m.view == viewAgentDetail {
-		base += " | [n]udge [j/k]scroll"
+		extra := " | [n]udge [j/k]scroll"
 		if m.cursor < len(m.data.agents) {
 			a := m.data.agents[m.cursor]
 			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-				base += " [Enter]attach"
+				extra += " [Enter]attach"
 			}
 		}
+		base += helpStyle.Render(extra)
 	} else if m.view == viewAgents {
-		base += " | [n]udge [m]essage [o]utput [x]kill [Enter]detail"
+		base += helpStyle.Render(" | [n]udge [m]essage [o]utput [x]kill [Enter]detail")
 	}
-	return helpStyle.Render(base)
+	return base
 }
 
 // helpBarTabs maps substrings in the help bar to views for mouse click targeting.

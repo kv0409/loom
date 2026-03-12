@@ -41,6 +41,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
 	hoverStyle    = lipgloss.NewStyle().Background(colSubtle).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
+	helpActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
 )
 
