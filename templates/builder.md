@@ -89,6 +89,18 @@ Every running agent consumes a kiro-cli session. Minimize waste:
 - After marking your issue `review` and sending completion mail, **stop immediately**. Do not idle, do not poll for feedback, do not wait for the reviewer.
 - If you have no pending work and no unread mail, **stop**. Your lead will respawn you if revisions are needed.
 
+## Reporting Findings
+
+While working, you may notice bugs, code smells, missing features, or rough edges **unrelated to your current task**. Report these as findings to your lead — do NOT file issues yourself or stop your current work.
+
+```
+loom mail send $LOOM_PARENT_AGENT "[FINDING] <short description>" --type finding --ref <current-issue-ID> -b "<details: file, line, what you observed>"
+```
+
+- Findings are fire-and-forget. Send and continue your task.
+- Your lead will triage: file a real issue, discard noise, or escalate.
+- Keep the subject prefix `[FINDING]` exactly — leads filter on it.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:
