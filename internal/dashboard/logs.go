@@ -34,19 +34,21 @@ const maxLogLines = 200
 var agentRe = regexp.MustCompile(`\[acp\]\s+(\S+?):|activating agent (\S+)`)
 
 // read returns all accumulated log lines, reading only new bytes since last call.
+// It returns a snapshot copy so the caller (bubbletea Cmd goroutine) never shares
+// the underlying array with a concurrent read() call, avoiding a data race.
 func (r *logReader) read() []logLine {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	f, err := os.Open(r.path)
 	if err != nil {
-		return r.lines
+		return r.snapshot()
 	}
 	defer f.Close()
 
 	info, err := f.Stat()
 	if err != nil {
-		return r.lines
+		return r.snapshot()
 	}
 
 	// Handle truncation/rotation: file shrank → reset
@@ -57,16 +59,16 @@ func (r *logReader) read() []logLine {
 	}
 
 	if info.Size() == r.offset {
-		return r.lines
+		return r.snapshot()
 	}
 
 	if _, err := f.Seek(r.offset, io.SeekStart); err != nil {
-		return r.lines
+		return r.snapshot()
 	}
 
 	buf, err := io.ReadAll(f)
 	if err != nil {
-		return r.lines
+		return r.snapshot()
 	}
 	r.offset += int64(len(buf))
 
@@ -99,7 +101,14 @@ func (r *logReader) read() []logLine {
 		r.lines = r.lines[len(r.lines)-maxLogLines:]
 	}
 
-	return r.lines
+	return r.snapshot()
+}
+
+// snapshot returns a copy of r.lines. Must be called with r.mu held.
+func (r *logReader) snapshot() []logLine {
+	cp := make([]logLine, len(r.lines))
+	copy(cp, r.lines)
+	return cp
 }
 
 // classifyLogLine returns (category, display text, keep).
