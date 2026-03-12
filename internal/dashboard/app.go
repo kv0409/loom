@@ -94,7 +94,6 @@ type Model struct {
 	lr               *logReader
 	lastClickTime    time.Time
 	lastClickRow     int
-	hoverRow         int // -1 = no hover
 	detailScroll     int // scroll offset for agent detail output
 	diffScroll       int // scroll offset for diff view
 	flashMsg         string
@@ -112,7 +111,7 @@ func clearFlashAfter(d time.Duration) tea.Cmd {
 }
 
 func New(loomRoot string) Model {
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), hoverRow: -1, cursors: make(map[view]int)}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int)}
 }
 
 // switchView saves the current cursor position and switches to the target view,
@@ -138,7 +137,7 @@ func (m Model) Init() tea.Cmd {
 // ProgramOptions returns the tea.ProgramOption set needed by the dashboard,
 // including alt-screen and mouse support.
 func ProgramOptions() []tea.ProgramOption {
-	return []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseAllMotion()}
+	return []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
 }
 
 func tickCmd() tea.Cmd {
@@ -256,8 +255,6 @@ func editInput(input string, cursor int, key tea.KeyMsg) (string, int, bool) {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	m.hoverRow = -1
-
 	// Nudge mode: selection menu
 	if m.nudgeMode {
 		switch msg.String() {
@@ -910,7 +907,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 					} else {
 						m.switchView(tab.view)
 					}
-					m.hoverRow = -1
 					return m, nil
 				}
 				offset += len(label) + 1 // +1 for space separator
@@ -951,20 +947,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case msg.Button == tea.MouseButtonNone:
-		// Motion — update hover row
-		if isListView(m.view) {
-			item := m.mouseToListIndex(y)
-			if item >= 0 && item < m.listLen() {
-				m.hoverRow = item
-			} else {
-				m.hoverRow = -1
-			}
-		} else {
-			m.hoverRow = -1
-		}
-		_ = x // suppress unused
-		return m, nil
 	}
 
 	return m, nil

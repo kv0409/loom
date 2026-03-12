@@ -41,7 +41,6 @@ var (
 	deadStyle     = lipgloss.NewStyle().Foreground(colRed)
 	idleStyle     = lipgloss.NewStyle().Foreground(colGray)
 	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
-	hoverStyle    = lipgloss.NewStyle().Background(colSubtle).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
 	helpActiveStyle = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)

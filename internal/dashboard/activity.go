@@ -149,8 +149,6 @@ func (m Model) renderActivity() string {
 		line := fmt.Sprintf("  %-*s %s", agentW, truncate(e.AgentID, agentW), truncate(e.Line, lineW))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
-		} else if i == m.hoverRow {
-			line = hoverStyle.Render(line)
 		} else {
 			line = idleStyle.Render(line)
 		}

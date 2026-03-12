@@ -61,16 +61,12 @@ func (m Model) renderWorktrees() string {
 			line := base + colored
 			if i == m.cursor {
 				line = selectedStyle.Render(plain)
-			} else if i == m.hoverRow {
-				line = hoverStyle.Render(plain)
 			}
 			content += line + "\n"
 		} else {
 			line := plain
 			if i == m.cursor {
 				line = selectedStyle.Render(line)
-			} else if i == m.hoverRow {
-				line = hoverStyle.Render(line)
 			}
 			content += line + "\n"
 		}

@@ -48,8 +48,6 @@ func (m Model) renderMemory() string {
 			truncate(e.ID, idW), truncate(e.Type, typeW), truncate(e.Title, titleW), truncate(memory.ByField(e), byW))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
-		} else if i == m.hoverRow {
-			line = hoverStyle.Render(line)
 		}
 		content += line + "\n"
 	}
