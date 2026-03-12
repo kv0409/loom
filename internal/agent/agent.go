@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -302,8 +303,10 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 		if worktree.HasDirtyFiles(wtPath) {
 			worktree.SalvageCommit(wtPath, a.ID)
 		}
-		if err := worktree.Remove(loomRoot, a.WorktreeName, true); err != nil {
-			if err2 := worktree.ForceRemove(loomRoot, a.WorktreeName); err2 != nil {
+		if err := worktree.Remove(loomRoot, a.WorktreeName, false); err != nil {
+			if errors.Is(err, worktree.ErrUnmergedBranch) {
+				log.Printf("[agent] preserving worktree %s: has unmerged commits", a.WorktreeName)
+			} else if err2 := worktree.ForceRemove(loomRoot, a.WorktreeName); err2 != nil {
 				log.Printf("[agent] failed to remove worktree %s: %v", a.WorktreeName, err2)
 			}
 		}
