@@ -329,7 +329,7 @@ func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 	}
 	// Purge mail inbox for the dead agent
 	os.RemoveAll(filepath.Join(loomRoot, "mail", "inbox", id))
-	unassignIssues(loomRoot, a)
+	UnassignIssues(loomRoot, a)
 	return Deregister(loomRoot, id)
 }
 
@@ -365,6 +365,12 @@ func assignIssues(loomRoot string, a *Agent) {
 		}
 		issue.Update(loomRoot, issID, opts)
 	}
+}
+
+// UnassignIssues clears the assignee on each of the agent's assigned issues,
+// reopening any that were in-progress or assigned.
+func UnassignIssues(loomRoot string, a *Agent) {
+	unassignIssues(loomRoot, a)
 }
 
 // unassignIssues clears the assignee on each of the agent's assigned issues.
