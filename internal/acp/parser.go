@@ -42,40 +42,40 @@ type ACPEvent struct {
 	Content   string `json:"content"`
 }
 
-// ReadOutputFile reads an .output file, trying NDJSON first, falling back to
-// legacy text format for files written before the structured output change.
+// ReadOutputFile reads an .output file parsing line-by-line with per-line
+// format detection. Lines starting with '{' are parsed as NDJSON; all other
+// non-empty lines are parsed as legacy text. Both formats can coexist in the
+// same file (e.g. after a daemon restart).
 func ReadOutputFile(raw []byte) []ACPEvent {
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
-	if len(lines) == 0 {
-		return nil
-	}
-	// Probe first non-empty line to detect format.
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		if l[0] == '{' {
-			return readNDJSON(lines)
-		}
-		return ParseOutput(string(raw))
-	}
-	return nil
-}
-
-func readNDJSON(lines []string) []ACPEvent {
 	var events []ACPEvent
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	var legacyBuf strings.Builder
+
+	flushLegacy := func() {
+		if legacyBuf.Len() > 0 {
+			events = append(events, ParseOutput(legacyBuf.String())...)
+			legacyBuf.Reset()
 		}
-		var ev ACPEvent
-		if err := json.Unmarshal([]byte(line), &ev); err != nil {
-			continue
-		}
-		events = append(events, ev)
 	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			legacyBuf.WriteString("\n")
+			continue
+		}
+		if trimmed[0] == '{' {
+			flushLegacy()
+			var ev ACPEvent
+			if err := json.Unmarshal([]byte(trimmed), &ev); err == nil {
+				events = append(events, ev)
+			}
+		} else {
+			legacyBuf.WriteString(line)
+			legacyBuf.WriteString("\n")
+		}
+	}
+	flushLegacy()
 	return events
 }
 
