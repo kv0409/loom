@@ -47,17 +47,21 @@ func (m Model) renderWorktrees() string {
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	content += "\n"
 	for i, wt := range worktrees {
+		ds := m.data.diffStats[wt.Name]
 		diffStr := ""
-		if ds := m.data.diffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
+		if ds != nil && ds.FilesChanged > 0 {
 			diffStr = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
 		}
 		plain := fmt.Sprintf(fmtStr,
 			truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), truncate(diffStr, diffW))
 		if diffStr != "" {
-			// Render line without diff, then append colored diff stats
+			// Render line without diff, then append semantically colored diff stats
 			base := fmt.Sprintf(fmtStr,
 				truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), "")
-			colored := activeStyle.Render(truncate(diffStr, diffW))
+			filesStr := fmt.Sprintf("%df ", ds.FilesChanged)
+			insStr := fmt.Sprintf("+%d ", ds.Insertions)
+			delStr := fmt.Sprintf("-%d", ds.Deletions)
+			colored := truncate(filesStr+diffAdd.Render(insStr)+diffDel.Render(delStr), diffW)
 			line := base + colored
 			if i == m.cursor {
 				line = selectedStyle.Render(plain)

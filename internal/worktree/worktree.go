@@ -279,7 +279,7 @@ func Show(loomRoot string, name string) (*Worktree, *DiffStats, error) {
 func DiffStatsFor(wtPath string) (*DiffStats, error) { return diffStats(wtPath) }
 
 func diffStats(wtPath string) (*DiffStats, error) {
-	cmd := exec.Command("git", "diff", "--stat", "HEAD")
+	cmd := exec.Command("git", "diff", "--stat", "main...HEAD")
 	cmd.Dir = wtPath
 	out, err := cmd.Output()
 	if err != nil {
