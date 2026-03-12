@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	diffAdd  = lipgloss.NewStyle().Foreground(colGreen)
-	diffDel  = lipgloss.NewStyle().Foreground(colRed)
-	diffHunk = lipgloss.NewStyle().Foreground(colCyan)
+	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
+	diffDel    = lipgloss.NewStyle().Foreground(colRed)
+	diffHunk   = lipgloss.NewStyle().Foreground(colCyan)
+	diffHeader = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
 )
 
 func fetchDiff(wtPath string) string {
@@ -98,12 +99,14 @@ func (m Model) renderDiff() string {
 	var out string
 	for _, l := range lines[start:end] {
 		switch {
+		case strings.HasPrefix(l, "diff --git"), strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+			out += diffHeader.Render(l) + "\n"
+		case strings.HasPrefix(l, "@@"):
+			out += diffHunk.Render(l) + "\n"
 		case strings.HasPrefix(l, "+"):
 			out += diffAdd.Render(l) + "\n"
 		case strings.HasPrefix(l, "-"):
 			out += diffDel.Render(l) + "\n"
-		case strings.HasPrefix(l, "@@"):
-			out += diffHunk.Render(l) + "\n"
 		default:
 			out += l + "\n"
 		}
