@@ -58,7 +58,7 @@ func (m Model) renderAgents() string {
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ⚡%d", a.NudgeCount)
 		}
-		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusStyle(a.Status).Render(fmt.Sprintf("%-*s", statusW, truncate(a.Status, statusW))))
+		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillStyle(a.Status).Render(truncate(a.Status, statusW)))
 
 		// Build tree prefix — find original index for tree data.
 		prefix := ""
@@ -110,8 +110,8 @@ func (m Model) renderAgentDetail() string {
 	// Build all lines, then apply scroll viewport.
 	var lines []string
 
-	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %-10s Heartbeat: %s",
-		a.Role, statusIndicator(a.Status), a.Status, relTime(a.Heartbeat)))
+	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %s Heartbeat: %s",
+		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), relTime(a.Heartbeat)))
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
 		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID))
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {

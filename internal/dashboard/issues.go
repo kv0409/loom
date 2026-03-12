@@ -59,7 +59,7 @@ func (m Model) renderIssues() string {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 		}
-		statusCol := fmt.Sprintf("%s %-*s", statusIndicator(iss.Status), statusW, truncate(iss.Status, statusW))
+		statusCol := fmt.Sprintf("%s %s", statusIndicator(iss.Status), statusPillStyle(iss.Status).Render(truncate(iss.Status, statusW)))
 		line := fmt.Sprintf(fmtStr, iss.ID, iss.Type, statusCol, truncate(iss.Title, titleW), truncate(iss.Assignee, assignW))
 		if i == m.cursor {
 			line = selectedStyle.Render("▸" + line[1:])
@@ -88,7 +88,7 @@ func (m Model) renderIssueDetail() string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(iss.Title)))
 	lines = append(lines, fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s",
-		iss.Type, iss.Priority, statusIndicator(iss.Status), statusStyle(iss.Status).Render(iss.Status)))
+		iss.Type, iss.Priority, statusIndicator(iss.Status), statusPillStyle(iss.Status).Render(iss.Status)))
 	if iss.Assignee != "" {
 		lines = append(lines, fmt.Sprintf("  Assignee: %s", iss.Assignee))
 	}

@@ -15,6 +15,7 @@ func slugFromWorktree(name string) string {
 
 // Tokyo Night truecolor palette
 var (
+	colBg      = lipgloss.Color("#1A1B26")
 	colBlue    = lipgloss.Color("#7AA2F7")
 	colGreen   = lipgloss.Color("#9ECE6A")
 	colYellow  = lipgloss.Color("#E0AF68")
@@ -31,7 +32,7 @@ var (
 
 // Semantic styles
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
+	titleStyle    = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 2)
 	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(colMagenta)
 	activeStyle   = lipgloss.NewStyle().Foreground(colGreen)
 	blockedStyle  = lipgloss.NewStyle().Foreground(colRed)
@@ -41,7 +42,7 @@ var (
 	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
 	hoverStyle    = lipgloss.NewStyle().Background(colSubtle).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
-	helpActiveStyle = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
+	helpActiveStyle = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
 	flashErrStyle = lipgloss.NewStyle().Bold(true).Foreground(colRed)
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
@@ -49,14 +50,14 @@ var (
 
 // Panel header colors by section type
 var (
-	panelAgents   = lipgloss.NewStyle().Bold(true).Foreground(colTeal)
-	panelIssues   = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
-	panelMail     = lipgloss.NewStyle().Bold(true).Foreground(colOrange)
-	panelMemory   = lipgloss.NewStyle().Bold(true).Foreground(colMagenta)
-	panelWorktree = lipgloss.NewStyle().Bold(true).Foreground(colCyan)
-	panelDiff     = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
-	panelActivity = lipgloss.NewStyle().Bold(true).Foreground(colBlue)
-	panelLogs     = lipgloss.NewStyle().Bold(true).Foreground(colGray)
+	panelAgents   = lipgloss.NewStyle().Bold(true).Background(colTeal).Foreground(colBg).Padding(0, 1)
+	panelIssues   = lipgloss.NewStyle().Bold(true).Background(colYellow).Foreground(colBg).Padding(0, 1)
+	panelMail     = lipgloss.NewStyle().Bold(true).Background(colOrange).Foreground(colBg).Padding(0, 1)
+	panelMemory   = lipgloss.NewStyle().Bold(true).Background(colMagenta).Foreground(colBg).Padding(0, 1)
+	panelWorktree = lipgloss.NewStyle().Bold(true).Background(colCyan).Foreground(colBg).Padding(0, 1)
+	panelDiff     = lipgloss.NewStyle().Bold(true).Background(colGreen).Foreground(colBg).Padding(0, 1)
+	panelActivity = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
+	panelLogs     = lipgloss.NewStyle().Bold(true).Background(colGray).Foreground(colBg).Padding(0, 1)
 )
 
 // Status-specific colors and glyphs
@@ -91,6 +92,22 @@ func statusStyle(status string) lipgloss.Style {
 		return lipgloss.NewStyle().Foreground(c)
 	}
 	return idleStyle
+}
+
+func statusPillStyle(status string) lipgloss.Style {
+	c, ok := statusColors[status]
+	if !ok {
+		c = colGray
+	}
+	fg := colBg
+	if status == "open" || status == "cancelled" {
+		fg = colSelBg
+	}
+	return lipgloss.NewStyle().
+		Background(c).
+		Foreground(fg).
+		Bold(true).
+		Padding(0, 1)
 }
 
 func statusIndicator(status string) string {
