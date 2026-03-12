@@ -2014,10 +2014,20 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Spawn orchestrator (skip on --resume: agents are already running)
 	resume, _ := cmd.Flags().GetBool("resume")
 	mode, _ := cmd.Flags().GetString("mode")
-	if !resume {
+	if resume {
+		// Re-queue active ACP agents so watchPendingAgents re-activates them.
+		// Their kiro-cli processes died when the old daemon exited.
+		agents, _ := agent.List(root)
+		for _, a := range agents {
+			if a.Config.KiroMode == "acp" && (a.Status == "active" || a.Status == "activating") {
+				agent.KillProcess(a) // clean up orphaned kiro-cli
+				a.Status = "pending-acp"
+				agent.Save(root, a)
+			}
+		}
+	} else {
 		_, err = agent.Spawn(root, agent.SpawnOpts{
 			Role:         "orchestrator",
 			ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
