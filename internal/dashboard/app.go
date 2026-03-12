@@ -362,15 +362,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case keyQuit, keyQuitCtrl:
 		return m, tea.Quit
-	case "esc":
+	case keyEsc:
 		switch m.view {
 		case viewAgentDetail:
 			m.switchView(viewAgents)
 		case viewIssueDetail:
 			m.switchView(viewIssues)
-case viewMailDetail:
+		case viewMailDetail:
 			m.switchView(viewMail)
 		case viewMemoryDetail:
 			m.switchView(viewMemory)
@@ -387,16 +387,16 @@ case viewMailDetail:
 			}
 		}
 		return m, nil
-	case "0", "H":
+	case keyViewOverview, keyViewOverview2:
 		m.switchView(viewOverview)
 		return m, nil
-	case "a":
+	case keyViewAgents:
 		m.switchView(viewAgents)
 		return m, nil
-	case "i":
+	case keyViewIssues:
 		m.switchView(viewIssues)
 		return m, nil
-	case "m":
+	case keyViewMail: // "m": message-compose in agents/agent-detail; mail view elsewhere
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
 			m.messageMode = true
 			m.messageInput = ""
@@ -405,58 +405,58 @@ case viewMailDetail:
 		}
 		m.switchView(viewMail)
 		return m, nil
-	case "d":
+	case keyViewMemory:
 		m.switchView(viewMemory)
 		return m, nil
-	case "w":
+	case keyViewWorktrees:
 		m.switchView(viewWorktrees)
 		return m, nil
-	case "t":
+	case keyViewActivity:
 		m.switchView(viewActivity)
 		return m, nil
-	case "l":
+	case keyViewLogs: // "l": logs view — NOT a kanban-right alias (conflict resolved)
 		m.switchView(viewLogs)
 		return m, nil
-	case "f":
+	case keyLogsFilter:
 		if m.view == viewLogs {
 			m.logFilter = (m.logFilter + 1) % 5 // all, lifecycle, error, stderr, warn
 			return m, nil
 		}
-	case "F":
+	case keyLogsAgentFilter:
 		if m.view == viewLogs {
 			n := m.countLogAgents()
 			m.logAgentFilter = (m.logAgentFilter + 1) % (n + 1) // 0=all, 1..n=agent
 			return m, nil
 		}
-	case "n":
+	case keyAgentNudge:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
 			m.nudgeCursor = 0
 			return m, nil
 		}
-	case "x":
+	case keyAgentKill:
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.killConfirm = true
 			return m, nil
 		}
-	case "o":
+	case keyAgentOutput:
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
 			return m, nil
 		}
-	case "/":
+	case keySearch:
 		if isListView(m.view) {
 			m.searchMode = true
 			m.searchQuery = ""
 			m.inputCursor = 0
 			return m, nil
 		}
-	case "tab":
+	case keyTab:
 		m.switchView(nextView(m.view))
 		return m, nil
-	case "j", "down":
+	case keyVimDown, keyDown:
 		if m.view == viewKanban {
 			m.kanbanRow++
 			m.clampKanbanRow()
@@ -473,10 +473,10 @@ case viewMailDetail:
 		m.cursor++
 		m.clampCursor()
 		return m, nil
-	case "b":
+	case keyViewKanban:
 		m.switchView(viewKanban)
 		return m, nil
-	case "k", "up":
+	case keyVimUp, keyUp:
 		if m.view == viewKanban {
 			m.kanbanRow--
 			if m.kanbanRow < 0 {
@@ -503,7 +503,7 @@ case viewMailDetail:
 			m.cursor = 0
 		}
 		return m, nil
-	case "h", "left":
+	case keyKanbanLeft, keyLeft: // "h" or left-arrow: kanban column left (kanban only)
 		if m.view == viewKanban {
 			m.kanbanCol--
 			if m.kanbanCol < 0 {
@@ -512,7 +512,7 @@ case viewMailDetail:
 			m.clampKanbanRow()
 			return m, nil
 		}
-	case "right":
+	case keyKanbanRight: // right-arrow only: kanban column right ("l" alias removed)
 		if m.view == viewKanban {
 			m.kanbanCol++
 			if m.kanbanCol >= len(kanbanColumns) {
@@ -521,7 +521,7 @@ case viewMailDetail:
 			m.clampKanbanRow()
 			return m, nil
 		}
-	case "enter":
+	case keyEnter:
 		return m.handleEnter()
 	}
 	return m, nil
