@@ -222,9 +222,17 @@ func (d *Daemon) watchACPOutput() {
 				}
 				f.Close()
 
-				// Rotate: keep last 200 lines (atomic via temp file).
+				// Rotate: keep last 200 non-empty lines (atomic via temp file).
+				// Filter empty lines to avoid displacing real NDJSON events and
+				// to ensure no mid-JSON-line truncation occurs during rotation.
 				if raw, err := os.ReadFile(p); err == nil {
-					all := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+					split := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+					var all []string
+					for _, line := range split {
+						if line != "" {
+							all = append(all, line)
+						}
+					}
 					if len(all) > 200 {
 						tmp := p + ".tmp"
 						if err := os.WriteFile(tmp, []byte(strings.Join(all[len(all)-200:], "\n")+"\n"), 0644); err == nil {
