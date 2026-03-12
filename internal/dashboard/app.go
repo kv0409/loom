@@ -387,6 +387,9 @@ case viewMailDetail:
 			}
 		}
 		return m, nil
+	case "0", "H":
+		m.switchView(viewOverview)
+		return m, nil
 	case "a":
 		m.switchView(viewAgents)
 		return m, nil
