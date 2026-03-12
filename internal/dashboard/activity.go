@@ -32,11 +32,18 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 				continue
 			}
 			events := acp.ReadOutputFile(raw)
-			// Only show ToolSummary events (human-readable tool use lines).
+			// Prefer last ToolSummary; fall back to last TokenChunk.
 			var last *acp.ACPEvent
 			for i := range events {
 				if events[i].Kind == acp.ToolSummary {
 					last = &events[i]
+				}
+			}
+			if last == nil {
+				for i := range events {
+					if events[i].Kind == acp.TokenChunk {
+						last = &events[i]
+					}
 				}
 			}
 			if last != nil {
