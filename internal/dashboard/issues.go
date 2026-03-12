@@ -101,7 +101,7 @@ func (m Model) renderIssueDetail() string {
 
 	if len(iss.Children) > 0 {
 		s += "\n  " + headerStyle.Render("CHILDREN") + "\n"
-		for _, cid := range iss.Children {
+		for i, cid := range iss.Children {
 			label := cid
 			for _, ci := range m.data.issues {
 				if ci.ID == cid {
@@ -109,7 +109,11 @@ func (m Model) renderIssueDetail() string {
 					break
 				}
 			}
-			s += fmt.Sprintf("  └── %s\n", label)
+			connector := "├──"
+			if i == len(iss.Children)-1 {
+				connector = "└──"
+			}
+			s += fmt.Sprintf("  %s %s\n", connector, label)
 		}
 	}
 
