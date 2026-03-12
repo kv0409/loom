@@ -34,3 +34,64 @@ func (m Model) renderMail() string {
 
 	return panel(fmt.Sprintf("MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread), content, m.width-2)
 }
+
+func (m Model) renderMailDetail() string {
+	if m.cursor >= len(m.data.messages) {
+		return "No message selected"
+	}
+	msg := m.data.messages[m.cursor]
+
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(msg.Subject)))
+	lines = append(lines, fmt.Sprintf("  From: %-16s To: %s", msg.From, msg.To))
+	lines = append(lines, fmt.Sprintf("  Type: %-16s Time: %s", msg.Type, msg.Timestamp.Format("2006-01-02 15:04:05")))
+	if msg.Ref != "" {
+		lines = append(lines, fmt.Sprintf("  Ref: %s", msg.Ref))
+	}
+
+	lines = append(lines, "")
+	lines = append(lines, "  "+headerStyle.Render("BODY"))
+	if msg.Body != "" {
+		maxW := m.width - 8
+		if maxW < 40 {
+			maxW = 40
+		}
+		for _, bl := range strings.Split(msg.Body, "\n") {
+			for len(bl) > maxW {
+				lines = append(lines, "  "+bl[:maxW])
+				bl = bl[maxW:]
+			}
+			lines = append(lines, "  "+bl)
+		}
+	} else {
+		lines = append(lines, "  (no body)")
+	}
+
+	// Viewport scroll
+	viewH := m.height - 5
+	if viewH < 1 {
+		viewH = 1
+	}
+	scroll := m.detailScroll
+	maxScroll := len(lines) - viewH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + viewH
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var s string
+	for _, l := range lines[scroll:end] {
+		s += l + "\n"
+	}
+
+	return panel("Mail: "+truncate(msg.Subject, 40), s, m.width-2)
+}

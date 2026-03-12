@@ -26,6 +26,7 @@ const (
 	viewIssues
 	viewIssueDetail
 	viewMail
+	viewMailDetail
 	viewMemory
 	viewActivity
 	viewLogs
@@ -232,6 +233,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.switchView(viewAgents)
 		case viewIssueDetail:
 			m.switchView(viewIssues)
+		case viewMailDetail:
+			m.switchView(viewMail)
 		case viewDiff:
 			m.view = viewWorktrees
 			m.cursor = m.selectedWorktree
@@ -298,7 +301,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.switchView(nextView(m.view))
 		return m, nil
 	case "j", "down":
-		if m.view == viewAgentDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail {
 			m.detailScroll++
 			return m, nil
 		}
@@ -309,7 +312,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.switchView(viewKanban)
 		return m, nil
 	case "k", "up":
-		if m.view == viewAgentDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -351,6 +354,12 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if len(m.displayIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
+		}
+	case viewMail:
+		if m.cursor < len(m.data.messages) {
+			m.cursors[m.view] = m.cursor
+			m.view = viewMailDetail
+			m.detailScroll = 0
 		}
 	case viewWorktrees:
 		if m.cursor < len(m.data.worktrees) {
@@ -394,6 +403,8 @@ func (m Model) listLen() int {
 		return len(m.displayIssues())
 	case viewMail:
 		return len(m.data.messages)
+	case viewMailDetail:
+		return len(m.data.messages)
 	case viewMemory:
 		return len(m.data.memories)
 	case viewWorktrees:
@@ -433,6 +444,8 @@ func (m Model) View() string {
 		content = m.renderIssueDetail()
 	case viewMail:
 		content = m.renderMail()
+	case viewMailDetail:
+		content = m.renderMailDetail()
 	case viewMemory:
 		content = m.renderMemory()
 	case viewActivity:
@@ -512,7 +525,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
-		if m.view == viewAgentDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -526,7 +539,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonWheelDown:
-		if m.view == viewAgentDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail {
 			m.detailScroll++
 			return m, nil
 		}
