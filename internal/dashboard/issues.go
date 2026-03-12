@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/issue"
 )
 
@@ -56,7 +57,6 @@ func (m Model) renderIssues() string {
 		titleW = 10
 	}
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%s", idW, assignW)
 	header := fmt.Sprintf("  %-*s %-*s %s\n", idW, "ID", assignW, "ASSIGNEE", "TITLE")
 	content := header + "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	content += "\n"
@@ -70,14 +70,30 @@ func (m Model) renderIssues() string {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 		}
-		idCol := fmt.Sprintf("%s%s %s", statusIndicator(iss.Status), statusStyle(iss.Status).Render(typeGlyph(iss.Type)), iss.ID)
-		line := fmt.Sprintf(fmtStr, idCol, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW))
-		if i == m.cursor {
-			line = selectedStyle.Render("▸" + line[1:])
-		} else {
-			line = statusStyle(iss.Status).Render(line)
+
+		// Build plain-text id column first so padding is ANSI-unaware.
+		// Visual: <statusGlyph><typeGlyph> <ID>
+		sg := statusGlyphs[iss.Status]
+		if sg == "" {
+			sg = "●"
 		}
-		content += line + "\n"
+		idPlain := sg + typeGlyph(iss.Type) + " " + iss.ID
+		idPadded := idPlain + strings.Repeat(" ", max(0, idW-lipgloss.Width(idPlain)))
+
+		assignPadded := truncate(iss.Assignee, assignW)
+		assignPadded += strings.Repeat(" ", max(0, assignW-lipgloss.Width(assignPadded)))
+
+		titleCol := truncate(iss.Title, titleW)
+
+		if i == m.cursor {
+			// Style the whole row as selected; prefix with ▸ (no byte-slicing).
+			line := "▸ " + idPadded + " " + assignPadded + " " + titleCol
+			content += selectedStyle.Render(line) + "\n"
+		} else {
+			// Colour the id column; plain text for assignee and title.
+			line := "  " + statusStyle(iss.Status).Render(idPadded) + " " + assignPadded + " " + titleCol
+			content += line + "\n"
+		}
 	}
 
 	title := fmt.Sprintf("[i] ISSUES (%d active)", activeCount)
