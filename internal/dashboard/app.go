@@ -321,7 +321,7 @@ case viewMailDetail:
 		m.switchView(nextView(m.view))
 		return m, nil
 	case "j", "down":
-		if m.view == viewAgentDetail || m.view == viewMailDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll++
 			return m, nil
 		}
@@ -336,7 +336,7 @@ case viewMailDetail:
 		m.switchView(viewKanban)
 		return m, nil
 	case "k", "up":
-		if m.view == viewAgentDetail || m.view == viewMailDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -385,6 +385,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if len(m.displayIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
+			m.detailScroll = 0
 		}
 	case viewMail:
 		if m.cursor < len(m.data.messages) {
@@ -568,7 +569,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
-		if m.view == viewAgentDetail || m.view == viewMailDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -589,7 +590,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonWheelDown:
-		if m.view == viewAgentDetail || m.view == viewMailDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
 			m.detailScroll++
 			return m, nil
 		}

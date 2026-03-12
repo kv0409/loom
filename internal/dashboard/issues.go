@@ -81,26 +81,27 @@ func (m Model) renderIssueDetail() string {
 	}
 	iss := display[m.cursor]
 
-	s := fmt.Sprintf("  %s\n", titleStyle.Render(iss.Title))
-	s += fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s\n",
-		iss.Type, iss.Priority, statusIndicator(iss.Status), statusStyle(iss.Status).Render(iss.Status))
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(iss.Title)))
+	lines = append(lines, fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s",
+		iss.Type, iss.Priority, statusIndicator(iss.Status), statusStyle(iss.Status).Render(iss.Status)))
 	if iss.Assignee != "" {
-		s += fmt.Sprintf("  Assignee: %s\n", iss.Assignee)
+		lines = append(lines, fmt.Sprintf("  Assignee: %s", iss.Assignee))
 	}
 
 	if iss.Description != "" {
-		s += "\n  " + headerStyle.Render("DESCRIPTION") + "\n"
-		s += fmt.Sprintf("  %s\n", iss.Description)
+		lines = append(lines, "", "  "+headerStyle.Render("DESCRIPTION"))
+		lines = append(lines, fmt.Sprintf("  %s", iss.Description))
 	}
 	if iss.Parent != "" {
-		s += fmt.Sprintf("  Parent: %s\n", iss.Parent)
+		lines = append(lines, fmt.Sprintf("  Parent: %s", iss.Parent))
 	}
 	if len(iss.DependsOn) > 0 {
-		s += fmt.Sprintf("  Depends: %s\n", strings.Join(iss.DependsOn, ", "))
+		lines = append(lines, fmt.Sprintf("  Depends: %s", strings.Join(iss.DependsOn, ", ")))
 	}
 
 	if len(iss.Children) > 0 {
-		s += "\n  " + headerStyle.Render("CHILDREN") + "\n"
+		lines = append(lines, "", "  "+headerStyle.Render("CHILDREN"))
 		for i, cid := range iss.Children {
 			label := cid
 			for _, ci := range m.data.issues {
@@ -109,24 +110,49 @@ func (m Model) renderIssueDetail() string {
 					break
 				}
 			}
-			connector := "├──"
+			prefix := "├──"
 			if i == len(iss.Children)-1 {
-				connector = "└──"
+				prefix = "└──"
 			}
-			s += fmt.Sprintf("  %s %s\n", connector, label)
+			lines = append(lines, fmt.Sprintf("  %s %s", prefix, label))
 		}
 	}
 
 	if len(iss.History) > 0 {
-		s += "\n  " + headerStyle.Render("HISTORY") + "\n"
-		limit := min(len(iss.History), 8)
-		for _, h := range iss.History[:limit] {
+		lines = append(lines, "", "  "+headerStyle.Render("HISTORY"))
+		for _, h := range iss.History {
 			detail := ""
 			if h.Detail != "" {
 				detail = " — " + h.Detail
 			}
-			s += fmt.Sprintf("  %s %s %s%s\n", h.At.Format("15:04"), h.By, h.Action, detail)
+			lines = append(lines, fmt.Sprintf("  %s %s %s%s", h.At.Format("15:04"), h.By, h.Action, detail))
 		}
+	}
+
+	// Apply scroll viewport
+	viewH := m.height - 5
+	if viewH < 1 {
+		viewH = 1
+	}
+	scroll := m.detailScroll
+	maxScroll := len(lines) - viewH
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scroll > maxScroll {
+		scroll = maxScroll
+	}
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + viewH
+	if end > len(lines) {
+		end = len(lines)
+	}
+
+	var s string
+	for _, l := range lines[scroll:end] {
+		s += l + "\n"
 	}
 
 	return panel("Issue: "+iss.ID, s, m.width-2)
