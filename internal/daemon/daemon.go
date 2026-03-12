@@ -179,6 +179,8 @@ func (d *Daemon) watchPendingAgents() {
 func (d *Daemon) watchACPOutput() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
+	// Track how many lines we've already seen per agent (index-based dedup).
+	lastCount := make(map[string]int)
 	for {
 		select {
 		case <-d.stop:
@@ -195,8 +197,35 @@ func (d *Daemon) watchACPOutput() {
 				if len(lines) == 0 {
 					continue
 				}
+				// Only write lines we haven't seen yet.
+				prev := lastCount[id]
+				if len(lines) <= prev {
+					continue
+				}
+				newLines := lines[prev:]
+				lastCount[id] = len(lines)
+
 				p := filepath.Join(d.LoomRoot, "agents", id+".output")
-				os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0644)
+				f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					continue
+				}
+				ts := time.Now().Format("15:04:05")
+				for _, l := range newLines {
+					fmt.Fprintf(f, "[%s] %s\n", ts, l)
+				}
+				f.Close()
+
+				// Rotate: keep last 200 lines (atomic via temp file).
+				if raw, err := os.ReadFile(p); err == nil {
+					all := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+					if len(all) > 200 {
+						tmp := p + ".tmp"
+						if err := os.WriteFile(tmp, []byte(strings.Join(all[len(all)-200:], "\n")+"\n"), 0644); err == nil {
+							os.Rename(tmp, p)
+						}
+					}
+				}
 			}
 		}
 	}

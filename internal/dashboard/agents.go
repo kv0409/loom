@@ -140,35 +140,40 @@ func (m Model) renderAgentDetail() string {
 		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, relTime(a.LastNudge)))
 	}
 
-	// ACP output
+	// ACP output — chat-style messages
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
 		lines = append(lines, "")
 		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
 		outPath := filepath.Join(m.loomRoot, "agents", a.ID+".output")
-		if raw, err := os.ReadFile(outPath); err == nil {
-			text := assembleChunksN(string(raw), 0) // no truncation — we scroll
-			if text == "" {
-				lines = append(lines, "  (waiting for output...)")
-			} else {
-				maxW := m.width - 8
-				if maxW < 40 {
-					maxW = 40
+		if raw, err := os.ReadFile(outPath); err == nil && strings.TrimSpace(string(raw)) != "" {
+			maxW := m.width - 8
+			if maxW < 40 {
+				maxW = 40
+			}
+			msgs := parseChatMessages(string(raw))
+			for i, msg := range msgs {
+				if i > 0 {
+					lines = append(lines, "")
 				}
-				for _, raw := range strings.Split(text, "\n") {
-					if raw == "" {
+				// Timestamp header
+				ts := idleStyle.Render(fmt.Sprintf("  ── %s ──", msg.time))
+				lines = append(lines, ts)
+				// Word-wrap body
+				for _, bodyLine := range strings.Split(msg.text, "\n") {
+					if bodyLine == "" {
 						lines = append(lines, "")
 						continue
 					}
-					for len(raw) > maxW {
+					for len(bodyLine) > maxW {
 						cut := maxW
-						if sp := strings.LastIndex(raw[:cut], " "); sp > 0 {
+						if sp := strings.LastIndex(bodyLine[:cut], " "); sp > 0 {
 							cut = sp
 						}
-						lines = append(lines, "  "+raw[:cut])
-						raw = strings.TrimSpace(raw[cut:])
+						lines = append(lines, "  "+bodyLine[:cut])
+						bodyLine = strings.TrimSpace(bodyLine[cut:])
 					}
-					if raw != "" {
-						lines = append(lines, "  "+raw)
+					if bodyLine != "" {
+						lines = append(lines, "  "+bodyLine)
 					}
 				}
 			}
@@ -203,12 +208,13 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	// Apply scroll viewport
+	totalLines := len(lines)
 	viewH := m.height - 5
 	if viewH < 1 {
 		viewH = 1
 	}
 	scroll := m.detailScroll
-	maxScroll := len(lines) - viewH
+	maxScroll := totalLines - viewH
 	if maxScroll < 0 {
 		maxScroll = 0
 	}
@@ -219,8 +225,8 @@ func (m Model) renderAgentDetail() string {
 		scroll = 0
 	}
 	end := scroll + viewH
-	if end > len(lines) {
-		end = len(lines)
+	if end > totalLines {
+		end = totalLines
 	}
 
 	var s string
@@ -228,11 +234,61 @@ func (m Model) renderAgentDetail() string {
 		s += l + "\n"
 	}
 
+	// Scroll indicator
+	scrollInfo := ""
+	if totalLines > viewH {
+		scrollInfo = fmt.Sprintf(" (lines %d-%d of %d)", scroll+1, end, totalLines)
+	}
+
 	hint := ""
 	if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
 		hint = " [Enter]attach"
 	}
-	return panel("Agent: "+a.ID+" [n]udge"+hint, s, m.width-2)
+	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, s, m.width-2)
+}
+
+// chatMessage represents a single timestamped output message.
+type chatMessage struct {
+	time string
+	text string
+}
+
+// parseChatMessages groups output lines by timestamp into chat messages.
+// Lines are expected in format "[HH:MM:SS] [prefix] content" from the daemon.
+func parseChatMessages(raw string) []chatMessage {
+	var msgs []chatMessage
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		ts, body := extractTimestamp(line)
+		// Strip ACP notification prefixes from body.
+		for _, prefix := range []string{"[agent_message_chunk] ", "[session_update] "} {
+			if after, ok := strings.CutPrefix(body, prefix); ok {
+				body = after
+				break
+			}
+		}
+		if body == "" {
+			continue
+		}
+		// Merge consecutive lines with the same timestamp.
+		if len(msgs) > 0 && msgs[len(msgs)-1].time == ts {
+			msgs[len(msgs)-1].text += "\n" + body
+		} else {
+			msgs = append(msgs, chatMessage{time: ts, text: body})
+		}
+	}
+	return msgs
+}
+
+// extractTimestamp pulls a leading [HH:MM:SS] timestamp from a line.
+func extractTimestamp(line string) (string, string) {
+	if len(line) >= 10 && line[0] == '[' && line[9] == ']' {
+		return line[1:9], strings.TrimSpace(line[10:])
+	}
+	return "", line
 }
 
 func relTime(t time.Time) string {
