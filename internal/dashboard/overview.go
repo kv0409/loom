@@ -6,23 +6,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/karanagi/loom/internal/issue"
 )
-
-// overviewRowBudget returns the max item rows each panel can show.
-// It reserves 2 rows for title+helpbar, and 3 rows border overhead per panel.
-func (m Model) overviewRowBudget(panelCount int) int {
-	usable := m.height - 3 // title bar (1) + help bar (2)
-	var perPanel int
-	if m.width < 80 {
-		perPanel = (usable / panelCount) - 3
-	} else {
-		perPanel = (usable / 3) - 3 // taller column has 3 panels
-	}
-	if perPanel < 1 {
-		perPanel = 1
-	}
-	return perPanel
-}
 
 // agentsBandBudget returns the row budget for the full-width AGENTS band (~40% of usable height).
 func (m Model) agentsBandBudget() int {
@@ -78,7 +63,6 @@ func (m Model) renderOverview() string {
 		age := timeAgo(a.SpawnedAt)
 		task := idleStyle.Render("idle")
 		if len(a.AssignedIssues) > 0 {
-			// join all assigned issues — no truncation
 			taskStr := strings.Join(a.AssignedIssues, ", ")
 			if lipgloss.Width(taskStr) > aTaskW {
 				taskStr = truncate(taskStr, aTaskW)
@@ -100,127 +84,163 @@ func (m Model) renderOverview() string {
 	}
 	agentPanel := panel(fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents)), agentContent, fullW)
 
-	// --- Remaining panels (lower ~60%) ---
-	stacked := m.width < 80
-	colW := max((m.width-4)/2, 30)
-	if stacked {
-		colW = max(m.width-2, 20)
-	}
-	colInnerW := colW - 2
+	// --- STATUS BAR band (full width, 1-4 lines) ---
+	statusBar := m.renderStatusBar(fullW)
 
-	// remaining vertical budget for lower panels
+	// --- ACTIVITY band (remaining space) ---
 	usable := m.height - 3
-	lowerUsable := usable - agentBudget - 3 // subtract agents band height
-	panelCount := 4
-	if stacked {
-		panelCount = 3
+	agentPanelH := lipgloss.Height(agentPanel)
+	statusBarH := lipgloss.Height(statusBar)
+	actBudget := usable - agentPanelH - statusBarH - 3
+	if actBudget < 1 {
+		actBudget = 1
 	}
-	budget := (lowerUsable/panelCount - 3)
-	if budget < 1 {
-		budget = 1
-	}
+	actPanel := m.renderActivityOverview(fullW, actBudget)
 
-	// Issues (simplified — indicator + ID + title only)
-	iIdW := min(14, max(6, (colInnerW-4)/4))
-	iTitleW := max(6, colInnerW-4-iIdW)
-	var issueLines []string
+	return lipgloss.JoinVertical(lipgloss.Left, agentPanel, statusBar, actPanel)
+}
+
+// renderStatusBar builds the full-width STATUS BAR band:
+// Line 1: issue counts by status + worktree count + memory counts
+// Lines 2-4: per-parent progress bars for active parent issues (max 3)
+func (m Model) renderStatusBar(fullW int) string {
+	innerW := fullW - 2
+
+	// --- Line 1: counts summary ---
+	statusCounts := map[string]int{}
 	for _, iss := range m.data.issues {
-		if iss.Status == "done" || iss.Status == "cancelled" {
-			continue
+		if iss.Status != "done" && iss.Status != "cancelled" && iss.Parent == "" {
+			statusCounts[iss.Status]++
 		}
-		issueLines = append(issueLines, fmt.Sprintf("  %s %-*s %s",
-			statusIndicator(iss.Status), iIdW, truncate(iss.ID, iIdW),
-			truncate(iss.Title, iTitleW)))
 	}
-	issueContent := capContent(issueLines, budget)
-	if issueContent == "" {
-		issueContent = renderEmpty("No open issues — loom issue create to add one", colInnerW)
-	} else {
-		issueContent = "\n" + issueContent
-	}
-	issuePanel := panel(fmt.Sprintf("[i] ISSUES (%d open)", len(issueLines)), issueContent, colW)
-
-	// Worktrees (simplified)
-	wtSlugW := max(8, (colInnerW-4)*2/3)
-	wtIssueW := max(6, colInnerW-4-wtSlugW)
-	var wtLines []string
-	for _, wt := range m.data.worktrees {
-		issueID := wt.Issue
-		if issueID == "" {
-			issueID = "—"
+	// Also count all non-done/cancelled issues (including sub-issues) for display
+	allStatusCounts := map[string]int{}
+	for _, iss := range m.data.issues {
+		if iss.Status != "done" && iss.Status != "cancelled" {
+			allStatusCounts[iss.Status]++
 		}
-		wtLines = append(wtLines, fmt.Sprintf("  %-*s %s",
-			wtSlugW, truncate(slugFromWorktree(wt.Name), wtSlugW),
-			idleStyle.Render(truncate(issueID, wtIssueW))))
 	}
-	wtContent := capContent(wtLines, budget)
-	if wtContent == "" {
-		wtContent = renderEmpty("No worktrees active — builders create them automatically", colInnerW)
-	} else {
-		wtContent = "\n" + wtContent
+	doneCount := 0
+	for _, iss := range m.data.issues {
+		if iss.Status == "done" {
+			doneCount++
+		}
 	}
-	wtPanel := panel(fmt.Sprintf("[w] WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
-	// Mail
-	mailFromW := min(12, max(4, (colInnerW-10)/4))
-	mailSubjW := max(6, colInnerW-10-mailFromW*2-8)
-	var mailLines []string
-	for _, msg := range m.data.messages[:min(len(m.data.messages), 20)] {
-		mailLines = append(mailLines, fmt.Sprintf("  %s %s→%s [%s] %s",
-			idleStyle.Render(msg.Timestamp.Format("15:04")),
-			truncate(msg.From, mailFromW), truncate(msg.To, mailFromW),
-			msg.Type, truncate(msg.Subject, mailSubjW)))
+	var countParts []string
+	for _, s := range []string{"in-progress", "review", "assigned", "blocked", "open"} {
+		if c := allStatusCounts[s]; c > 0 {
+			countParts = append(countParts, statusStyle(s).Render(fmt.Sprintf("%d %s", c, s)))
+		}
 	}
-	mailContent := capContent(mailLines, budget)
-	if mailContent == "" {
-		mailContent = renderEmpty("No messages yet — agents communicate via loom mail", colInnerW)
-	} else {
-		mailContent = "\n" + mailContent
+	if doneCount > 0 {
+		countParts = append(countParts, idleStyle.Render(fmt.Sprintf("%d done", doneCount)))
 	}
-	mailPanel := panel(fmt.Sprintf("[m] MAIL (%d unread)", m.data.unread), mailContent, colW)
 
-	// Memory
 	memCounts := map[string]int{}
 	for _, e := range m.data.memories {
 		memCounts[e.Type]++
 	}
-	var parts []string
+	var memParts []string
 	for _, t := range []string{"decision", "discovery", "convention"} {
 		if c := memCounts[t]; c > 0 {
-			parts = append(parts, fmt.Sprintf("%d %ss", c, t))
+			memParts = append(memParts, fmt.Sprintf("%d %ss", c, t))
 		}
 	}
-	memContent := ""
-	if len(parts) > 0 {
-		memContent = "  " + strings.Join(parts, " · ") + "\n"
-	} else {
-		memContent = renderEmpty("empty", colInnerW)
+
+	summaryParts := countParts
+	if len(m.data.worktrees) > 0 {
+		summaryParts = append(summaryParts, idleStyle.Render(fmt.Sprintf("%d worktrees", len(m.data.worktrees))))
 	}
-	memPanel := panel(fmt.Sprintf("[d] MEMORY (%d)", len(m.data.memories)), memContent, colW)
+	if len(memParts) > 0 {
+		summaryParts = append(summaryParts, idleStyle.Render(strings.Join(memParts, " · ")))
+	}
 
-	// Activity
-	actPanel := m.renderActivityOverview(colW, budget)
+	sep := idleStyle.Render(" · ")
+	summaryLine := "  " + strings.Join(summaryParts, sep)
 
-	var lowerSection string
-	if stacked {
-		hint := lipgloss.NewStyle().Foreground(colYellow).
-			Render("  ↔ resize terminal ≥ 80 cols for memory & activity panels")
-		lowerSection = lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel, wtPanel, hint)
-	} else {
-		left := lipgloss.JoinVertical(lipgloss.Left, wtPanel, memPanel)
-		right := lipgloss.JoinVertical(lipgloss.Left, issuePanel, mailPanel, actPanel)
+	// --- Lines 2-4: progress bars for active parent issues ---
+	type parentProgress struct {
+		id    string
+		title string
+		done  int
+		total int
+	}
 
-		leftH := lipgloss.Height(left)
-		rightH := lipgloss.Height(right)
-		if leftH < rightH {
-			left += strings.Repeat("\n", rightH-leftH)
-		} else if rightH < leftH {
-			right += strings.Repeat("\n", leftH-rightH)
+	// Build a map of issue ID → issue for quick lookup
+	issueMap := map[string]*issue.Issue{}
+	for _, iss := range m.data.issues {
+		issueMap[iss.ID] = iss
+	}
+
+	var parents []parentProgress
+	for _, iss := range m.data.issues {
+		if iss.Status == "done" || iss.Status == "cancelled" {
+			continue
 		}
-		lowerSection = lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
+		if len(iss.Children) == 0 {
+			continue
+		}
+		// Count done children
+		done := 0
+		for _, cid := range iss.Children {
+			if c, ok := issueMap[cid]; ok && (c.Status == "done" || c.Status == "cancelled") {
+				done++
+			}
+		}
+		parents = append(parents, parentProgress{
+			id:    iss.ID,
+			title: iss.Title,
+			done:  done,
+			total: len(iss.Children),
+		})
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, agentPanel, lowerSection)
+	var barLines []string
+	const maxBars = 3
+	shown := parents
+	overflow := 0
+	if len(parents) > maxBars {
+		shown = parents[:maxBars]
+		overflow = len(parents) - maxBars
+	}
+
+	barFill := lipgloss.NewStyle().Foreground(colTeal)
+	barEmpty := lipgloss.NewStyle().Foreground(colSubtle)
+	barLabel := lipgloss.NewStyle().Foreground(colBlue).Bold(true)
+
+	for _, p := range shown {
+		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
+		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
+		// bar width: innerW minus id(14) minus fraction(~5) minus title minus spacing
+		fractionW := len(fraction)
+		barW := 10
+		titleMaxW := innerW - 14 - 1 - barW - 1 - fractionW - 2
+		if titleMaxW < 6 {
+			titleMaxW = 6
+		}
+		titleStr := idleStyle.Render(truncate(p.title, titleMaxW))
+
+		filled := 0
+		if p.total > 0 {
+			filled = p.done * barW / p.total
+		}
+		bar := barFill.Render(strings.Repeat("■", filled)) +
+			barEmpty.Render(strings.Repeat("░", barW-filled))
+
+		barLines = append(barLines, fmt.Sprintf("  %s %s %-*s %s",
+			idStr, bar, fractionW, fraction, titleStr))
+	}
+	if overflow > 0 {
+		barLines = append(barLines, idleStyle.Render(fmt.Sprintf("  … +%d more active epics", overflow)))
+	}
+
+	content := "\n" + summaryLine + "\n"
+	for _, l := range barLines {
+		content += l + "\n"
+	}
+
+	return panel("[s] STATUS", content, fullW)
 }
 
 // heartbeatStyle returns a color style based on heartbeat freshness string.

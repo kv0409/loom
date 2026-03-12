@@ -181,6 +181,8 @@ func panelIcon(title string) string {
 		return "◉ "
 	case strings.Contains(t, "ACTIVITY"):
 		return "▪ "
+	case strings.Contains(t, "STATUS"):
+		return "≈ "
 	case strings.Contains(t, "LOG"):
 		return "≡ "
 	case strings.Contains(t, "WORKTREE"), strings.Contains(t, "DIFF"):
