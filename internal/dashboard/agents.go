@@ -255,6 +255,8 @@ type chatMessage struct {
 
 // parseChatMessages groups output lines by timestamp into chat messages.
 // Lines are expected in format "[HH:MM:SS] [prefix] content" from the daemon.
+// Streaming token chunks ([agent_message_chunk]) are concatenated without
+// separators to reconstruct the original text.
 func parseChatMessages(raw string) []chatMessage {
 	var msgs []chatMessage
 	for _, line := range strings.Split(raw, "\n") {
@@ -263,10 +265,12 @@ func parseChatMessages(raw string) []chatMessage {
 			continue
 		}
 		ts, body := extractTimestamp(line)
-		// Strip ACP notification prefixes from body.
+		// Detect and strip ACP notification prefixes; track if this is a chunk.
+		isChunk := false
 		for _, prefix := range []string{"[agent_message_chunk] ", "[session_update] "} {
 			if after, ok := strings.CutPrefix(body, prefix); ok {
 				body = after
+				isChunk = prefix == "[agent_message_chunk] "
 				break
 			}
 		}
@@ -274,8 +278,14 @@ func parseChatMessages(raw string) []chatMessage {
 			continue
 		}
 		// Merge consecutive lines with the same timestamp.
+		// Token chunks are concatenated without separators (they're
+		// fragments of a single sentence), other lines use newlines.
 		if len(msgs) > 0 && msgs[len(msgs)-1].time == ts {
-			msgs[len(msgs)-1].text += "\n" + body
+			if isChunk {
+				msgs[len(msgs)-1].text += body
+			} else {
+				msgs[len(msgs)-1].text += "\n" + body
+			}
 		} else {
 			msgs = append(msgs, chatMessage{time: ts, text: body})
 		}
