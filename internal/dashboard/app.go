@@ -697,7 +697,7 @@ func (m Model) View() string {
 	if padding < 1 {
 		padding = 1
 	}
-	titleBar := titleStyle.Width(m.width).Render(left + strings.Repeat(" ", padding) + right)
+	titleBar := titleStyle.Width(m.width - 4).Render(left + strings.Repeat(" ", padding) + right)
 
 	help := m.helpBar()
 	if m.searchMode {
