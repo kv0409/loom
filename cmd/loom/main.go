@@ -381,6 +381,7 @@ func main() {
 	spawnCmd.Flags().String("slug", "", "Worktree slug for builders")
 	spawnCmd.Flags().String("task", "", "Custom task message for the agent")
 	spawnCmd.Flags().String("mode", "", "Kiro mode override: chat|acp")
+	spawnCmd.Flags().String("model", "", "Model override: sonnet|opus|haiku (default: from config)")
 	spawnCmd.MarkFlagRequired("role")
 
 	gcCmd := &cobra.Command{
@@ -1441,6 +1442,9 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Worktree:    %s\n", a.WorktreeName)
 	}
 	fmt.Printf("Kiro Mode:   %s\n", a.Config.KiroMode)
+	if a.Config.Model != "" {
+		fmt.Printf("Model:       %s\n", a.Config.Model)
+	}
 	fmt.Printf("MCP Enabled: %v\n", a.Config.MCPEnabled)
 	return nil
 }
@@ -1550,6 +1554,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	slug, _ := cmd.Flags().GetString("slug")
 	task, _ := cmd.Flags().GetString("task")
 	mode, _ := cmd.Flags().GetString("mode")
+	model, _ := cmd.Flags().GetString("model")
 
 	if spawnedBy == "" {
 		spawnedBy = os.Getenv("LOOM_AGENT_ID")
@@ -1576,6 +1581,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		IssueSlug:      slug,
 		ExtraContext:    extra,
 		Mode:           mode,
+		Model:          model,
 	})
 	if err != nil {
 		return err

@@ -261,6 +261,14 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	}
 	log.Printf("[acp] %s: session=%s, sending initial task", a.ID, sessionID)
 
+	// Set the model for this agent's session if configured.
+	if a.Config.Model != "" {
+		log.Printf("[acp] %s: setting model to %s", a.ID, a.Config.Model)
+		if err := c.SetModel(sessionID, a.Config.Model); err != nil {
+			log.Printf("[acp] %s: SetModel(%s) failed: %v (continuing with default)", a.ID, a.Config.Model, err)
+		}
+	}
+
 	if a.InitialTask != "" {
 		if err := c.SendPrompt(sessionID, a.InitialTask); err != nil {
 			log.Printf("[acp] %s: SendPrompt failed: %v", a.ID, err)

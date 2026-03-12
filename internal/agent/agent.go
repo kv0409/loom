@@ -40,6 +40,7 @@ type Agent struct {
 type AgentConfig struct {
 	KiroMode   string `yaml:"kiro_mode"`
 	MCPEnabled bool   `yaml:"mcp_enabled"`
+	Model      string `yaml:"model,omitempty"`
 }
 
 type SpawnOpts struct {
@@ -49,6 +50,7 @@ type SpawnOpts struct {
 	IssueSlug      string
 	ExtraContext   map[string]string
 	Mode           string
+	Model          string
 }
 
 func agentsDir(loomRoot string) string  { return filepath.Join(loomRoot, "agents") }
@@ -160,6 +162,12 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		return nil, fmt.Errorf("invalid mode %q: must be chat or acp", mode)
 	}
 
+	// Resolve model: CLI flag > per-role config > empty (kiro-cli default).
+	model := opts.Model
+	if model == "" {
+		model = cfg.Models.ForRole(opts.Role)
+	}
+
 	a := &Agent{
 		ID:             id,
 		Role:           opts.Role,
@@ -170,6 +178,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		Config: AgentConfig{
 			KiroMode:   mode,
 			MCPEnabled: cfg.MCP.Enabled,
+			Model:      model,
 		},
 	}
 

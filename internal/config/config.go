@@ -39,8 +39,38 @@ type Config struct {
 	Polling PollingConfig `yaml:"polling"`
 	Tmux    TmuxConfig    `yaml:"tmux"`
 	Kiro    KiroConfig    `yaml:"kiro"`
+	Models  ModelsConfig  `yaml:"models"`
 	MCP     MCPConfig     `yaml:"mcp"`
 	Deny    DenyConfig    `yaml:"deny"`
+}
+
+type ModelsConfig struct {
+	Orchestrator string `yaml:"orchestrator"`
+	Lead         string `yaml:"lead"`
+	Builder      string `yaml:"builder"`
+	Reviewer     string `yaml:"reviewer"`
+	Explorer     string `yaml:"explorer"`
+	Researcher   string `yaml:"researcher"`
+}
+
+// ForRole returns the configured model for a given agent role, or "" if unset.
+func (m *ModelsConfig) ForRole(role string) string {
+	switch role {
+	case "orchestrator":
+		return m.Orchestrator
+	case "lead":
+		return m.Lead
+	case "builder":
+		return m.Builder
+	case "reviewer":
+		return m.Reviewer
+	case "explorer":
+		return m.Explorer
+	case "researcher":
+		return m.Researcher
+	default:
+		return ""
+	}
 }
 
 type DenyConfig struct {
@@ -135,6 +165,14 @@ func DefaultConfig() *Config {
 		Kiro: KiroConfig{
 			Command:     "kiro-cli",
 			DefaultMode: "acp",
+		},
+		Models: ModelsConfig{
+			Orchestrator: "sonnet",
+			Lead:         "sonnet",
+			Builder:      "sonnet",
+			Reviewer:     "opus",
+			Explorer:     "haiku",
+			Researcher:   "haiku",
 		},
 		MCP: MCPConfig{
 			Enabled: true,

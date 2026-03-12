@@ -115,7 +115,11 @@ func (m Model) renderAgentDetail() string {
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
 		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID))
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-		lines = append(lines, "  Mode: ACP")
+		modeStr := "ACP"
+		if a.Config.Model != "" {
+			modeStr += " | Model: " + a.Config.Model
+		}
+		lines = append(lines, "  "+modeStr)
 	} else if a.TmuxTarget != "" {
 		lines = append(lines, fmt.Sprintf("  Tmux: %s", a.TmuxTarget))
 	}
