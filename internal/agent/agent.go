@@ -275,15 +275,31 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 }
 
 func Kill(loomRoot, id string, cleanupWorktree bool) error {
+	return killWithResolved(loomRoot, id, cleanupWorktree, nil)
+}
+
+// KillWithResolved kills an agent, cascading only to children whose assigned
+// issues are all in the resolved set.
+func KillWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[string]bool) error {
+	return killWithResolved(loomRoot, id, cleanupWorktree, resolved)
+}
+
+// killWithResolved kills an agent, cascading to children only if all their
+// assigned issues are in the resolved set. A nil resolved set skips the check
+// (kills all children unconditionally).
+func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[string]bool) error {
 	a, err := Load(loomRoot, id)
 	if err != nil {
 		return err
 	}
-	// Cascade: kill or warn children first
+	// Cascade: kill or warn children first, skipping those with unresolved issues.
 	children, _ := listChildren(loomRoot, id)
 	for _, child := range children {
+		if resolved != nil && !childIssuesResolved(loomRoot, child, resolved) {
+			continue
+		}
 		if childSafeToKill(loomRoot, child) || child.TmuxTarget == "" {
-			Kill(loomRoot, child.ID, cleanupWorktree)
+			killWithResolved(loomRoot, child.ID, cleanupWorktree, resolved)
 		} else {
 			tmux.SendKeys(child.TmuxTarget, "[LOOM] Shutdown")
 		}
@@ -378,6 +394,17 @@ func listChildren(loomRoot, parentID string) ([]*Agent, error) {
 		}
 	}
 	return children, nil
+}
+
+// childIssuesResolved returns true if all of the child's assigned issues are
+// in the resolved set (or the child has no assigned issues).
+func childIssuesResolved(loomRoot string, a *Agent, resolved map[string]bool) bool {
+	for _, issID := range a.AssignedIssues {
+		if !resolved[issID] {
+			return false
+		}
+	}
+	return true
 }
 
 func childSafeToKill(loomRoot string, a *Agent) bool {
