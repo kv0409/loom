@@ -259,6 +259,7 @@ type chatMessage struct {
 // separators to reconstruct the original text.
 func parseChatMessages(raw string) []chatMessage {
 	var msgs []chatMessage
+	lastWasChunk := false
 	for _, line := range strings.Split(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -267,10 +268,10 @@ func parseChatMessages(raw string) []chatMessage {
 		ts, body := extractTimestamp(line)
 		// Detect and strip ACP notification prefixes; track if this is a chunk.
 		isChunk := false
-		for _, prefix := range []string{"[agent_message_chunk] ", "[session_update] "} {
+		for _, prefix := range []string{"[agent_message_chunk]", "[session_update]"} {
 			if after, ok := strings.CutPrefix(body, prefix); ok {
-				body = after
-				isChunk = prefix == "[agent_message_chunk] "
+				body = strings.TrimPrefix(after, " ")
+				isChunk = prefix == "[agent_message_chunk]"
 				break
 			}
 		}
@@ -280,15 +281,20 @@ func parseChatMessages(raw string) []chatMessage {
 		// Merge consecutive lines with the same timestamp.
 		// Token chunks are concatenated without separators (they're
 		// fragments of a single sentence), other lines use newlines.
-		if len(msgs) > 0 && msgs[len(msgs)-1].time == ts {
-			if isChunk {
+		// Chunks also merge across timestamp boundaries into the
+		// previous chunk group to avoid splitting streamed sentences.
+		if len(msgs) > 0 {
+			if isChunk && lastWasChunk {
 				msgs[len(msgs)-1].text += body
-			} else {
+			} else if !isChunk && msgs[len(msgs)-1].time == ts {
 				msgs[len(msgs)-1].text += "\n" + body
+			} else {
+				msgs = append(msgs, chatMessage{time: ts, text: body})
 			}
 		} else {
 			msgs = append(msgs, chatMessage{time: ts, text: body})
 		}
+		lastWasChunk = isChunk
 	}
 	return msgs
 }
