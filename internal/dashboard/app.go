@@ -80,6 +80,7 @@ type Model struct {
 	lastClickRow     int
 	hoverRow         int // -1 = no hover
 	detailScroll     int // scroll offset for agent detail output
+	diffScroll       int // scroll offset for diff view
 }
 
 type tickMsg time.Time
@@ -323,6 +324,10 @@ case viewMailDetail:
 			m.detailScroll++
 			return m, nil
 		}
+		if m.view == viewDiff {
+			m.diffScroll++
+			return m, nil
+		}
 		m.cursor++
 		m.clampCursor()
 		return m, nil
@@ -334,6 +339,13 @@ case viewMailDetail:
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
+			}
+			return m, nil
+		}
+		if m.view == viewDiff {
+			m.diffScroll--
+			if m.diffScroll < 0 {
+				m.diffScroll = 0
 			}
 			return m, nil
 		}
@@ -385,7 +397,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.selectedWorktree = m.cursor
 			m.diffContent = fetchDiff(m.data.worktrees[m.cursor].Path)
 			m.view = viewDiff
-			m.cursor = 0
+			m.diffScroll = 0
 		}
 	case viewMemory:
 		if m.cursor < len(m.data.memories) {
@@ -435,10 +447,7 @@ case viewMailDetail:
 	case viewActivity:
 		return len(m.data.activity)
 	case viewDiff:
-		lines := len(splitLines(m.diffContent))
-		if lines > 0 {
-			return lines
-		}
+		return 0
 	}
 	return 0
 }
@@ -564,6 +573,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.view == viewDiff {
+			m.diffScroll--
+			if m.diffScroll < 0 {
+				m.diffScroll = 0
+			}
+			return m, nil
+		}
 		m.cursor--
 		if m.cursor < 0 {
 			m.cursor = 0
@@ -573,6 +589,10 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	case msg.Button == tea.MouseButtonWheelDown:
 		if m.view == viewAgentDetail || m.view == viewMailDetail {
 			m.detailScroll++
+			return m, nil
+		}
+		if m.view == viewDiff {
+			m.diffScroll++
 			return m, nil
 		}
 		m.cursor++
@@ -611,7 +631,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 
 		// Diff/logs: click sets scroll position
-		if m.view == viewDiff || m.view == viewLogs {
+		if m.view == viewDiff {
+			item := m.mouseToListIndex(y)
+			if item >= 0 {
+				m.diffScroll = item
+			}
+			return m, nil
+		}
+		if m.view == viewLogs {
 			item := m.mouseToListIndex(y)
 			if item >= 0 {
 				m.cursor = item

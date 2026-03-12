@@ -84,7 +84,7 @@ func (m Model) renderDiff() string {
 	if viewH < 1 {
 		viewH = 1
 	}
-	start := m.cursor
+	start := m.diffScroll
 	if start > len(lines)-viewH {
 		start = len(lines) - viewH
 	}
