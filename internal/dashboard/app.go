@@ -312,6 +312,7 @@ case viewMailDetail:
 		}
 	case "o":
 		if m.view == viewAgents && m.cursor < len(m.data.agents) {
+			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
 			return m, nil
@@ -409,6 +410,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			aid := m.data.activity[m.cursor].AgentID
 			for i, a := range m.data.agents {
 				if a.ID == aid {
+					m.cursors[viewAgents] = i
 					m.cursor = i
 					m.view = viewAgentDetail
 					m.detailScroll = 0
