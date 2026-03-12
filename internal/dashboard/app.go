@@ -14,6 +14,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/nudge"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -69,7 +70,7 @@ type Model struct {
 	logFilter        int // 0=all, 1=lifecycle, 2=error, 3=stderr, 4=warn
 	logAgentFilter   int // 0=all, 1..N = specific agent
 	nudgeMode        bool
-	nudgeInput       string
+	nudgeCursor      int
 	messageMode      bool
 	messageInput     string
 	killConfirm      bool
@@ -244,33 +245,32 @@ func editInput(input string, cursor int, key tea.KeyMsg) (string, int, bool) {
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.hoverRow = -1
 
-	// Nudge mode captures all input
+	// Nudge mode: selection menu
 	if m.nudgeMode {
 		switch msg.String() {
 		case "enter":
 			agents := m.filteredAgents()
-			if m.cursor < len(agents) && m.nudgeInput != "" {
+			if m.cursor < len(agents) && m.nudgeCursor < len(nudge.Types) {
 				a := agents[m.cursor]
-				err := daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
+				nt := nudge.Types[m.nudgeCursor]
+				err := daemon.Nudge(m.loomRoot, a.ID, nt.Message)
 				m.nudgeMode = false
-				m.nudgeInput = ""
-				m.inputCursor = 0
 				if err != nil {
 					return m, m.setFlash(fmt.Sprintf("Nudge failed: %s", err), true)
 				}
-				return m, m.setFlash(fmt.Sprintf("Nudged %s", a.ID), false)
+				return m, m.setFlash(fmt.Sprintf("Nudged %s: %s", a.ID, nt.Label), false)
 			}
 			m.nudgeMode = false
-			m.nudgeInput = ""
-			m.inputCursor = 0
 		case "esc":
 			m.nudgeMode = false
-			m.nudgeInput = ""
-			m.inputCursor = 0
-		default:
-			s, c, _ := editInput(m.nudgeInput, m.inputCursor, msg)
-			m.nudgeInput = s
-			m.inputCursor = c
+		case "j", "down":
+			if m.nudgeCursor < len(nudge.Types)-1 {
+				m.nudgeCursor++
+			}
+		case "k", "up":
+			if m.nudgeCursor > 0 {
+				m.nudgeCursor--
+			}
 		}
 		return m, nil
 	}
@@ -418,8 +418,7 @@ case viewMailDetail:
 	case "n":
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
-			m.nudgeInput = ""
-			m.inputCursor = 0
+			m.nudgeCursor = 0
 			return m, nil
 		}
 	case "x":
@@ -685,10 +684,15 @@ func (m Model) View() string {
 		if m.cursor < len(agents) {
 			agentName = agents[m.cursor].ID
 		}
-		runes := []rune(m.nudgeInput)
-		before := string(runes[:m.inputCursor])
-		after := string(runes[m.inputCursor:])
-		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█%s  [Enter]send [Esc]cancel", agentName, before, after))
+		var items []string
+		for i, nt := range nudge.Types {
+			prefix := "  "
+			if i == m.nudgeCursor {
+				prefix = "▸ "
+			}
+			items = append(items, prefix+nt.Label)
+		}
+		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s  [j/k]select [Enter]send [Esc]cancel", agentName, strings.Join(items, " | ")))
 	}
 	if m.messageMode {
 		agentName := ""
