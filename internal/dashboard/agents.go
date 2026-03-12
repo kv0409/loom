@@ -39,10 +39,10 @@ func (m Model) renderAgents() string {
 	statusW := statusPillWidth + 2
 	wtW := max(8, avail*22/100)
 	issueW := max(6, avail*14/100)
-	hbW := max(6, avail*10/100)
-	idW := max(idWidth, avail-roleW-statusW-wtW-issueW-hbW)
+	hbW := 10 // fixed: "NNNs ago ↯N" fits in 10
+	idW := min(max(idWidth+2, 16), avail*25/100)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%s", idW, roleW, statusW+2, wtW, issueW)
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds", idW, roleW, statusW+2, wtW, issueW, hbW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 	content += "\n"
