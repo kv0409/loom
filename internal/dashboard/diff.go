@@ -34,19 +34,16 @@ func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
 	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
-	nameW := max(10, avail*25/100)
-	branchW := max(10, avail*25/100)
-	agentW := max(8, avail*14/100)
-	issueW := max(6, avail*14/100)
+	avail := availableWidth(m.width)
+	nameW := proportionalWidth(avail, 25, 10)
+	branchW := proportionalWidth(avail, 25, 10)
+	agentW := proportionalWidth(avail, 14, 8)
+	issueW := proportionalWidth(avail, 14, 6)
 	diffW := max(6, avail-nameW-branchW-agentW-issueW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
 	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE", "DIFF")
-	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += separator(m.width)
 	content += "\n"
 	for i, wt := range worktrees {
 		ds := m.data.diffStats[wt.Name]
@@ -114,7 +111,7 @@ func (m Model) renderDiff() string {
 		}
 	}
 
-	viewH := detailViewH(m.height)
+	viewH := scrollViewport(m.height)
 	viewContent, clampedScroll, total := renderViewport(styledLines, m.diffScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

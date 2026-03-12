@@ -31,20 +31,17 @@ func (m Model) renderAgents() string {
 	}
 
 	// Proportional column widths based on terminal width.
-	avail := m.width - 6 // 2 indent + 4 inter-column spaces
-	if avail < 40 {
-		avail = 40
-	}
-	roleW := max(6, avail*10/100)
+	avail := availableWidth(m.width) // 2 indent + 4 inter-column spaces
+	roleW := proportionalWidth(avail, 10, 6)
 	statusW := statusPillWidth + 2
-	wtW := max(8, avail*22/100)
-	issueW := max(6, avail*14/100)
+	wtW := proportionalWidth(avail, 22, 8)
+	issueW := proportionalWidth(avail, 14, 6)
 	hbW := 10 // fixed: "NNNs ago ↯N" fits in 10
 	idW := min(max(idWidth+2, 16), avail*25/100)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds", idW, roleW, statusW+2, wtW, issueW, hbW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
-	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += separator(m.width)
 	content += "\n"
 
 	if len(agents) == 0 {
@@ -223,7 +220,7 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	// Apply scroll viewport
-	viewH := detailViewH(m.height)
+	viewH := scrollViewport(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

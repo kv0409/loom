@@ -43,7 +43,7 @@ func linesToContent(lines []string) string {
 }
 
 func (m Model) renderOverview() string {
-	fullW := max(m.width-2, 20)
+	fullW := max(panelWidth(m.width), 20)
 	innerW := fullW - 2
 
 	agentBudget := m.agentsBandBudget()

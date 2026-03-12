@@ -201,7 +201,7 @@ func (m Model) renderLogs() string {
 		agentLabel = agentFilter
 	}
 	header := fmt.Sprintf("  Filter: [%s]  Agent: [%s]  (f=category, F=agent)\n", filterLabel, agentLabel)
-	header += "  " + strings.Repeat("─", m.width-6) + "\n\n"
+	header += separator(m.width) + "\n"
 
 	var lines []logLine
 	for _, l := range m.data.logs {
@@ -219,7 +219,7 @@ func (m Model) renderLogs() string {
 		return panel("[l] LOGS", header, m.width-2)
 	}
 
-	visible := m.height - 9
+	visible := visibleRows(m.height, 9)
 	if visible < 5 {
 		visible = 5
 	}

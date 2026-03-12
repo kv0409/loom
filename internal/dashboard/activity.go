@@ -110,15 +110,14 @@ func (m Model) renderActivity() string {
 	}
 
 	// Proportional column widths.
-	agentW := max(8, m.width*16/100)
+	agentW := proportionalWidth(m.width, 16, 8)
 	lineW := max(20, m.width-agentW-6)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%s", agentW)
 	content := fmt.Sprintf(fmtStr+"\n", "AGENT", "RECENT OUTPUT")
-	content += "  " + strings.Repeat("─", m.width-6) + "\n"
-	content += "\n"
+	content += separator(m.width)
 
-	visible := m.height - 9
+	visible := visibleRows(m.height, 9)
 	if visible < 5 {
 		visible = 5
 	}

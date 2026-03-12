@@ -9,25 +9,30 @@ func (m Model) renderMail() string {
 	messages := m.filteredMessages()
 
 	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
-	timeW := max(5, avail*10/100)
-	routeW := max(8, avail*18/100)
-	typeW := max(5, avail*10/100)
+	avail := availableWidth(m.width)
+	timeW := proportionalWidth(avail, 10, 5)
+	routeW := proportionalWidth(avail, 18, 8)
+	typeW := proportionalWidth(avail, 10, 5)
 	subjW := max(10, avail-timeW-routeW-typeW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", timeW, routeW, typeW)
 	content := fmt.Sprintf(fmtStr+"\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
-	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += separator(m.width)
 	content += "\n"
 
 	if len(messages) == 0 {
 		content += renderEmpty("No messages yet", m.width-6)
 	}
 
-	start, end := listViewport(m.cursor, len(messages), m.height-9)
+	vRows := visibleRows(m.height, 9)
+	start := m.cursor - vRows + 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + vRows
+	if end > len(messages) {
+		end = len(messages)
+	}
 
 	for i := start; i < end; i++ {
 		msg := messages[i]
@@ -80,7 +85,7 @@ func (m Model) renderMailDetail() string {
 		lines = append(lines, "  (no body)")
 	}
 
-	viewH := detailViewH(m.height)
+	viewH := scrollViewport(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

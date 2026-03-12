@@ -11,25 +11,30 @@ func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
 
 	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
-	idW := max(6, avail*12/100)
-	typeW := max(8, avail*14/100)
-	byW := max(6, avail*14/100)
+	avail := availableWidth(m.width)
+	idW := proportionalWidth(avail, 12, 6)
+	typeW := proportionalWidth(avail, 14, 8)
+	byW := proportionalWidth(avail, 14, 6)
 	titleW := max(10, avail-idW-typeW-byW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idW, typeW, titleW)
 	content := fmt.Sprintf(fmtStr+"\n", "ID", "TYPE", "TITLE", "BY")
-	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content += separator(m.width)
 	content += "\n"
 
 	if len(memories) == 0 {
 		content += renderEmpty("No memory entries yet", m.width-6)
 	}
 
-	start, end := listViewport(m.cursor, len(memories), m.height-9)
+	vRows := visibleRows(m.height, 9) // header + tab bar + panel chrome + help bar (2 lines)
+	start := m.cursor - vRows + 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + vRows
+	if end > len(memories) {
+		end = len(memories)
+	}
 
 	for i := start; i < end; i++ {
 		e := memories[i]
@@ -118,7 +123,7 @@ func (m Model) renderMemoryDetail() string {
 		lines = append(lines, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
 	}
 
-	viewH := detailViewH(m.height)
+	viewH := scrollViewport(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 

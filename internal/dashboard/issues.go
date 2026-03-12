@@ -41,10 +41,7 @@ func (m Model) renderIssues() string {
 	}
 
 	// Column widths: ID is fixed, assignee fits longest name, title gets the rest.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
+	avail := availableWidth(m.width)
 	const idW = 16 // "▶● LOOM-NNN-NN" fits in 16
 	assignW := 8
 	for _, iss := range display {
@@ -58,7 +55,7 @@ func (m Model) renderIssues() string {
 	}
 
 	header := fmt.Sprintf("  %-*s %-*s %s\n", idW, "ID", assignW, "ASSIGNEE", "TITLE")
-	content := header + "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+	content := header + separator(m.width)
 	content += "\n"
 
 	if len(display) == 0 {
@@ -68,7 +65,7 @@ func (m Model) renderIssues() string {
 	for i, iss := range display {
 		if i == activeCount && activeCount < len(display) {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
-			content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
+			content += separator(m.width)
 		}
 
 		// Build plain-text id column first so padding is ANSI-unaware.
@@ -159,7 +156,7 @@ func (m Model) renderIssueDetail() string {
 		}
 	}
 
-	viewH := detailViewH(m.height)
+	viewH := scrollViewport(m.height)
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
