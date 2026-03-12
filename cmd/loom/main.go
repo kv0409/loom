@@ -420,6 +420,14 @@ func main() {
 		RunE:  runMerges,
 	}
 
+	findingCmd := &cobra.Command{
+		Use:   "finding <message>",
+		Short: "Send a finding to your lead agent",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runFinding,
+	}
+	findingCmd.Flags().String("ref", "", "Related issue ID")
+
 	updateCmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update loom to the latest version",
@@ -437,6 +445,7 @@ func main() {
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
 		gcCmd, exportCmd, mcpServerCmd, mergeCmd, mergesCmd,
+		findingCmd,
 		updateCmd,
 	)
 
@@ -2464,4 +2473,42 @@ func truncStr(s string, n int) string {
 		return s[:n-3] + "..."
 	}
 	return s
+}
+
+func runFinding(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+
+	from := os.Getenv("LOOM_AGENT_ID")
+	if from == "" {
+		from = "human"
+	}
+
+	// Resolve lead: prefer LOOM_PARENT_AGENT env, fall back to SpawnedBy in registry.
+	to := os.Getenv("LOOM_PARENT_AGENT")
+	if to == "" && from != "human" {
+		a, err := agent.Load(root, from)
+		if err == nil && a.SpawnedBy != "" {
+			to = a.SpawnedBy
+		}
+	}
+	if to == "" {
+		return fmt.Errorf("could not determine lead: set LOOM_PARENT_AGENT or ensure agent is registered with a spawned_by value")
+	}
+
+	ref, _ := cmd.Flags().GetString("ref")
+	msg := &mail.Message{
+		From:    from,
+		To:      to,
+		Type:    "finding",
+		Subject: args[0],
+		Ref:     ref,
+	}
+	if err := mail.Send(root, msg); err != nil {
+		return err
+	}
+	fmt.Printf("Finding sent to %s\n", to)
+	return nil
 }
