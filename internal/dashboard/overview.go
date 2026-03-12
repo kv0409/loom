@@ -273,14 +273,28 @@ func timeAgo(t time.Time) string {
 }
 
 // renderActivityOverview builds a compact live activity panel for the overview.
-// Shows only ToolSummary lines (human-readable tool use); mail is in the MAIL panel.
+// Shows only ToolSummary lines (human-readable tool use); mail excluded.
+// Lines are full-width — no truncation.
 func (m Model) renderActivityOverview(colW, budget int) string {
+	innerW := colW - 2
+	agentW := 12
+	prefixW := 2 + 2 + agentW + 1 // "  ↯ " + agent + " "
+	lineW := max(8, innerW-prefixW)
+
 	var lines []string
 	toolLimit := min(budget, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		lines = append(lines, fmt.Sprintf("  ↯ %-12s %s",
-			truncate(e.AgentID, 12), truncate(e.Line, colW-20)))
+		// Wrap long lines instead of truncating
+		prefix := fmt.Sprintf("  ↯ %-*s ", agentW, truncate(e.AgentID, agentW))
+		wrapped := wordWrap(e.Line, lineW)
+		for j, seg := range wrapped {
+			if j == 0 {
+				lines = append(lines, prefix+seg)
+			} else {
+				lines = append(lines, strings.Repeat(" ", prefixW)+seg)
+			}
+		}
 	}
 
 	content := capContent(lines, budget)
@@ -294,6 +308,28 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		unique[e.AgentID] = struct{}{}
 	}
 	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
+}
+
+// wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
+func wordWrap(s string, width int) []string {
+	if width <= 0 || len(s) == 0 {
+		return []string{s}
+	}
+	var segments []string
+	for len(s) > 0 {
+		if len(s) <= width {
+			segments = append(segments, s)
+			break
+		}
+		// Try to break at last space within width
+		cut := width
+		if idx := strings.LastIndex(s[:width], " "); idx > 0 {
+			cut = idx + 1
+		}
+		segments = append(segments, strings.TrimRight(s[:cut], " "))
+		s = strings.TrimLeft(s[cut:], " ")
+	}
+	return segments
 }
 
 func min(a, b int) int {
