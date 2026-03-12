@@ -1,6 +1,6 @@
 {
   "name": "loom-explorer",
-  "description": "Loom explorer \u2014 read-only codebase exploration and analysis.",
+  "description": "Loom explorer — read-only codebase exploration and analysis.",
   "model": "claude-haiku-4.5",
   "tools": [
     "read",
@@ -25,21 +25,30 @@
         ".*"
       ],
       "deniedCommands": [
-        "rm -rf /.*",
-        "rm -rf ~.*",
-        "rm -rf \\*",
-        "git push.*",
-        "git push --force.*",
-        "git reset --hard.*",
-        "git clean -fdx.*",
         "chmod -R 777.*",
-        "sudo .*",
-        "shutdown.*",
-        "reboot.*",
+        "dd if=.*",
+        "git branch --delete.*",
+        "git branch -[dD].*",
+        "git checkout main.*",
+        "git checkout master.*",
+        "git clean -fdx.*",
+        "git merge.*",
+        "git push --force.*",
+        "git push.*",
+        "git reset --hard.*",
+        "git switch main.*",
+        "git switch master.*",
+        "git worktree prune.*",
+        "git worktree remove.*",
         "kill -9 -1",
         "killall.*",
         "mkfs.*",
-        "dd if=.*"
+        "reboot.*",
+        "rm -rf /.*",
+        "rm -rf \\*",
+        "rm -rf ~.*",
+        "shutdown.*",
+        "sudo .*"
       ]
     }
   },

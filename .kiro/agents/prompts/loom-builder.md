@@ -47,11 +47,12 @@ All your work MUST happen inside your worktree directory (shown above). You cann
    loom memory add decision "Chose X over Y" --rationale "Because Z"
    ```
 
-9. **Mark done** and notify your lead:
+9. **Mark ready for review** and notify your lead:
    ```
-   loom issue update <ID> --status done
-   loom mail send $LOOM_PARENT_AGENT "Completed <ID>" --type completion --ref <ID>
+   loom issue update <ID> --status review
+   loom mail send $LOOM_PARENT_AGENT "Ready for review: <ID>" --type completion --ref <ID>
    ```
+   **IMPORTANT**: Builders NEVER set status to `done`. Only reviewers and leads mark issues as done. Builders mark `review` when work is complete.
 
 ## Communication Protocol
 

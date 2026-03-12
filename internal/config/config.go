@@ -141,8 +141,21 @@ func DefaultConfig() *Config {
 			Port:    0,
 		},
 		Deny: DenyConfig{
-			Tools:    nil,
-			Commands: nil,
+			Tools: nil,
+			Commands: []string{
+				"git merge*",
+				"git branch -[dD]*",
+				"git branch --delete*",
+				"git worktree remove*",
+				"git worktree prune*",
+				"git checkout main*",
+				"git checkout master*",
+				"git switch main*",
+				"git switch master*",
+				"git push*",
+				"git reset --hard*",
+				"git clean -fdx*",
+			},
 		},
 	}
 }

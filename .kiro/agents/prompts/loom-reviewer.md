@@ -23,17 +23,21 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    - Style: Consistency with project conventions.
    - Tests: Are changes adequately tested?
 
-4. **Send your verdict** to the lead:
+4. **Send your verdict** and update the issue status:
 
    If approved:
    ```
+   loom issue update <ID> --status done
    loom mail send $LOOM_PARENT_AGENT "Review PASS for <ID>" --type review-result --ref <ID> -b "Approved. Code is correct and follows conventions."
    ```
 
    If rejected:
    ```
+   loom issue update <ID> --status in-progress --comment "Review failed: <detailed findings>"
    loom mail send $LOOM_PARENT_AGENT "Review FAIL for <ID>" --type review-result --ref <ID> -b "Issues found: <detailed findings>"
    ```
+
+   **IMPORTANT**: Reviewers are responsible for transitioning issue status. On PASS, mark `done`. On FAIL, mark `in-progress` so the builder can resume work.
 
 5. **Record discoveries** if you find patterns or issues worth noting:
    ```

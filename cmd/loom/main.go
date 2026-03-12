@@ -70,8 +70,9 @@ func main() {
 		Short: "Graceful shutdown",
 		RunE:  runStop,
 	}
-		stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
+	stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
 	stopCmd.Flags().Bool("daemon-only", false, "Stop only the daemon; leave agents and tmux session running")
+	stopCmd.Flags().Bool("clean", false, "Remove all worktrees including unmerged branches")
 	stopCmd.GroupID = "lifecycle"
 
 	restartCmd := &cobra.Command{
@@ -2177,20 +2178,23 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 
 	daemonOnly, _ := cmd.Flags().GetBool("daemon-only")
+	clean, _ := cmd.Flags().GetBool("clean")
 	if !daemonOnly {
-		// Kill all registered agents and clean up their worktrees
+		// Kill all registered agents
 		agents, _ := agent.List(root)
 		cfg, _ := config.Load(root)
 		for _, a := range agents {
 			fmt.Printf("Killing agent %s...\n", a.ID)
-			agent.Kill(root, a.ID, true)
+			agent.Kill(root, a.ID, clean)
 		}
 
-		// Remove any remaining orphaned worktrees
-		wts, _ := worktree.List(root)
-		for _, wt := range wts {
-			fmt.Printf("Removing worktree %s...\n", wt.Name)
-			worktree.Remove(root, wt.Name, true)
+		// Remove worktrees — only force-remove if --clean
+		if clean {
+			wts, _ := worktree.List(root)
+			for _, wt := range wts {
+				fmt.Printf("Removing worktree %s...\n", wt.Name)
+				worktree.Remove(root, wt.Name, true)
+			}
 		}
 
 		// Kill the tmux session
