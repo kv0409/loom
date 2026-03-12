@@ -462,7 +462,7 @@ case viewMailDetail:
 			m.clampKanbanRow()
 			return m, nil
 		}
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll++
 			return m, nil
 		}
@@ -484,7 +484,7 @@ case viewMailDetail:
 			}
 			return m, nil
 		}
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -827,7 +827,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -848,7 +848,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonWheelDown:
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail {
+		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll++
 			return m, nil
 		}

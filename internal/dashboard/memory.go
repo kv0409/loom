@@ -66,69 +66,77 @@ func (m Model) renderMemoryDetail() string {
 	}
 	e := memories[m.cursor]
 
-	s := fmt.Sprintf("  %s\n", titleStyle.Render(e.Title))
-	s += fmt.Sprintf("  ID: %-12s Type: %-12s By: %s\n", e.ID, e.Type, memory.ByField(e))
-	s += fmt.Sprintf("  Time: %s\n", e.Timestamp.Format("2006-01-02 15:04:05"))
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(e.Title)))
+	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, memory.ByField(e)))
+	lines = append(lines, fmt.Sprintf("  Time: %s", e.Timestamp.Format("2006-01-02 15:04:05")))
 
 	switch e.Type {
 	case "decision":
 		if e.Context != "" {
-			s += "\n  " + headerStyle.Render("CONTEXT") + "\n"
-			s += wrapField(e.Context, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("CONTEXT"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Context, m.width-8), "\n"), "\n")...)
 		}
 		if e.Decision != "" {
-			s += "\n  " + headerStyle.Render("DECISION") + "\n"
-			s += wrapField(e.Decision, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("DECISION"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Decision, m.width-8), "\n"), "\n")...)
 		}
 		if e.Rationale != "" {
-			s += "\n  " + headerStyle.Render("RATIONALE") + "\n"
-			s += wrapField(e.Rationale, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("RATIONALE"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rationale, m.width-8), "\n"), "\n")...)
 		}
 		if len(e.Alternatives) > 0 {
-			s += "\n  " + headerStyle.Render("ALTERNATIVES") + "\n"
+			lines = append(lines, "", "  "+headerStyle.Render("ALTERNATIVES"))
 			for _, alt := range e.Alternatives {
-				s += fmt.Sprintf("    • %s\n", alt.Option)
+				lines = append(lines, fmt.Sprintf("    • %s", alt.Option))
 				if alt.RejectedBecause != "" {
-					s += fmt.Sprintf("      Rejected: %s\n", alt.RejectedBecause)
+					lines = append(lines, fmt.Sprintf("      Rejected: %s", alt.RejectedBecause))
 				}
 			}
 		}
 	case "discovery":
 		if e.Location != "" {
-			s += fmt.Sprintf("  Location: %s\n", e.Location)
+			lines = append(lines, fmt.Sprintf("  Location: %s", e.Location))
 		}
 		if e.Finding != "" {
-			s += "\n  " + headerStyle.Render("FINDING") + "\n"
-			s += wrapField(e.Finding, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("FINDING"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Finding, m.width-8), "\n"), "\n")...)
 		}
 		if e.Implications != "" {
-			s += "\n  " + headerStyle.Render("IMPLICATIONS") + "\n"
-			s += wrapField(e.Implications, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("IMPLICATIONS"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Implications, m.width-8), "\n"), "\n")...)
 		}
 	case "convention":
 		if e.Rule != "" {
-			s += "\n  " + headerStyle.Render("RULE") + "\n"
-			s += wrapField(e.Rule, m.width-8)
+			lines = append(lines, "", "  "+headerStyle.Render("RULE"))
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rule, m.width-8), "\n"), "\n")...)
 		}
 		if e.AppliesTo != "" {
-			s += fmt.Sprintf("  Applies to: %s\n", e.AppliesTo)
+			lines = append(lines, fmt.Sprintf("  Applies to: %s", e.AppliesTo))
 		}
 		if len(e.Examples) > 0 {
-			s += "\n  " + headerStyle.Render("EXAMPLES") + "\n"
+			lines = append(lines, "", "  "+headerStyle.Render("EXAMPLES"))
 			for _, ex := range e.Examples {
-				s += fmt.Sprintf("    • %s\n", ex)
+				lines = append(lines, fmt.Sprintf("    • %s", ex))
 			}
 		}
 	}
 
 	if len(e.Affects) > 0 {
-		s += fmt.Sprintf("\n  Affects: %s\n", strings.Join(e.Affects, ", "))
+		lines = append(lines, "", fmt.Sprintf("  Affects: %s", strings.Join(e.Affects, ", ")))
 	}
 	if len(e.Tags) > 0 {
-		s += fmt.Sprintf("  Tags: %s\n", strings.Join(e.Tags, ", "))
+		lines = append(lines, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
 	}
 
-	return panel("Memory: "+e.ID, s, m.width-2)
+	viewH := m.height - 6
+	if viewH < 1 {
+		viewH = 1
+	}
+	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
+	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+
+	return panel("Memory: "+e.ID+scrollInfo, viewContent+"\n", m.width-2)
 }
 
 // wrapField formats a multi-line text field with indentation.
