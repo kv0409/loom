@@ -250,7 +250,7 @@ func parseChatMessages(raw string) []chatMessage {
 		isChunk := false
 		for _, prefix := range []string{"[agent_message_chunk]", "[session_update]"} {
 			if after, ok := strings.CutPrefix(body, prefix); ok {
-				body = strings.TrimPrefix(after, " ")
+				body = strings.TrimLeft(after, "\t ")
 				isChunk = prefix == "[agent_message_chunk]"
 				break
 			}
@@ -263,9 +263,12 @@ func parseChatMessages(raw string) []chatMessage {
 		// fragments of a single sentence), other lines use newlines.
 		// Chunks also merge across timestamp boundaries into the
 		// previous chunk group to avoid splitting streamed sentences.
+		// Lines with empty timestamps are merged into the previous message.
 		if len(msgs) > 0 {
 			if isChunk && lastWasChunk {
 				msgs[len(msgs)-1].text += body
+			} else if ts == "" {
+				msgs[len(msgs)-1].text += "\n" + body
 			} else if !isChunk && msgs[len(msgs)-1].time == ts {
 				msgs[len(msgs)-1].text += "\n" + body
 			} else {

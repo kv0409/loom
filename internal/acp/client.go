@@ -319,7 +319,7 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 			return
 		}
 		if params.Update.Content.Text != "" {
-			c.appendOutput(fmt.Sprintf("[%s] %s", params.Update.SessionUpdate, params.Update.Content.Text))
+			c.appendOutput(fmt.Sprintf("[%s]\t%s", params.Update.SessionUpdate, params.Update.Content.Text))
 		}
 	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available", "_kiro.dev/session/update":
 		// Internal kiro events — skip.

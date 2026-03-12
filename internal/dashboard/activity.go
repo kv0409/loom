@@ -64,11 +64,11 @@ func assembleChunksN(raw string, maxLen int) string {
 		}
 
 		// Robustly strip any bracketed prefix like [agent_message_chunk] or [session_update].
-		// We look for a '[' at the start, then a ']', then skip one optional space.
+		// We look for a '[' at the start, then a ']', then skip one optional tab or space.
 		content := trimmed
 		if strings.HasPrefix(trimmed, "[") {
 			if end := strings.Index(trimmed, "]"); end > 0 {
-				content = strings.TrimPrefix(trimmed[end+1:], " ")
+				content = strings.TrimLeft(trimmed[end+1:], "\t ")
 			}
 		}
 
