@@ -113,9 +113,7 @@ func (m Model) renderActivity() string {
 	agentW := proportionalWidth(m.width, 16, 8)
 	lineW := max(20, m.width-agentW-6)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%s", agentW)
-	content := fmt.Sprintf(fmtStr+"\n", "AGENT", "RECENT OUTPUT")
-	content += separator(m.width)
+	content := tableHeader([]int{agentW, lineW}, []string{"AGENT", "RECENT OUTPUT"}, m.width)
 
 	visible := visibleRows(m.height, 9)
 	if visible < 5 {
@@ -143,4 +141,3 @@ func (m Model) renderActivity() string {
 	}
 	return panel(title, content, m.width-2)
 }
-

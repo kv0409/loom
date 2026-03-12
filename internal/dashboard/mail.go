@@ -9,16 +9,16 @@ func (m Model) renderMail() string {
 	messages := m.filteredMessages()
 
 	// Proportional column widths.
-	avail := availableWidth(m.width)
-	timeW := proportionalWidth(avail, 10, 5)
-	routeW := proportionalWidth(avail, 18, 8)
-	typeW := proportionalWidth(avail, 10, 5)
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	ws := colWidths(avail, []struct{ pct, min int }{{10, 5}, {18, 8}, {10, 5}})
+	timeW, routeW, typeW := ws[0], ws[1], ws[2]
 	subjW := max(10, avail-timeW-routeW-typeW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", timeW, routeW, typeW)
-	content := fmt.Sprintf(fmtStr+"\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
-	content += separator(m.width)
-	content += "\n"
+	content := tableHeader([]int{timeW, routeW, typeW, subjW}, []string{"TIME", "FROM → TO", "TYPE", "SUBJECT"}, m.width)
 
 	if len(messages) == 0 {
 		content += renderEmpty("No messages yet", m.width-6)

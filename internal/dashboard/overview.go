@@ -3,7 +3,6 @@ package dashboard
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/issue"
@@ -65,10 +64,8 @@ func (m Model) renderOverview() string {
 
 	var agentLines []string
 	for _, a := range m.data.agents {
-		hb := timeAgo(a.Heartbeat)
-		age := timeAgo(a.SpawnedAt)
-
-		// Prefer last ACP structured event; fall back to assigned issues.
+		hb := fmtTime(a.Heartbeat, true)
+		age := fmtTime(a.SpawnedAt, true)
 		task := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
 			if lipgloss.Width(line) > aTaskW {
@@ -252,20 +249,6 @@ func (m Model) renderStatusBar(fullW int) string {
 	return panel("[s] STATUS", content, fullW)
 }
 
-func timeAgo(t time.Time) string {
-	if t.IsZero() {
-		return "never"
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("%dh", int(d.Hours()))
-	}
-}
 
 // renderActivityOverview builds a compact live activity panel for the overview.
 // Shows only ToolSummary lines (human-readable tool use); mail excluded.
@@ -340,4 +323,3 @@ func max(a, b int) int {
 	}
 	return b
 }
-

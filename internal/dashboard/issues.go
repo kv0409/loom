@@ -54,9 +54,7 @@ func (m Model) renderIssues() string {
 		titleW = 10
 	}
 
-	header := fmt.Sprintf("  %-*s %-*s %s\n", idW, "ID", assignW, "ASSIGNEE", "TITLE")
-	content := header + separator(m.width)
-	content += "\n"
+	content := tableHeader([]int{idW, assignW, titleW}, []string{"ID", "ASSIGNEE", "TITLE"}, m.width)
 
 	if len(display) == 0 {
 		content += renderEmpty("No issues — loom issue create to add one", m.width-6)

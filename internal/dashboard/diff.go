@@ -26,17 +26,16 @@ func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
 	// Proportional column widths.
-	avail := availableWidth(m.width)
-	nameW := proportionalWidth(avail, 25, 10)
-	branchW := proportionalWidth(avail, 25, 10)
-	agentW := proportionalWidth(avail, 14, 8)
-	issueW := proportionalWidth(avail, 14, 6)
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	ws := colWidths(avail, []struct{ pct, min int }{{25, 10}, {25, 10}, {14, 8}, {14, 6}, {0, 6}})
+	nameW, branchW, agentW, issueW := ws[0], ws[1], ws[2], ws[3]
 	diffW := max(6, avail-nameW-branchW-agentW-issueW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
-	content := fmt.Sprintf(fmtStr+"\n", "NAME", "BRANCH", "AGENT", "ISSUE", "DIFF")
-	content += separator(m.width)
-	content += "\n"
+	content := tableHeader([]int{nameW, branchW, agentW, issueW, diffW}, []string{"NAME", "BRANCH", "AGENT", "ISSUE", "DIFF"}, m.width)
 	for i, wt := range worktrees {
 		ds := m.data.diffStats[wt.Name]
 		diffStr := ""

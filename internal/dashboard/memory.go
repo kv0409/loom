@@ -11,16 +11,16 @@ func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
 
 	// Proportional column widths.
-	avail := availableWidth(m.width)
-	idW := proportionalWidth(avail, 12, 6)
-	typeW := proportionalWidth(avail, 14, 8)
-	byW := proportionalWidth(avail, 14, 6)
+	avail := m.width - 6
+	if avail < 40 {
+		avail = 40
+	}
+	ws := colWidths(avail, []struct{ pct, min int }{{12, 6}, {14, 8}, {14, 6}})
+	idW, typeW, byW := ws[0], ws[1], ws[2]
 	titleW := max(10, avail-idW-typeW-byW)
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idW, typeW, titleW)
-	content := fmt.Sprintf(fmtStr+"\n", "ID", "TYPE", "TITLE", "BY")
-	content += separator(m.width)
-	content += "\n"
+	content := tableHeader([]int{idW, typeW, titleW, byW}, []string{"ID", "TYPE", "TITLE", "BY"}, m.width)
 
 	if len(memories) == 0 {
 		content += renderEmpty("No memory entries yet", m.width-6)

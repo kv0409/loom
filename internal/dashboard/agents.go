@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
@@ -31,18 +30,16 @@ func (m Model) renderAgents() string {
 	}
 
 	// Proportional column widths based on terminal width.
-	avail := availableWidth(m.width) // 2 indent + 4 inter-column spaces
-	roleW := proportionalWidth(avail, 10, 6)
-	statusW := statusPillWidth + 2
-	wtW := proportionalWidth(avail, 22, 8)
-	issueW := proportionalWidth(avail, 14, 6)
-	hbW := 10 // fixed: "NNNs ago ↯N" fits in 10
+	avail := m.width - 6 // 2 indent + 4 inter-column spaces
+	if avail < 40 {
+		avail = 40
+	}
+	ws := colWidths(avail, []struct{ pct, min int }{{10, 6}, {0, statusPillWidth + 4}, {22, 8}, {14, 6}, {0, 10}})
+	roleW, statusW, wtW, issueW, hbW := ws[0], ws[1], ws[2], ws[3], ws[4]
 	idW := min(max(idWidth+2, 16), avail*25/100)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds", idW, roleW, statusW+2, wtW, issueW, hbW)
-	content := fmt.Sprintf(fmtStr+"\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
-	content += separator(m.width)
-	content += "\n"
+	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds", idW, roleW, statusW, wtW, issueW, hbW)
+	content := tableHeader([]int{idW, roleW, statusW, wtW, issueW, hbW}, []string{"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}, m.width)
 
 	if len(agents) == 0 {
 		content += renderEmpty("No agents running — loom spawn to start", m.width-6)
@@ -57,7 +54,7 @@ func (m Model) renderAgents() string {
 		if len(a.AssignedIssues) > 0 {
 			issues = truncate(strings.Join(a.AssignedIssues, ","), issueW)
 		}
-		hb := relTime(a.Heartbeat)
+		hb := fmtTime(a.Heartbeat, false)
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
@@ -112,7 +109,7 @@ func (m Model) renderAgentDetail() string {
 	var lines []string
 
 	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %s Heartbeat: %s",
-		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), relTime(a.Heartbeat)))
+		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), fmtTime(a.Heartbeat, false)))
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
 		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID))
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
@@ -138,7 +135,7 @@ func (m Model) renderAgentDetail() string {
 	if a.NudgeCount > 0 {
 		lines = append(lines, "")
 		lines = append(lines, "  "+headerStyle.Render("NUDGES"))
-		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, relTime(a.LastNudge)))
+		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, fmtTime(a.LastNudge, false)))
 	}
 
 	// ACP output — rendered by event type
@@ -262,21 +259,6 @@ func wrapEventContent(content string, maxW int) string {
 		}
 	}
 	return sb.String()
-}
-
-func relTime(t time.Time) string {
-	if t.IsZero() {
-		return "never"
-	}
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
 }
 
 func sortAgentTree(agents []*agent.Agent) ([]*agent.Agent, []agentTreeNode) {
