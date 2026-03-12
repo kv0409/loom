@@ -85,6 +85,7 @@ type Model struct {
 	flashIsErr       bool
 	searchMode       bool
 	searchQuery      string
+	inputCursor      int // cursor position within the active input field
 }
 
 type tickMsg time.Time
@@ -194,6 +195,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// editInput handles key events for a text input field with cursor movement and paste support.
+// Returns the updated string, cursor position, and whether the key was consumed.
+func editInput(input string, cursor int, key tea.KeyMsg) (string, int, bool) {
+	k := tea.Key(key)
+	runes := []rune(input)
+	if cursor > len(runes) {
+		cursor = len(runes)
+	}
+	switch k.Type {
+	case tea.KeyBackspace:
+		if cursor > 0 {
+			runes = append(runes[:cursor-1], runes[cursor:]...)
+			cursor--
+		}
+		return string(runes), cursor, true
+	case tea.KeyDelete:
+		if cursor < len(runes) {
+			runes = append(runes[:cursor], runes[cursor+1:]...)
+		}
+		return string(runes), cursor, true
+	case tea.KeyLeft:
+		if cursor > 0 {
+			cursor--
+		}
+		return string(runes), cursor, true
+	case tea.KeyRight:
+		if cursor < len(runes) {
+			cursor++
+		}
+		return string(runes), cursor, true
+	case tea.KeyHome:
+		return string(runes), 0, true
+	case tea.KeyEnd:
+		return string(runes), len(runes), true
+	case tea.KeyRunes, tea.KeySpace:
+		before := runes[:cursor]
+		after := append([]rune{}, runes[cursor:]...)
+		runes = append(append(before, k.Runes...), after...)
+		cursor += len(k.Runes)
+		return string(runes), cursor, true
+	}
+	return input, cursor, false
+}
+
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.hoverRow = -1
 
@@ -207,6 +252,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				err := daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
 				m.nudgeMode = false
 				m.nudgeInput = ""
+				m.inputCursor = 0
 				if err != nil {
 					return m, m.setFlash(fmt.Sprintf("Nudge failed: %s", err), true)
 				}
@@ -214,17 +260,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.nudgeMode = false
 			m.nudgeInput = ""
+			m.inputCursor = 0
 		case "esc":
 			m.nudgeMode = false
 			m.nudgeInput = ""
-		case "backspace":
-			if len(m.nudgeInput) > 0 {
-				m.nudgeInput = m.nudgeInput[:len(m.nudgeInput)-1]
-			}
+			m.inputCursor = 0
 		default:
-			if len(msg.String()) == 1 || msg.String() == " " {
-				m.nudgeInput += msg.String()
-			}
+			s, c, _ := editInput(m.nudgeInput, m.inputCursor, msg)
+			m.nudgeInput = s
+			m.inputCursor = c
 		}
 		return m, nil
 	}
@@ -260,6 +304,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				err := daemon.Message(m.loomRoot, a.ID, m.messageInput)
 				m.messageMode = false
 				m.messageInput = ""
+				m.inputCursor = 0
 				if err != nil {
 					return m, m.setFlash(fmt.Sprintf("Message failed: %s", err), true)
 				}
@@ -267,17 +312,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.messageMode = false
 			m.messageInput = ""
+			m.inputCursor = 0
 		case "esc":
 			m.messageMode = false
 			m.messageInput = ""
-		case "backspace":
-			if len(m.messageInput) > 0 {
-				m.messageInput = m.messageInput[:len(m.messageInput)-1]
-			}
+			m.inputCursor = 0
 		default:
-			if len(msg.String()) == 1 || msg.String() == " " {
-				m.messageInput += msg.String()
-			}
+			s, c, _ := editInput(m.messageInput, m.inputCursor, msg)
+			m.messageInput = s
+			m.inputCursor = c
 		}
 		return m, nil
 	}
@@ -287,25 +330,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			m.searchMode = false
+			m.inputCursor = 0
 			m.cursor = 0
 			m.clampCursor()
 		case "esc":
 			m.searchMode = false
 			m.searchQuery = ""
+			m.inputCursor = 0
 			m.cursor = 0
 			m.clampCursor()
-		case "backspace":
-			if len(m.searchQuery) > 0 {
-				m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
-				m.cursor = 0
-				m.clampCursor()
-			}
 		default:
-			if len(msg.String()) == 1 || msg.String() == " " {
-				m.searchQuery += msg.String()
-				m.cursor = 0
-				m.clampCursor()
-			}
+			s, c, _ := editInput(m.searchQuery, m.inputCursor, msg)
+			m.searchQuery = s
+			m.inputCursor = c
+			m.cursor = 0
+			m.clampCursor()
 		}
 		return m, nil
 	}
@@ -346,6 +385,7 @@ case viewMailDetail:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
 			m.messageMode = true
 			m.messageInput = ""
+			m.inputCursor = 0
 			return m, nil
 		}
 		m.switchView(viewMail)
@@ -377,6 +417,7 @@ case viewMailDetail:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
 			m.nudgeInput = ""
+			m.inputCursor = 0
 			return m, nil
 		}
 	case "x":
@@ -395,6 +436,7 @@ case viewMailDetail:
 		if isListView(m.view) {
 			m.searchMode = true
 			m.searchQuery = ""
+			m.inputCursor = 0
 			return m, nil
 		}
 	case "tab":
@@ -587,7 +629,10 @@ func (m Model) View() string {
 
 	help := m.helpBar()
 	if m.searchMode {
-		help = helpStyle.Render(fmt.Sprintf(" /%s█  [Enter]filter [Esc]cancel", m.searchQuery))
+		runes := []rune(m.searchQuery)
+		before := string(runes[:m.inputCursor])
+		after := string(runes[m.inputCursor:])
+		help = helpStyle.Render(fmt.Sprintf(" /%s█%s  [Enter]filter [Esc]cancel", before, after))
 	}
 	if m.nudgeMode {
 		agentName := ""
@@ -595,7 +640,10 @@ func (m Model) View() string {
 		if m.cursor < len(agents) {
 			agentName = agents[m.cursor].ID
 		}
-		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█  [Enter]send [Esc]cancel", agentName, m.nudgeInput))
+		runes := []rune(m.nudgeInput)
+		before := string(runes[:m.inputCursor])
+		after := string(runes[m.inputCursor:])
+		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s█%s  [Enter]send [Esc]cancel", agentName, before, after))
 	}
 	if m.messageMode {
 		agentName := ""
@@ -603,7 +651,10 @@ func (m Model) View() string {
 		if m.cursor < len(agents) {
 			agentName = agents[m.cursor].ID
 		}
-		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█  [Enter]send [Esc]cancel", agentName, m.messageInput))
+		runes := []rune(m.messageInput)
+		before := string(runes[:m.inputCursor])
+		after := string(runes[m.inputCursor:])
+		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█%s  [Enter]send [Esc]cancel", agentName, before, after))
 	}
 	if m.killConfirm {
 		agentName := ""
