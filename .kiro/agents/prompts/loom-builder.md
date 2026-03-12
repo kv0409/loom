@@ -76,6 +76,7 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 
 - Work ONLY in your worktree. Do NOT modify files outside it.
 - Do NOT create or manage other agents.
+- **Raw git operations are denied** — `git merge`, `git branch -d`, `git worktree remove`, `git checkout main`, and `git push` are blocked. Use `git add`, `git commit`, `git diff`, `git log`, and `git status` freely within your worktree.
 - Acquire file locks before editing any file that other builders might touch.
 - Commit early and often — small, focused commits.
 - Send heartbeat periodically: `loom agent heartbeat`.

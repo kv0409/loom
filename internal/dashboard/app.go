@@ -28,6 +28,7 @@ const (
 	viewMail
 	viewMailDetail
 	viewMemory
+	viewMemoryDetail
 	viewActivity
 	viewLogs
 	viewWorktrees
@@ -233,8 +234,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.switchView(viewAgents)
 		case viewIssueDetail:
 			m.switchView(viewIssues)
-		case viewMailDetail:
+case viewMailDetail:
 			m.switchView(viewMail)
+		case viewMemoryDetail:
+			m.switchView(viewMemory)
 		case viewDiff:
 			m.view = viewWorktrees
 			m.cursor = m.selectedWorktree
@@ -369,6 +372,11 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.view = viewDiff
 			m.cursor = 0
 		}
+	case viewMemory:
+		if m.cursor < len(m.data.memories) {
+			m.cursors[m.view] = m.cursor
+			m.view = viewMemoryDetail
+		}
 	case viewActivity:
 		if m.cursor < len(m.data.activity) {
 			aid := m.data.activity[m.cursor].AgentID
@@ -403,9 +411,9 @@ func (m Model) listLen() int {
 		return len(m.displayIssues())
 	case viewMail:
 		return len(m.data.messages)
-	case viewMailDetail:
+case viewMailDetail:
 		return len(m.data.messages)
-	case viewMemory:
+	case viewMemory, viewMemoryDetail:
 		return len(m.data.memories)
 	case viewWorktrees:
 		return len(m.data.worktrees)
@@ -448,6 +456,8 @@ func (m Model) View() string {
 		content = m.renderMailDetail()
 	case viewMemory:
 		content = m.renderMemory()
+	case viewMemoryDetail:
+		content = m.renderMemoryDetail()
 	case viewActivity:
 		content = m.renderActivity()
 	case viewLogs:

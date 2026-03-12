@@ -49,3 +49,99 @@ func (m Model) renderMemory() string {
 
 	return panel(fmt.Sprintf("MEMORY (%d entries)", len(m.data.memories)), content, m.width-2)
 }
+
+func (m Model) renderMemoryDetail() string {
+	if m.cursor >= len(m.data.memories) {
+		return "No memory entry selected"
+	}
+	e := m.data.memories[m.cursor]
+
+	s := fmt.Sprintf("  %s\n", titleStyle.Render(e.Title))
+	s += fmt.Sprintf("  ID: %-12s Type: %-12s By: %s\n", e.ID, e.Type, memory.ByField(e))
+	s += fmt.Sprintf("  Time: %s\n", e.Timestamp.Format("2006-01-02 15:04:05"))
+
+	switch e.Type {
+	case "decision":
+		if e.Context != "" {
+			s += "\n  " + headerStyle.Render("CONTEXT") + "\n"
+			s += wrapField(e.Context, m.width-8)
+		}
+		if e.Decision != "" {
+			s += "\n  " + headerStyle.Render("DECISION") + "\n"
+			s += wrapField(e.Decision, m.width-8)
+		}
+		if e.Rationale != "" {
+			s += "\n  " + headerStyle.Render("RATIONALE") + "\n"
+			s += wrapField(e.Rationale, m.width-8)
+		}
+		if len(e.Alternatives) > 0 {
+			s += "\n  " + headerStyle.Render("ALTERNATIVES") + "\n"
+			for _, alt := range e.Alternatives {
+				s += fmt.Sprintf("    • %s\n", alt.Option)
+				if alt.RejectedBecause != "" {
+					s += fmt.Sprintf("      Rejected: %s\n", alt.RejectedBecause)
+				}
+			}
+		}
+	case "discovery":
+		if e.Location != "" {
+			s += fmt.Sprintf("  Location: %s\n", e.Location)
+		}
+		if e.Finding != "" {
+			s += "\n  " + headerStyle.Render("FINDING") + "\n"
+			s += wrapField(e.Finding, m.width-8)
+		}
+		if e.Implications != "" {
+			s += "\n  " + headerStyle.Render("IMPLICATIONS") + "\n"
+			s += wrapField(e.Implications, m.width-8)
+		}
+	case "convention":
+		if e.Rule != "" {
+			s += "\n  " + headerStyle.Render("RULE") + "\n"
+			s += wrapField(e.Rule, m.width-8)
+		}
+		if e.AppliesTo != "" {
+			s += fmt.Sprintf("  Applies to: %s\n", e.AppliesTo)
+		}
+		if len(e.Examples) > 0 {
+			s += "\n  " + headerStyle.Render("EXAMPLES") + "\n"
+			for _, ex := range e.Examples {
+				s += fmt.Sprintf("    • %s\n", ex)
+			}
+		}
+	}
+
+	if len(e.Affects) > 0 {
+		s += fmt.Sprintf("\n  Affects: %s\n", strings.Join(e.Affects, ", "))
+	}
+	if len(e.Tags) > 0 {
+		s += fmt.Sprintf("  Tags: %s\n", strings.Join(e.Tags, ", "))
+	}
+
+	return panel("Memory: "+e.ID, s, m.width-2)
+}
+
+// wrapField formats a multi-line text field with indentation.
+func wrapField(text string, maxW int) string {
+	var s string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			s += "\n"
+			continue
+		}
+		for len(line) > maxW {
+			cut := maxW
+			if sp := strings.LastIndex(line[:cut], " "); sp > 0 {
+				cut = sp
+			}
+			s += "    " + line[:cut] + "\n"
+			line = line[cut:]
+			line = strings.TrimSpace(line)
+		}
+		if line != "" {
+			s += "    " + line + "\n"
+		}
+	}
+	return s
+}
