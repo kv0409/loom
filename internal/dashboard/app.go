@@ -81,9 +81,16 @@ type Model struct {
 	hoverRow         int // -1 = no hover
 	detailScroll     int // scroll offset for agent detail output
 	diffScroll       int // scroll offset for diff view
+	flashMsg         string
+	flashIsErr       bool
 }
 
 type tickMsg time.Time
+type clearFlashMsg struct{}
+
+func clearFlashAfter(d time.Duration) tea.Cmd {
+	return tea.Tick(d, func(time.Time) tea.Msg { return clearFlashMsg{} })
+}
 
 func New(loomRoot string) Model {
 	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), hoverRow: -1, cursors: make(map[view]int)}
@@ -95,6 +102,12 @@ func (m *Model) switchView(target view) {
 	m.cursors[m.view] = m.cursor
 	m.view = target
 	m.cursor = m.cursors[target]
+}
+
+func (m *Model) setFlash(msg string, isErr bool) tea.Cmd {
+	m.flashMsg = msg
+	m.flashIsErr = isErr
+	return clearFlashAfter(3 * time.Second)
 }
 
 func (m Model) Init() tea.Cmd {
@@ -170,6 +183,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.data = msg
 		m.clampCursor()
 		return m, nil
+	case clearFlashMsg:
+		m.flashMsg = ""
+		return m, nil
 	}
 	return m, nil
 }
@@ -183,7 +199,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.cursor < len(m.data.agents) && m.nudgeInput != "" {
 				a := m.data.agents[m.cursor]
-				daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
+				err := daemon.Nudge(m.loomRoot, a.ID, m.nudgeInput)
+				m.nudgeMode = false
+				m.nudgeInput = ""
+				if err != nil {
+					return m, m.setFlash(fmt.Sprintf("Nudge failed: %s", err), true)
+				}
+				return m, m.setFlash(fmt.Sprintf("Nudged %s", a.ID), false)
 			}
 			m.nudgeMode = false
 			m.nudgeInput = ""
@@ -208,7 +230,12 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			if m.cursor < len(m.data.agents) {
 				a := m.data.agents[m.cursor]
-				daemon.Kill(m.loomRoot, a.ID, false)
+				err := daemon.Kill(m.loomRoot, a.ID, false)
+				m.killConfirm = false
+				if err != nil {
+					return m, m.setFlash(fmt.Sprintf("Kill failed: %s", err), true)
+				}
+				return m, m.setFlash(fmt.Sprintf("Killed %s", a.ID), false)
 			}
 			m.killConfirm = false
 		default:
@@ -223,7 +250,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.cursor < len(m.data.agents) && m.messageInput != "" {
 				a := m.data.agents[m.cursor]
-				daemon.Message(m.loomRoot, a.ID, m.messageInput)
+				err := daemon.Message(m.loomRoot, a.ID, m.messageInput)
+				m.messageMode = false
+				m.messageInput = ""
+				if err != nil {
+					return m, m.setFlash(fmt.Sprintf("Message failed: %s", err), true)
+				}
+				return m, m.setFlash(fmt.Sprintf("Messaged %s", a.ID), false)
 			}
 			m.messageMode = false
 			m.messageInput = ""
@@ -518,6 +551,13 @@ func (m Model) View() string {
 			agentName = m.data.agents[m.cursor].ID
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
+	}
+	if m.flashMsg != "" && !m.nudgeMode && !m.messageMode && !m.killConfirm {
+		style := flashOkStyle
+		if m.flashIsErr {
+			style = flashErrStyle
+		}
+		help = style.Render(" "+m.flashMsg) + "  " + help
 	}
 	return fmt.Sprintf("%s\n%s\n%s", titleStyle.Render("── LOOM DASHBOARD ──"), content, help)
 }
