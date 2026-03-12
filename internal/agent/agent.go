@@ -289,7 +289,10 @@ func Kill(loomRoot, id string, cleanupWorktree bool) error {
 		syscall.Kill(-a.PID, syscall.SIGKILL)
 	}
 	if cleanupWorktree && a.WorktreeName != "" {
-		if err := worktree.Remove(loomRoot, a.WorktreeName, false); err != nil {
+		wtPath := filepath.Join(loomRoot, "worktrees", a.WorktreeName)
+		if worktree.HasDirtyFiles(wtPath) {
+			log.Printf("[agent] preserving worktree %s: has uncommitted changes", a.WorktreeName)
+		} else if err := worktree.Remove(loomRoot, a.WorktreeName, false); err != nil {
 			log.Printf("[agent] preserving worktree %s: %v", a.WorktreeName, err)
 		}
 	}

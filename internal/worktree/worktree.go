@@ -64,6 +64,48 @@ func Create(loomRoot string, issueID string, slug string, agent string) (*Worktr
 	}, nil
 }
 
+// HasDirtyFiles returns true if the worktree at the given path has uncommitted changes
+// (staged or unstaged, including untracked files).
+func HasDirtyFiles(wtPath string) bool {
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = wtPath
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
+// isMerged checks whether a branch has been integrated into HEAD.
+// It first tries git merge-base --is-ancestor (works for regular merges).
+// If that fails and the merge strategy is "squash", it falls back to checking
+// whether the associated issue has MergedAt set.
+func isMerged(loomRoot, branchName string) bool {
+	root := projectRoot(loomRoot)
+
+	// Strategy 1: git merge-base --is-ancestor (works for regular merges).
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", branchName, "HEAD")
+	cmd.Dir = root
+	if err := cmd.Run(); err == nil {
+		return true
+	}
+
+	// Strategy 2: for squash merges, check issue MergedAt.
+	cfg, err := config.Load(loomRoot)
+	if err != nil || cfg.Merge.Strategy != "squash" {
+		return false
+	}
+	issueID := ExtractIssueID(branchName)
+	if issueID == "" {
+		return false
+	}
+	iss, err := issue.Load(loomRoot, issueID)
+	if err != nil {
+		return false
+	}
+	return iss.MergedAt != nil
+}
+
 // ErrUnmergedBranch is returned when Remove is called on a branch that has not been merged.
 var ErrUnmergedBranch = fmt.Errorf("branch has unmerged commits")
 
@@ -73,9 +115,7 @@ func Remove(loomRoot string, name string, force bool) error {
 	root := projectRoot(loomRoot)
 
 	if !force {
-		cmd := exec.Command("git", "merge-base", "--is-ancestor", name, "HEAD")
-		cmd.Dir = root
-		if err := cmd.Run(); err != nil {
+		if !isMerged(loomRoot, name) {
 			return fmt.Errorf("%w: refusing to delete branch %s (use force to override)", ErrUnmergedBranch, name)
 		}
 	}
@@ -151,13 +191,21 @@ func List(loomRoot string) ([]*Worktree, error) {
 	return worktrees, nil
 }
 
+var issueIDRe = regexp.MustCompile(`^(LOOM-\d+(?:-\d+)?)`)
+
+// ExtractIssueID returns the issue ID prefix from a worktree/branch name,
+// or empty string if the name doesn't match the convention.
+func ExtractIssueID(name string) string {
+	if m := issueIDRe.FindStringSubmatch(name); len(m) > 1 {
+		return m[1]
+	}
+	return ""
+}
+
 // parseNameConvention extracts agent/issue from naming convention.
 // Name format: <issueID>-<slug>
 func parseNameConvention(wt *Worktree) {
-	re := regexp.MustCompile(`^(LOOM-\d+(?:-\d+)?)`)
-	if m := re.FindStringSubmatch(wt.Name); len(m) > 1 {
-		wt.Issue = m[1]
-	}
+	wt.Issue = ExtractIssueID(wt.Name)
 }
 
 func Show(loomRoot string, name string) (*Worktree, *DiffStats, error) {

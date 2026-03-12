@@ -17,6 +17,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/tmux"
+	"github.com/karanagi/loom/internal/worktree"
 )
 
 type Daemon struct {
@@ -76,7 +77,7 @@ func (d *Daemon) Start() error {
 		return err
 	}
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(8)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
@@ -84,6 +85,7 @@ func (d *Daemon) Start() error {
 	go func() { defer wg.Done(); d.watchPendingAgents() }()
 	go func() { defer wg.Done(); d.watchACPOutput() }()
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
+	go func() { defer wg.Done(); d.watchWorktreeGC() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -579,6 +581,72 @@ func (d *Daemon) watchInboxGC() {
 					os.RemoveAll(filepath.Join(inboxRoot, e.Name()))
 				}
 			}
+		}
+	}
+}
+
+func (d *Daemon) watchWorktreeGC() {
+	// Initial delay: let agents settle after startup.
+	select {
+	case <-d.stop:
+		return
+	case <-time.After(2 * time.Minute):
+	}
+
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	d.runWorktreeGC()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			d.runWorktreeGC()
+		}
+	}
+}
+
+func (d *Daemon) runWorktreeGC() {
+	orphans, err := worktree.Cleanup(d.LoomRoot)
+	if err != nil {
+		log.Printf("[gc] worktree cleanup list failed: %v", err)
+		return
+	}
+	if len(orphans) == 0 {
+		return
+	}
+	log.Printf("[gc] found %d orphan worktree(s): %v", len(orphans), orphans)
+
+	for _, name := range orphans {
+		issueID := worktree.ExtractIssueID(name)
+
+		// Check issue state for safety.
+		if issueID != "" {
+			iss, err := issue.Load(d.LoomRoot, issueID)
+			if err == nil {
+				// Active issue — skip.
+				if iss.Status != "done" && iss.Status != "cancelled" {
+					continue
+				}
+				// Done but not merged — preserve (work not integrated yet).
+				if iss.Status == "done" && iss.MergedAt == nil {
+					continue
+				}
+			}
+			// err != nil means issue file missing — safe to remove.
+		}
+
+		// Check for dirty worktree.
+		wtPath := filepath.Join(d.LoomRoot, "worktrees", name)
+		if worktree.HasDirtyFiles(wtPath) {
+			log.Printf("[gc] preserving worktree %s: has uncommitted changes", name)
+			continue
+		}
+
+		log.Printf("[gc] removing orphan worktree %s", name)
+		if err := worktree.Remove(d.LoomRoot, name, true); err != nil {
+			log.Printf("[gc] failed to remove worktree %s: %v", name, err)
 		}
 	}
 }
