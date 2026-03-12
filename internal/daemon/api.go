@@ -163,8 +163,12 @@ func (d *Daemon) apiOutput(req Request) Response {
 		lines = 50
 	}
 	if a.Config.KiroMode == "acp" {
-		out := d.GetACPOutput(req.AgentID, lines)
-		return okResp(strings.Join(out, "\n"))
+		events := d.GetACPOutput(req.AgentID, lines)
+		var parts []string
+		for _, ev := range events {
+			parts = append(parts, ev.Content)
+		}
+		return okResp(strings.Join(parts, "\n"))
 	}
 	if a.TmuxTarget == "" {
 		return errResp("no tmux target for agent")

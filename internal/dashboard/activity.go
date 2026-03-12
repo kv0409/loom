@@ -31,7 +31,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			if err != nil {
 				continue
 			}
-			events := acp.ParseOutput(string(raw))
+			events := acp.ReadOutputFile(raw)
 			// Only show ToolSummary events (human-readable tool use lines).
 			var last *acp.ACPEvent
 			for i := range events {

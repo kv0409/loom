@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -145,8 +146,8 @@ func (d *Daemon) UnregisterACPClient(agentID string) {
 	d.mu.Unlock()
 }
 
-// GetACPOutput returns the last n response texts for the given agent.
-func (d *Daemon) GetACPOutput(agentID string, n int) []string {
+// GetACPOutput returns the last n output events for the given agent.
+func (d *Daemon) GetACPOutput(agentID string, n int) []acp.ACPEvent {
 	d.mu.Lock()
 	c := d.acpClients[agentID]
 	d.mu.Unlock()
@@ -182,7 +183,7 @@ func (d *Daemon) watchPendingAgents() {
 func (d *Daemon) watchACPOutput() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	// Track how many lines we've already seen per agent (index-based dedup).
+	// Track how many events we've already seen per agent (index-based dedup).
 	lastCount := make(map[string]int)
 	for {
 		select {
@@ -196,17 +197,17 @@ func (d *Daemon) watchACPOutput() {
 			}
 			d.mu.Unlock()
 			for _, id := range ids {
-				lines := d.GetACPOutput(id, 50)
-				if len(lines) == 0 {
+				events := d.GetACPOutput(id, 50)
+				if len(events) == 0 {
 					continue
 				}
-				// Only write lines we haven't seen yet.
+				// Only write events we haven't seen yet.
 				prev := lastCount[id]
-				if len(lines) <= prev {
+				if len(events) <= prev {
 					continue
 				}
-				newLines := lines[prev:]
-				lastCount[id] = len(lines)
+				newEvents := events[prev:]
+				lastCount[id] = len(events)
 
 				p := filepath.Join(d.LoomRoot, "agents", id+".output")
 				f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -214,8 +215,10 @@ func (d *Daemon) watchACPOutput() {
 					continue
 				}
 				ts := time.Now().Format("15:04:05")
-				for _, l := range newLines {
-					fmt.Fprintf(f, "[%s] %s\n", ts, l)
+				enc := json.NewEncoder(f)
+				for i := range newEvents {
+					newEvents[i].Timestamp = ts
+					enc.Encode(newEvents[i])
 				}
 				f.Close()
 

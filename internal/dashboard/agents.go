@@ -154,7 +154,7 @@ func (m Model) renderAgentDetail() string {
 			if maxW < 40 {
 				maxW = 40
 			}
-			events := acp.ParseOutput(string(raw))
+			events := acp.ReadOutputFile(raw)
 			for i, ev := range events {
 				if i > 0 {
 					lines = append(lines, "")

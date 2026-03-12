@@ -35,7 +35,7 @@ type Client struct {
 
 	// Output buffer for dashboard.
 	outMu         sync.Mutex
-	lastResponses []string
+	lastResponses []ACPEvent
 
 	// AgentID for audit logging.
 	AgentID string
@@ -319,7 +319,10 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 			return
 		}
 		if params.Update.Content.Text != "" {
-			c.appendOutput(fmt.Sprintf("[%s]\t%s", params.Update.SessionUpdate, params.Update.Content.Text))
+			c.appendEvent(ACPEvent{
+				Kind:    eventKind(params.Update.SessionUpdate),
+				Content: params.Update.Content.Text,
+			})
 		}
 	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available", "_kiro.dev/session/update":
 		// Internal kiro events — skip.
@@ -328,9 +331,9 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 	}
 }
 
-func (c *Client) appendOutput(text string) {
+func (c *Client) appendEvent(ev ACPEvent) {
 	c.outMu.Lock()
-	c.lastResponses = append(c.lastResponses, text)
+	c.lastResponses = append(c.lastResponses, ev)
 	if len(c.lastResponses) > 50 {
 		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
 	}
@@ -511,7 +514,8 @@ func (c *Client) SetModel(sessionID string, model string) error {
 }
 
 // RecentOutput returns the last n captured output lines.
-func (c *Client) RecentOutput(n int) []string {
+// RecentOutput returns the last n captured output events.
+func (c *Client) RecentOutput(n int) []ACPEvent {
 	c.outMu.Lock()
 	defer c.outMu.Unlock()
 	if n <= 0 || len(c.lastResponses) == 0 {
@@ -520,7 +524,7 @@ func (c *Client) RecentOutput(n int) []string {
 	if n > len(c.lastResponses) {
 		n = len(c.lastResponses)
 	}
-	out := make([]string, n)
+	out := make([]ACPEvent, n)
 	copy(out, c.lastResponses[len(c.lastResponses)-n:])
 	return out
 }

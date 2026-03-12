@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"encoding/json"
 	"strings"
 )
 
@@ -13,11 +14,81 @@ const (
 	CompleteMessage            // any other non-empty output line
 )
 
+var kindNames = [...]string{"token_chunk", "tool_summary", "message"}
+
+func (k Kind) MarshalJSON() ([]byte, error) {
+	if int(k) < len(kindNames) {
+		return []byte(`"` + kindNames[k] + `"`), nil
+	}
+	return []byte(`"unknown"`), nil
+}
+
+func (k *Kind) UnmarshalJSON(b []byte) error {
+	s := strings.Trim(string(b), `"`)
+	for i, name := range kindNames {
+		if name == s {
+			*k = Kind(i)
+			return nil
+		}
+	}
+	*k = CompleteMessage
+	return nil
+}
+
 // ACPEvent is a parsed, typed unit of ACP output.
 type ACPEvent struct {
-	Kind      Kind
-	Timestamp string // HH:MM:SS, may be empty
-	Content   string
+	Kind      Kind   `json:"kind"`
+	Timestamp string `json:"ts,omitempty"`
+	Content   string `json:"content"`
+}
+
+// ReadOutputFile reads an .output file, trying NDJSON first, falling back to
+// legacy text format for files written before the structured output change.
+func ReadOutputFile(raw []byte) []ACPEvent {
+	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+	if len(lines) == 0 {
+		return nil
+	}
+	// Probe first non-empty line to detect format.
+	for _, l := range lines {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		if l[0] == '{' {
+			return readNDJSON(lines)
+		}
+		return ParseOutput(string(raw))
+	}
+	return nil
+}
+
+func readNDJSON(lines []string) []ACPEvent {
+	var events []ACPEvent
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var ev ACPEvent
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			continue
+		}
+		events = append(events, ev)
+	}
+	return events
+}
+
+// eventKind maps ACP sessionUpdate strings to typed Kind values.
+func eventKind(sessionUpdate string) Kind {
+	switch sessionUpdate {
+	case "agent_message_chunk":
+		return TokenChunk
+	case "session_update":
+		return ToolSummary
+	default:
+		return CompleteMessage
+	}
 }
 
 // ParseOutput parses the raw content of an agent .output file into typed events.
