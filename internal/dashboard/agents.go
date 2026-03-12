@@ -52,7 +52,7 @@ func (m Model) renderAgents() string {
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ⚡%d", a.NudgeCount)
 		}
-		statusCol := fmt.Sprintf("%s %-*s", statusIndicator(a.Status), statusW, truncate(a.Status, statusW))
+		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusStyle(a.Status).Render(fmt.Sprintf("%-*s", statusW, truncate(a.Status, statusW))))
 
 		// Build tree prefix (2-char indent per level).
 		prefix := ""
@@ -80,8 +80,6 @@ func (m Model) renderAgents() string {
 			line = selectedStyle.Render("▸" + line[1:])
 		} else if i == m.hoverRow {
 			line = hoverStyle.Render(line)
-		} else {
-			line = statusStyle(a.Status).Render(line)
 		}
 		content += line + "\n"
 	}
