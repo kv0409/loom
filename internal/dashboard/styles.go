@@ -42,7 +42,6 @@ var (
 	idleStyle     = lipgloss.NewStyle().Foreground(colGray)
 	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
-	helpActiveStyle = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
 	flashErrStyle = lipgloss.NewStyle().Bold(true).Foreground(colRed)
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)

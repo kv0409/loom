@@ -85,7 +85,7 @@ func (m Model) renderOverview() string {
 	} else {
 		agentContent = "\n" + agentContent
 	}
-	agentPanel := panel(fmt.Sprintf("AGENTS (%d)", len(m.data.agents)), agentContent, colW)
+	agentPanel := panel(fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents)), agentContent, colW)
 
 	// Issues (simplified — indicator + ID + title only, no status text)
 	iIdW := min(14, max(6, (innerW-4)/4))
@@ -105,7 +105,7 @@ func (m Model) renderOverview() string {
 	} else {
 		issueContent = "\n" + issueContent
 	}
-	issuePanel := panel(fmt.Sprintf("ISSUES (%d open)", len(issueLines)), issueContent, colW)
+	issuePanel := panel(fmt.Sprintf("[i] ISSUES (%d open)", len(issueLines)), issueContent, colW)
 
 	// Worktrees (simplified — name + issue only, no branch/diff)
 	wtSlugW := max(8, (innerW-4)*2/3)
@@ -126,7 +126,7 @@ func (m Model) renderOverview() string {
 	} else {
 		wtContent = "\n" + wtContent
 	}
-	wtPanel := panel(fmt.Sprintf("WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
+	wtPanel := panel(fmt.Sprintf("[w] WORKTREES (%d)", len(m.data.worktrees)), wtContent, colW)
 
 	// Mail
 	mailFromW := min(12, max(4, (innerW-10)/4))
@@ -144,7 +144,7 @@ func (m Model) renderOverview() string {
 	} else {
 		mailContent = "\n" + mailContent
 	}
-	mailPanel := panel(fmt.Sprintf("MAIL (%d unread)", m.data.unread), mailContent, colW)
+	mailPanel := panel(fmt.Sprintf("[m] MAIL (%d unread)", m.data.unread), mailContent, colW)
 
 	// Memory (single summary line — no truncation needed)
 	memCounts := map[string]int{}
@@ -163,7 +163,7 @@ func (m Model) renderOverview() string {
 	} else {
 		memContent = renderEmpty("empty", innerW)
 	}
-	memPanel := panel(fmt.Sprintf("MEMORY (%d)", len(m.data.memories)), memContent, colW)
+	memPanel := panel(fmt.Sprintf("[d] MEMORY (%d)", len(m.data.memories)), memContent, colW)
 
 	// Live activity section
 	actPanel := m.renderActivityOverview(colW, budget)
@@ -247,7 +247,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	for _, e := range m.data.activity {
 		unique[e.AgentID] = struct{}{}
 	}
-	return panel(fmt.Sprintf("ACTIVITY (%d agents, %d msgs)", len(unique), len(m.data.messages)), content, colW)
+	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents, %d msgs)", len(unique), len(m.data.messages)), content, colW)
 }
 
 func min(a, b int) int {

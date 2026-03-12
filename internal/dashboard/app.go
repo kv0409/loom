@@ -777,22 +777,7 @@ func (m Model) View() string {
 }
 
 func (m Model) helpBar() string {
-	// In agents/agent-detail views with agents present, m means "message" not "mail"
-	mIsMessage := (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0
-
-	var parts []string
-	for _, tab := range helpBarTabs {
-		label := tab.label
-		if tab.view == viewMail && mIsMessage {
-			label = "[m]essage"
-		}
-		if m.view == tab.view || (tab.view == viewAgents && m.view == viewAgentDetail) {
-			parts = append(parts, helpActiveStyle.Render(label))
-		} else {
-			parts = append(parts, helpStyle.Render(label))
-		}
-	}
-	tabLine := " " + strings.Join(parts, " ") + helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
+	tabLine := " " + helpStyle.Render("[Tab]cycle [Esc]back [/]search [q]uit")
 
 	// Context-specific shortcuts on second line
 	var ctx string
@@ -834,24 +819,8 @@ func (m Model) helpBar() string {
 	return tabLine + "\n" + helpStyle.Render("  │")
 }
 
-// helpBarTabs maps substrings in the help bar to views for mouse click targeting.
-var helpBarTabs = []struct {
-	label string
-	view  view
-}{
-	{"[a]gents", viewAgents},
-	{"[i]ssues", viewIssues},
-	{"[m]ail", viewMail},
-	{"[d] memory", viewMemory},
-	{"[w]orktrees", viewWorktrees},
-	{"[b]oard", viewKanban},
-	{"[t]activity", viewActivity},
-	{"[l]ogs", viewLogs},
-}
-
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	x, y := msg.X, msg.Y
-	lastRow := m.height - 2 // help bar is 2 lines; tabs are on the first
+	_, y := msg.X, msg.Y
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
@@ -889,31 +858,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonLeft:
-		// Click on help bar → switch view
-		if y >= lastRow {
-			mIsMessage := (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0
-			offset := 1 // leading space
-			for _, tab := range helpBarTabs {
-				label := tab.label
-				if tab.view == viewMail && mIsMessage {
-					label = "[m]essage"
-				}
-				if x >= offset && x < offset+len(label) {
-					if tab.view == viewMail && mIsMessage {
-						// In agent context, clicking [m]essage triggers message mode
-						m.messageMode = true
-						m.messageInput = ""
-						m.inputCursor = 0
-					} else {
-						m.switchView(tab.view)
-					}
-					return m, nil
-				}
-				offset += len(label) + 1 // +1 for space separator
-			}
-			return m, nil
-		}
-
 		// Click on list items in list views
 		if isListView(m.view) {
 			item := m.mouseToListIndex(y)

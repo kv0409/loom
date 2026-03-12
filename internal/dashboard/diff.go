@@ -74,9 +74,9 @@ func (m Model) renderWorktrees() string {
 	if len(worktrees) == 0 {
 		content += renderEmpty("No worktrees — builders create them automatically", m.width-6)
 	}
-	title := fmt.Sprintf("WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
+	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
 	if m.searchQuery != "" {
-		title = fmt.Sprintf("WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchQuery)
+		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchQuery)
 	}
 	return panel(title, content, m.width-2)
 }

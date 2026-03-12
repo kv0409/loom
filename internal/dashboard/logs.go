@@ -216,7 +216,7 @@ func (m Model) renderLogs() string {
 
 	if len(lines) == 0 {
 		header += renderEmpty("No matching log entries", m.width-6)
-		return panel("LOGS", header, m.width-2)
+		return panel("[l] LOGS", header, m.width-2)
 	}
 
 	visible := m.height - 9
@@ -235,7 +235,7 @@ func (m Model) renderLogs() string {
 		content += fmt.Sprintf("  %s %s\n", tag, truncate(l.Text, m.width-16))
 	}
 
-	return panel(fmt.Sprintf("LOGS (%d events)", len(lines)), content, m.width-2)
+	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, m.width-2)
 }
 
 func categoryTag(cat string) string {

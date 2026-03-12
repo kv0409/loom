@@ -95,7 +95,7 @@ func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
 
 	if len(entries) == 0 {
-		return panel("ACTIVITY", renderEmpty("No activity detected", m.width-6), m.width-2)
+		return panel("[t] ACTIVITY", renderEmpty("No activity detected", m.width-6), m.width-2)
 	}
 
 	// Proportional column widths.
@@ -127,9 +127,9 @@ func (m Model) renderActivity() string {
 		content += line + "\n"
 	}
 
-	title := fmt.Sprintf("ACTIVITY (%d agents)", len(entries))
+	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(entries))
 	if m.searchQuery != "" {
-		title = fmt.Sprintf("ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchQuery)
+		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchQuery)
 	}
 	return panel(title, content, m.width-2)
 }
