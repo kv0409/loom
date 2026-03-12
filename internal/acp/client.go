@@ -489,7 +489,7 @@ func (c *Client) SetMode(sessionID string, mode string) error {
 func (c *Client) SetModel(sessionID string, model string) error {
 	params := map[string]interface{}{
 		"sessionId": sessionID,
-		"model":     model,
+		"modelId":  model,
 	}
 	return c.call("session/set_model", params, nil)
 }
