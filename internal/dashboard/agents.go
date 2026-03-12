@@ -136,13 +136,22 @@ func (m Model) renderAgentDetail() string {
 				if maxW < 40 {
 					maxW = 40
 				}
-				for len(text) > 0 {
-					end := maxW
-					if end > len(text) {
-						end = len(text)
+				for _, raw := range strings.Split(text, "\n") {
+					if raw == "" {
+						lines = append(lines, "")
+						continue
 					}
-					lines = append(lines, "  "+text[:end])
-					text = text[end:]
+					for len(raw) > maxW {
+						cut := maxW
+						if sp := strings.LastIndex(raw[:cut], " "); sp > 0 {
+							cut = sp
+						}
+						lines = append(lines, "  "+raw[:cut])
+						raw = strings.TrimSpace(raw[cut:])
+					}
+					if raw != "" {
+						lines = append(lines, "  "+raw)
+					}
 				}
 			}
 		} else {
