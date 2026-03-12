@@ -737,7 +737,8 @@ func (m Model) helpBar() string {
 	}
 	suffix := helpStyle.Render(" [Tab]cycle [Esc]back [/]search [q]uit")
 	base := " " + strings.Join(parts, " ") + suffix
-	if m.view == viewAgentDetail {
+	switch m.view {
+	case viewAgentDetail:
 		extra := " | [n]udge [j/k]scroll"
 		agents := m.filteredAgents()
 		if m.cursor < len(agents) {
@@ -747,10 +748,26 @@ func (m Model) helpBar() string {
 			}
 		}
 		base += helpStyle.Render(extra)
-	} else if m.view == viewAgents {
+	case viewAgents:
 		base += helpStyle.Render(" | [n]udge [o]utput [x]kill [Enter]detail")
-	} else if m.view == viewKanban {
+	case viewKanban:
 		base += helpStyle.Render(" | [h/←/→]column [j/k]row [Enter]detail")
+	case viewIssues:
+		base += helpStyle.Render(" | [Enter]detail")
+	case viewMail:
+		base += helpStyle.Render(" | [Enter]detail")
+	case viewWorktrees:
+		base += helpStyle.Render(" | [Enter]diff")
+	case viewMemory:
+		base += helpStyle.Render(" | [Enter]detail")
+	case viewLogs:
+		base += helpStyle.Render(" | [f]ilter [F]agent")
+	case viewActivity:
+		base += helpStyle.Render(" | [Enter]agent")
+	case viewIssueDetail, viewMailDetail, viewMemoryDetail:
+		base += helpStyle.Render(" | [j/k]scroll")
+	case viewDiff:
+		base += helpStyle.Render(" | [j/k]scroll")
 	}
 	return base
 }
