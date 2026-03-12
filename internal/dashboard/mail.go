@@ -20,7 +20,21 @@ func (m Model) renderMail() string {
 	content := fmt.Sprintf(fmtStr+"\n", "TIME", "FROM → TO", "TYPE", "SUBJECT")
 	content += "  " + strings.Repeat("─", max(20, m.width-6)) + "\n"
 
-	for i, msg := range m.data.messages {
+	visibleRows := m.height - 8
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	start := m.cursor - visibleRows + 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleRows
+	if end > len(m.data.messages) {
+		end = len(m.data.messages)
+	}
+
+	for i := start; i < end; i++ {
+		msg := m.data.messages[i]
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
 		line := fmt.Sprintf(fmtStr,
 			msg.Timestamp.Format("15:04"), truncate(route, routeW), msg.Type, truncate(msg.Subject, subjW))
