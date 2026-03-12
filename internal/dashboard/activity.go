@@ -32,16 +32,20 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 				continue
 			}
 			events := acp.ParseOutput(string(raw))
-			if len(events) > 0 {
-				last := events[len(events)-1]
+			// Only show ToolSummary events (human-readable tool use lines).
+			var last *acp.ACPEvent
+			for i := range events {
+				if events[i].Kind == acp.ToolSummary {
+					last = &events[i]
+				}
+			}
+			if last != nil {
 				text := last.Content
 				const maxLen = 200
 				if len(text) > maxLen {
 					text = "…" + text[len(text)-(maxLen-1):]
 				}
-				if text != "" {
-					entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
-				}
+				entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
 			}
 			continue
 		}

@@ -216,21 +216,10 @@ func timeAgo(t time.Time) string {
 }
 
 // renderActivityOverview builds a compact live activity panel for the overview.
+// Shows only ToolSummary lines (human-readable tool use); mail is in the MAIL panel.
 func (m Model) renderActivityOverview(colW, budget int) string {
 	var lines []string
-
-	// Recent mail (last few from→to with type)
-	msgs := m.data.messages
-	mailLimit := min(3, len(msgs))
-	for i := 0; i < mailLimit; i++ {
-		msg := msgs[i]
-		lines = append(lines, fmt.Sprintf("  ▸ %s %s→%s [%s]",
-			idleStyle.Render(msg.Timestamp.Format("15:04")),
-			truncate(msg.From, 12), truncate(msg.To, 12), msg.Type))
-	}
-
-	// Recent agent tool calls from activity data
-	toolLimit := min(3, len(m.data.activity))
+	toolLimit := min(budget, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
 		lines = append(lines, fmt.Sprintf("  ↯ %-12s %s",
@@ -247,7 +236,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	for _, e := range m.data.activity {
 		unique[e.AgentID] = struct{}{}
 	}
-	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents, %d msgs)", len(unique), len(m.data.messages)), content, colW)
+	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
 }
 
 func min(a, b int) int {
