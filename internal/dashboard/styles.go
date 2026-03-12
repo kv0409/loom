@@ -90,7 +90,7 @@ var statusGlyphs = map[string]string{
 var typeGlyphs = map[string]string{
 	"epic":  "◈",
 	"task":  "●",
-	"bug":   "⊘",
+	"bug":   "✦",
 	"spike": "◇",
 }
 
