@@ -124,14 +124,25 @@ func SalvageCommit(wtPath string, agentID string) error {
 	return err
 }
 
+// isAlreadyGone returns true when the git worktree remove output indicates the
+// worktree path simply doesn't exist (i.e. it was already removed).
+func isAlreadyGone(output string) bool {
+	return strings.Contains(output, "is not a working tree") ||
+		strings.Contains(output, "does not exist")
+}
+
 // ForceRemove passes --force to git worktree remove. Used as a fallback when
 // normal Remove fails (e.g. dirty worktree after SalvageCommit failure).
 func ForceRemove(loomRoot string, name string) error {
 	root := projectRoot(loomRoot)
 	wtPath := filepath.Join(".loom", "worktrees", name)
+	absPath := filepath.Join(root, wtPath)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return nil // already gone
+	}
 	cmd := exec.Command("git", "worktree", "remove", "--force", wtPath)
 	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil && !isAlreadyGone(string(out)) {
 		return fmt.Errorf("git worktree remove --force: %s", strings.TrimSpace(string(out)))
 	}
 	cmd = exec.Command("git", "branch", "-D", name)
@@ -167,9 +178,13 @@ func Remove(loomRoot string, name string, force bool) error {
 	}
 
 	wtPath := filepath.Join(".loom", "worktrees", name)
+	absPath := filepath.Join(root, wtPath)
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		return nil // already gone
+	}
 	cmd := exec.Command("git", "worktree", "remove", wtPath)
 	cmd.Dir = root
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil && !isAlreadyGone(string(out)) {
 		return fmt.Errorf("git worktree remove: %s", strings.TrimSpace(string(out)))
 	}
 
