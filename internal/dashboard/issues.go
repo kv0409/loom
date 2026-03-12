@@ -105,14 +105,15 @@ func (m Model) renderIssueDetail() string {
 	}
 
 	if len(iss.Children) > 0 {
+		issueMap := make(map[string]*issue.Issue, len(m.data.issues))
+		for _, ci := range m.data.issues {
+			issueMap[ci.ID] = ci
+		}
 		lines = append(lines, "", "  "+headerStyle.Render("CHILDREN"))
 		for i, cid := range iss.Children {
 			label := cid
-			for _, ci := range m.data.issues {
-				if ci.ID == cid {
-					label = fmt.Sprintf("%s %s [%s] %s", statusIndicator(ci.Status), cid, ci.Status, truncate(ci.Title, 30))
-					break
-				}
+			if ci, ok := issueMap[cid]; ok {
+				label = fmt.Sprintf("%s %s [%s] %s", statusIndicator(ci.Status), cid, ci.Status, truncate(ci.Title, 30))
 			}
 			prefix := "├──"
 			if i == len(iss.Children)-1 {
