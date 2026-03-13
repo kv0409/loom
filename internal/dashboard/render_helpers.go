@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -63,19 +62,3 @@ func colWidths(avail int, cols []struct{ pct, min int }) []int {
 	return out
 }
 
-// tableHeader returns a header line + separator line for a table.
-// widths and labels must have the same length.
-func tableHeader(widths []int, labels []string, totalW int) string {
-	parts := make([]string, len(widths))
-	for i, w := range widths {
-		parts[i] = fmt.Sprintf("%%-%ds", w)
-	}
-	fmtStr := "  " + strings.Join(parts, " ")
-	ifaces := make([]any, len(labels))
-	for i, l := range labels {
-		ifaces[i] = l
-	}
-	header := fmt.Sprintf(fmtStr, ifaces...) + "\n"
-	sep := "  " + strings.Repeat("─", max(20, totalW-6)) + "\n\n"
-	return header + sep
-}
