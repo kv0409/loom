@@ -53,3 +53,18 @@ func visibleRows(h, headerRows int) int {
 // scrollViewport returns the number of scrollable rows for a detail/panel view
 // (h - 6), enforcing a minimum of 1.
 func scrollViewport(h int) int { return visibleRows(h, 6) }
+
+// issuesViewport returns start/end for the issues list, accounting for the
+// "RECENTLY DONE" separator that consumes issuesSectionGap extra lines when
+// visible. It recalculates with reduced rows so the cursor stays visible.
+func issuesViewport(cursor, total, vRows, activeCount int) (start, end int) {
+	start, end = listViewport(cursor, total, vRows)
+	if activeCount < total && activeCount >= start && activeCount < end {
+		reduced := vRows - issuesSectionGap
+		if reduced < 1 {
+			reduced = 1
+		}
+		start, end = listViewport(cursor, total, reduced)
+	}
+	return start, end
+}

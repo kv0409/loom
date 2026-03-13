@@ -61,15 +61,7 @@ func (m Model) renderIssues() string {
 	}
 
 	vRows := visibleRows(m.height, 9)
-	start, end := listViewport(m.cursor, len(display), vRows)
-	// The "RECENTLY DONE" separator consumes issuesSectionGap extra lines when
-	// it falls within the visible window; shrink end to avoid overflow.
-	if activeCount >= start && activeCount < end && activeCount < len(display) {
-		end -= issuesSectionGap
-		if end < start {
-			end = start
-		}
-	}
+	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
 
 	for i := start; i < end; i++ {
 		iss := display[i]
