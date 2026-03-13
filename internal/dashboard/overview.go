@@ -285,8 +285,8 @@ func (m Model) renderStatusBar(fullW int) string {
 		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
 		fractionW := len(fraction)
-		// Cap barW at 40 and give reclaimed space to titleMaxW.
-		barW := min(innerW-2-14-1-fractionW-1-20-1, 40)
+		// Cap barW at 20 and give reclaimed space to titleMaxW.
+		barW := min(innerW-2-14-1-fractionW-1-20-1, 20)
 		if barW < 6 {
 			barW = 6
 		}
