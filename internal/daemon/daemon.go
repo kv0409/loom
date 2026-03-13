@@ -203,6 +203,9 @@ func (d *Daemon) watchACPOutput() {
 				}
 				// Only write events we haven't seen yet.
 				prev := lastCount[id]
+				if len(events) < prev {
+					prev = 0 // client was replaced (new session)
+				}
 				if len(events) <= prev {
 					continue
 				}
