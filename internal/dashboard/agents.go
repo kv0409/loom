@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 )
@@ -88,7 +87,7 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		id := lipgloss.NewStyle().Foreground(agentColor(a.ID)).Render(prefix + a.ID)
+		id := prefix + agentPill(a.ID)
 		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
 		if i == m.cursor {
 			line = selectedRow(line)

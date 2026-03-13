@@ -294,20 +294,30 @@ func agentColor(id string) lipgloss.Color {
 	}
 	switch role {
 	case "orchestrator":
-		return colBlue
+		return colOrange
 	case "lead":
 		return colMagenta
 	case "builder":
-		return colGreen
+		return colBlue
 	case "reviewer":
-		return colCyan
+		return colGreen
 	case "explorer":
-		return colOrange
+		return colTeal
 	case "researcher":
 		return colYellow
 	default:
 		return colFg
 	}
+}
+
+// agentPill renders a background-filled badge for an agent ID (dark text on role color).
+func agentPill(id string) string {
+	return lipgloss.NewStyle().
+		Background(agentColor(id)).
+		Foreground(colBg).
+		Bold(true).
+		Padding(0, 1).
+		Render(id)
 }
 
 // relativeTime converts an "HH:MM:SS" timestamp (today, local time) to a

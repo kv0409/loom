@@ -80,7 +80,7 @@ func (m Model) renderOverview() string {
 			}
 			task = activeStyle.Render(taskStr)
 		}
-		idCol := lipgloss.NewStyle().Foreground(agentColor(a.ID)).Render(fmt.Sprintf("%-*s", aIdW, truncate(a.ID, aIdW)))
+		idCol := agentPill(truncate(a.ID, aIdW))
 		agentLines = append(agentLines, fmt.Sprintf("  %s %s %-*s %s %s %s",
 			statusIndicator(a.Status), idCol,
 			aRoleW, truncate(a.Role, aRoleW),
@@ -334,7 +334,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	toolLimit := min(budget, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		agentCol := lipgloss.NewStyle().Foreground(agentColor(e.AgentID)).Render(fmt.Sprintf("%-*s", agentW, truncate(e.AgentID, agentW)))
+		agentCol := agentPill(truncate(e.AgentID, agentW))
 		prefix := fmt.Sprintf("  ↯ %s ", agentCol)
 		formatted := formatToolLine(e.Line, lineW, projectRoot)
 		lines = append(lines, prefix+formatted)

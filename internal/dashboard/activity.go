@@ -287,7 +287,7 @@ func (m Model) renderActivity() string {
 	for i := start; i < end; i++ {
 		e := entries[i]
 		displayLine := formatToolLine(e.Line, lineW, projectRoot)
-		agentCol := lipgloss.NewStyle().Foreground(agentColor(e.AgentID)).Render(e.AgentID)
+		agentCol := agentPill(e.AgentID)
 		rows = append(rows, table.Row{agentCol, displayLine})
 	}
 
