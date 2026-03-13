@@ -648,9 +648,11 @@ func (d *Daemon) watchHeartbeats() {
 	}
 }
 
-// hasActiveIssues returns true if any issue is in a non-terminal state.
+// hasActiveIssues returns true if any issue is in the "open" state (i.e.
+// awaiting dispatch by the orchestrator). Issues already assigned/in-progress/
+// review are being handled by leads/builders, so the orchestrator is idle.
 func (d *Daemon) hasActiveIssues() bool {
-	issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: false})
+	issues, err := issue.List(d.LoomRoot, issue.ListOpts{Status: "open"})
 	if err != nil {
 		return true // assume active on error to avoid suppressing nudges
 	}
