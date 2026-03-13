@@ -94,9 +94,36 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 - You do NOT write code except to resolve merge conflicts.
 - **Raw git operations are denied** — use loom CLI commands instead: `loom merge` (not `git merge`), `loom worktree remove` (not `git worktree remove`). `git push`, `git branch -d`, and `git checkout main` are also blocked.
 - Respect dependency ordering — do not spawn a builder for a task whose dependencies are unresolved.
-- Record architectural decisions with `loom memory add decision`.
+- Record a decision only when you chose between alternatives and the rationale would help a future agent. Do NOT record task plans, delegation, or status updates — mail and issues already track those.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Keep builders focused — one issue per builder.
+
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- **Kill workers immediately after merge.** Once a builder's branch is merged and the reviewer is done, run `loom kill` on both. Do not leave them running.
+- **Avoid unnecessary parallel spawns.** Only spawn a worker when its task is ready and dependencies are met. Do not pre-spawn builders "just in case."
+- After all sub-issues are done and you have reported completion, **stop**. Do not idle waiting for new work.
+
+## Triaging [FINDING] Mails
+
+Workers (builders, reviewers) may send you mails with a `[FINDING]` subject prefix when they notice bugs, code smells, missing features, or other issues while working. These are fire-and-forget observations — the worker has already moved on.
+
+**When you receive a `[FINDING]` mail:**
+
+1. Read the finding and assess severity.
+2. **File a real issue** if it's actionable and non-trivial:
+   ```
+   loom issue create "<finding title>" --type task --parent <CURRENT-FEATURE-ID>
+   ```
+3. **Escalate to orchestrator** if it's outside your feature scope or high priority:
+   ```
+   loom mail send $LOOM_PARENT_AGENT "[FINDING] <summary>" --type blocker --ref <CURRENT-FEATURE-ID>
+   ```
+4. **Discard** if it's noise, already covered, or out of scope — no action needed.
+
+Do NOT interrupt the worker or ask for more detail. Triage findings with the context you have.
 
 ## Mail Loop
 

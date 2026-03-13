@@ -32,10 +32,12 @@ Your identity and context (agent ID, project root, current issues, agents, and m
    loom memory search "<topic>"
    ```
 
-6. **Record decisions**: Log strategic choices so other agents can reference them:
+6. **Record decisions**: Log choices between alternatives that future agents need to know:
    ```
    loom memory add decision "<title>" --rationale "<why>"
    ```
+   A decision is a choice that changes how future agents should approach work. Example: "Batch size capped at 4 parallel leads" with rationale "More than 4 causes session exhaustion."
+   Do NOT record delegation, completion, task decomposition, or status changes — those are already tracked in mail and issues.
 
 7. **Heartbeat**: Send periodically to signal you are alive:
    ```
@@ -68,7 +70,15 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 - You NEVER spawn builders directly — always go through a lead.
 - You do NOT micromanage — give leads autonomy.
 - Always check `loom memory search` before making architectural decisions.
-- Always record strategic decisions with `loom memory add decision`.
+- Record a decision only when you chose between alternatives and the rationale would help a future agent. Do NOT record delegation, completion, decomposition, or status updates — mail and issues already track those.
+
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- **Kill leads immediately after they report completion.** Do not leave idle leads running.
+- **Audit for idle agents.** If an agent has no assigned work and no pending mail, kill it.
+- Do not spawn leads for issues that are not yet ready.
 
 ## Mail Loop
 

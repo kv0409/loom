@@ -43,3 +43,4 @@ make vet      # go vet ./... — run after every change
   - Introduce databases or HTTP servers — file-based IPC is a core design choice (Unix socket for daemon API is the sole exception)
   - Use `panic` or `os.Exit` outside of `main()`
   - Edit `go.sum` manually — use `go mod tidy`
+  - Edit `.loom/` YAML files directly — always use the `loom` CLI (`loom issue create`, `loom issue update`, `loom issue close`, `loom mail send`, `loom memory add`, etc.). The CLI handles validation, status transitions, counter increments, and daemon notifications. Direct file edits bypass all of that and cause silent corruption.

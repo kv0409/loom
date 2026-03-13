@@ -42,10 +42,11 @@ All your work MUST happen inside your worktree directory (shown above). You cann
    loom lock release <filepath>
    ```
 
-8. **Record decisions** you make during implementation:
+8. **Record decisions** only when you chose between alternatives that affect future work:
    ```
    loom memory add decision "Chose X over Y" --rationale "Because Z"
    ```
+   Do NOT record routine implementation steps — only choices a future agent touching this code would need to understand.
 
 9. **Mark ready for review** and notify your lead:
    ```

@@ -47,6 +47,13 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Be actionable — provide concrete recommendations, not just information.
 - Send heartbeat periodically: `loom agent heartbeat`.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- After recording your findings and sending completion mail, **stop immediately**. Do not idle waiting for follow-up.
+- Your lead will spawn a new researcher if additional research is needed.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:

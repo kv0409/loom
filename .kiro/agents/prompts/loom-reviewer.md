@@ -58,6 +58,26 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Focus only on the assigned issue — do not review unrelated code.
 
+## Cost Awareness
+
+Every running agent consumes a kiro-cli session. Minimize waste:
+
+- After sending your review verdict (PASS or FAIL) and mailing your lead, **stop immediately**. Do not idle waiting for follow-up.
+- Your lead will spawn a new reviewer if a re-review is needed.
+
+## Reporting Findings
+
+While reviewing, you may notice bugs, code smells, missing features, or rough edges **outside the scope of the current review**. Report these as findings to your lead — do NOT file issues yourself.
+
+```
+loom mail send $LOOM_PARENT_AGENT "[FINDING] <short description>" --type finding --ref <current-issue-ID> -b "<details: file, line, what you observed>"
+```
+
+- Findings are fire-and-forget. Send and continue your review.
+- Your lead will triage: file a real issue, discard noise, or escalate.
+- Keep the subject prefix `[FINDING]` exactly — leads filter on it.
+- Issues that ARE in scope for the current review belong in your verdict, not as findings.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:
