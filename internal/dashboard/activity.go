@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/tmux"
@@ -128,12 +129,96 @@ func isActivityLine(line string) bool {
 	return false
 }
 
+// toolInfo maps a raw tool name to a display icon and lipgloss color.
+type toolInfo struct {
+	icon  string
+	color lipgloss.Color
+}
+
+var toolMap = map[string]toolInfo{
+	"shell":        {"$", colCyan},
+	"execute_bash": {"$", colCyan},
+	"read":         {"r", colGreen},
+	"fs_read":      {"r", colGreen},
+	"write":        {"w", colYellow},
+	"fs_write":     {"w", colYellow},
+	"grep":         {"s", colMagenta},
+	"glob":         {"s", colMagenta},
+	"code":         {"<>", colBlue},
+	"use_aws":      {"☁", colOrange},
+	"aws":          {"☁", colOrange},
+}
+
+// formatToolLine parses a .tools line ("HH:MM:SS tool: args") and returns a
+// styled string suitable for display in the activity table.
+func formatToolLine(line string, width int, projectRoot string) string {
+	// Split timestamp from the rest: "HH:MM:SS tool: args"
+	timeStr := ""
+	rest := line
+	if len(line) >= 8 && line[2] == ':' && line[5] == ':' {
+		timeStr = line[:8]
+		rest = strings.TrimSpace(line[8:])
+	}
+
+	// Split "tool: args"
+	toolName := rest
+	args := ""
+	if idx := strings.Index(rest, ": "); idx != -1 {
+		toolName = rest[:idx]
+		args = rest[idx+2:]
+	}
+
+	// Resolve display info
+	info, ok := toolMap[toolName]
+	if !ok {
+		// MCP tools: @server/tool
+		if strings.HasPrefix(toolName, "@") || strings.Contains(toolName, "/") {
+			info = toolInfo{"~", colTeal}
+		} else {
+			info = toolInfo{"·", colGray}
+		}
+	}
+
+	// Clean up args: strip "cd /abs/path &&" prefix, "2>&1" suffix, replace project root
+	if projectRoot != "" {
+		args = strings.ReplaceAll(args, projectRoot+"/", "")
+		args = strings.ReplaceAll(args, projectRoot, ".")
+	}
+	// Strip "cd /... && " prefix
+	if idx := strings.Index(args, " && "); idx != -1 {
+		candidate := strings.TrimSpace(args[:idx])
+		if strings.HasPrefix(candidate, "cd ") {
+			args = strings.TrimSpace(args[idx+4:])
+		}
+	}
+	// Strip trailing " 2>&1"
+	args = strings.TrimSuffix(strings.TrimSpace(args), "2>&1")
+	args = strings.TrimSpace(args)
+
+	// Render styled parts
+	timePart := lipgloss.NewStyle().Foreground(colGray).Render(timeStr)
+	badge := lipgloss.NewStyle().Foreground(info.color).Bold(true).Render("[" + info.icon + "] " + toolName)
+
+	// Calculate remaining width for args
+	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(badge) + 1
+	argW := width - usedW
+	if argW < 4 {
+		argW = 4
+	}
+	argPart := truncate(args, argW)
+
+	return timePart + " " + badge + " " + argPart
+}
+
 func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
 
 	avail := availableWidth(m.width)
 	agentW := proportionalWidth(avail, 16, 8)
 	lineW := max(20, avail-agentW)
+
+	// Derive project root from loomRoot (.loom is inside the project root)
+	projectRoot := filepath.Dir(m.loomRoot)
 
 	cols := []table.Column{
 		{Title: "AGENT", Width: agentW},
@@ -146,7 +231,8 @@ func (m Model) renderActivity() string {
 	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		e := entries[i]
-		rows = append(rows, table.Row{e.AgentID, e.Line})
+		displayLine := formatToolLine(e.Line, lineW, projectRoot)
+		rows = append(rows, table.Row{e.AgentID, displayLine})
 	}
 
 	var content string
