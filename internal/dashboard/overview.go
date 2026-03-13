@@ -54,7 +54,7 @@ func (m Model) renderOverview() string {
 	aAgeW := max(4, 6)
 	aHbW := max(4, 6)
 	// task column gets remaining space — no truncation cap
-	fixedCols := 2 + 1 + aIdW + 1 + aRoleW + 1 + 2 + aAgeW + 1 + 2 + aHbW + 1
+	fixedCols := 2 + 1 + (aIdW + 2) + 1 + aRoleW + 1 + 2 + aAgeW + 1 + 2 + aHbW + 1 // aIdW+2 for pill padding
 	aTaskW := max(8, innerW-fixedCols)
 
 	projectRoot := filepath.Dir(m.loomRoot)
@@ -323,7 +323,7 @@ func (m Model) renderStatusBar(fullW int) string {
 func (m Model) renderActivityOverview(colW, budget int) string {
 	innerW := colW - 2
 	agentW := 12
-	prefixW := 2 + 2 + agentW + 1 // "  ↯ " + agent + " "
+	prefixW := 2 + 2 + (agentW + 2) + 1 // "  ↯ " + pill(agent) + " "; +2 for pill padding
 	lineW := max(8, innerW-prefixW)
 
 	projectRoot := filepath.Dir(m.loomRoot)
