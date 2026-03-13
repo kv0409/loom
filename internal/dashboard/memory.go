@@ -59,7 +59,7 @@ func (m Model) renderMemoryDetail() string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(e.Title)))
 	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, memory.ByField(e)))
-	lines = append(lines, fmt.Sprintf("  Time: %s", e.Timestamp.Format("2006-01-02 15:04:05")))
+	lines = append(lines, fmt.Sprintf("  Time: %s", fmtTimeFull(e.Timestamp)))
 
 	switch e.Type {
 	case "decision":

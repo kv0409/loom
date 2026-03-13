@@ -118,7 +118,7 @@ func (m Model) renderAgentDetail() string {
 	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %s Heartbeat: %s",
 		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), fmtTime(a.Heartbeat, false)))
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
-		a.SpawnedBy, a.SpawnedAt.Format("15:04:05"), a.PID))
+		a.SpawnedBy, fmtTimeFull(a.SpawnedAt), a.PID))
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
 		modeStr := "ACP"
 		if a.Config.Model != "" {
@@ -212,7 +212,7 @@ func (m Model) renderAgentDetail() string {
 			if msg.From == a.ID {
 				other = msg.To
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s %s: %s", dir, msg.Timestamp.Format("15:04"), other, truncate(msg.Subject, 40)))
+			lines = append(lines, fmt.Sprintf("  %s %s %s: %s", dir, fmtTime(msg.Timestamp, false), other, truncate(msg.Subject, 40)))
 			count++
 			if count >= 5 {
 				break

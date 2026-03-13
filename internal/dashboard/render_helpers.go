@@ -48,6 +48,14 @@ func fmtTime(t time.Time, short bool) string {
 	return s + " ago"
 }
 
+// fmtTimeFull formats a time as an absolute timestamp string.
+func fmtTimeFull(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return t.Format("2006-01-02 15:04:05")
+}
+
 // colWidths computes proportional column widths from a list of (percent, min) pairs
 // given the available pixel budget. Each entry is {pct: percentage of avail, min: minimum width}.
 func colWidths(avail int, cols []struct{ pct, min int }) []int {

@@ -170,7 +170,7 @@ func (m Model) renderIssueDetail() string {
 			if h.Detail != "" {
 				detail = " — " + h.Detail
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s %s%s", h.At.Format("15:04"), h.By, h.Action, detail))
+			lines = append(lines, fmt.Sprintf("  %s %s %s%s", fmtTime(h.At, false), h.By, h.Action, detail))
 		}
 	}
 

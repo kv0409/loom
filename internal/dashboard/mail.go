@@ -29,7 +29,7 @@ func (m Model) renderMail() string {
 	for i := start; i < end; i++ {
 		msg := messages[i]
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
-		rows = append(rows, table.Row{msg.Timestamp.Format("15:04"), route, msg.Type, msg.Subject})
+		rows = append(rows, table.Row{fmtTime(msg.Timestamp, false), route, msg.Type, msg.Subject})
 	}
 
 	var content string
@@ -59,7 +59,7 @@ func (m Model) renderMailDetail() string {
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(msg.Subject)))
 	lines = append(lines, fmt.Sprintf("  From: %-16s To: %s", msg.From, msg.To))
-	lines = append(lines, fmt.Sprintf("  Type: %-16s Time: %s", msg.Type, msg.Timestamp.Format("2006-01-02 15:04:05")))
+	lines = append(lines, fmt.Sprintf("  Type: %-16s Time: %s", msg.Type, fmtTimeFull(msg.Timestamp)))
 	if msg.Ref != "" {
 		lines = append(lines, fmt.Sprintf("  Ref: %s", msg.Ref))
 	}
