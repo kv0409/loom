@@ -34,21 +34,21 @@ var (
 // Semantic styles
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 2)
-	headerStyle   = lipgloss.NewStyle().Bold(true).Foreground(colMagenta)
+	headerStyle   = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg).Padding(0, 1)
 	activeStyle   = lipgloss.NewStyle().Foreground(colGreen)
 	blockedStyle  = lipgloss.NewStyle().Foreground(colRed)
 	reviewStyle   = lipgloss.NewStyle().Foreground(colCyan)
 	deadStyle     = lipgloss.NewStyle().Foreground(colRed)
 	idleStyle     = lipgloss.NewStyle().Foreground(colGray)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg)
+	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
 	flashErrStyle = lipgloss.NewStyle().Bold(true).Foreground(colRed)
-	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
+	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle).Background(colBg)
 )
 
-// Panel header style — single subtle style for all panels
-var panelTitle = lipgloss.NewStyle().Bold(true).Foreground(colBlue).Padding(0, 1)
+// Panel header style — inverted: blue background + dark foreground, like a mini title bar
+var panelTitle = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
 
 // Status-specific colors and glyphs
 var statusColors = map[string]lipgloss.Color{
