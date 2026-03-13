@@ -71,6 +71,7 @@ type data struct {
 	unread    int
 	activity  []activityEntry
 	logs      []logLine
+	daemonOK  bool
 }
 
 type Model struct {
@@ -105,6 +106,7 @@ type Model struct {
 	help             help.Model
 	keys             keyMap
 	reloading        bool // set when quitting due to binary hot-reload
+	refreshed        bool // set after first data message received
 }
 
 type tickMsg time.Time
@@ -208,6 +210,8 @@ func (m Model) refresh() tea.Cmd {
 		d.agents, d.agentTree = sortAgentTree(d.agents)
 		d.activity = fetchActivity(root, d.agents)
 		d.logs = lr.read()
+		_, err := os.Stat(daemon.SockPath(root))
+		d.daemonOK = err == nil
 		return d
 	}
 }
@@ -251,6 +255,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case data:
 		m.data = msg
+		m.refreshed = true
 		m.clampCursor()
 		return m, nil
 	case clearFlashMsg:
@@ -803,9 +808,19 @@ func (m Model) View() string {
 		flashLine = style.Render(" " + m.flashMsg)
 	}
 
+	// Daemon unavailability banner (shown after first refresh, between title and content)
+	daemonBanner := ""
+	if m.refreshed && !m.data.daemonOK {
+		daemonBanner = flashErrStyle.Render(" ⚠ daemon restarting — reconnecting...")
+	}
+
 	// Build final output
 	var output string
-	if flashLine != "" {
+	if daemonBanner != "" && flashLine != "" {
+		output = fmt.Sprintf("%s\n%s\n%s\n%s\n%s", titleBar, daemonBanner, content, flashLine, help)
+	} else if daemonBanner != "" {
+		output = fmt.Sprintf("%s\n%s\n%s\n%s", titleBar, daemonBanner, content, help)
+	} else if flashLine != "" {
 		output = fmt.Sprintf("%s\n%s\n%s\n%s", titleBar, content, flashLine, help)
 	} else {
 		output = fmt.Sprintf("%s\n%s\n%s", titleBar, content, help)
