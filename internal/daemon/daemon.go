@@ -31,6 +31,7 @@ type Daemon struct {
 	apiLn      net.Listener
 	lastSeen   map[string]time.Time // ephemeral: detect heartbeat changes between ticks
 	idleSince  map[string]time.Time // ephemeral: when agent became idle (no active issues)
+	loggedAt   map[string]time.Time // rate-limit: last time a log key was emitted
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
@@ -42,7 +43,21 @@ func New(loomRoot string, cfg *config.Config) *Daemon {
 		acpClients: make(map[string]*acp.Client),
 		lastSeen:   make(map[string]time.Time),
 		idleSince:  make(map[string]time.Time),
+		loggedAt:   make(map[string]time.Time),
 	}
+}
+
+// rlog logs a message at most once per minute for the given key.
+func (d *Daemon) rlog(key, format string, args ...any) {
+	d.mu.Lock()
+	last := d.loggedAt[key]
+	if time.Since(last) < time.Minute {
+		d.mu.Unlock()
+		return
+	}
+	d.loggedAt[key] = time.Now()
+	d.mu.Unlock()
+	log.Printf(format, args...)
 }
 
 // notify delivers a message to an agent. ACP agents receive a session/prompt;
@@ -124,6 +139,7 @@ func (d *Daemon) Reload() error {
 	d.done = make(chan struct{})
 	d.lastSeen = make(map[string]time.Time)
 	d.idleSince = make(map[string]time.Time)
+	d.loggedAt = make(map[string]time.Time)
 
 	log.Println("[daemon] reload: restarting goroutines")
 	return d.Start()
@@ -167,6 +183,7 @@ func (d *Daemon) watchPendingAgents() {
 		case <-ticker.C:
 			agents, err := agent.List(d.LoomRoot)
 			if err != nil {
+				d.rlog("watchPendingAgents:list", "[pending-agents] agent.List failed: %v", err)
 				continue
 			}
 			for _, a := range agents {
@@ -215,6 +232,7 @@ func (d *Daemon) watchACPOutput() {
 				p := filepath.Join(d.LoomRoot, "agents", id+".output")
 				f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 				if err != nil {
+					d.rlog("watchACPOutput:open:"+id, "[acp-output] open output file for %s: %v", id, err)
 					continue
 				}
 				ts := time.Now().Format("15:04:05")
@@ -358,6 +376,7 @@ func (d *Daemon) watchIssues() {
 		case <-ticker.C:
 			issues, err := issue.List(d.LoomRoot, issue.ListOpts{Status: "open"})
 			if err != nil {
+				d.rlog("watchIssues:list", "[issues] issue.List failed: %v", err)
 				continue
 			}
 			for _, iss := range issues {
@@ -368,6 +387,7 @@ func (d *Daemon) watchIssues() {
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
 				orch, err := agent.Load(d.LoomRoot, "orchestrator")
 				if err != nil {
+					d.rlog("watchIssues:orch", "[issues] load orchestrator: %v", err)
 					continue
 				}
 				d.notify(orch, msg)
@@ -412,6 +432,7 @@ func (d *Daemon) watchDoneIssues() {
 		case <-ticker.C:
 			issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
 			if err != nil {
+				d.rlog("watchDoneIssues:list", "[done-issues] issue.List failed: %v", err)
 				continue
 			}
 
@@ -440,6 +461,7 @@ func (d *Daemon) watchDoneIssues() {
 				}
 				a, err := agent.Load(d.LoomRoot, target)
 				if err != nil {
+					d.rlog("watchDoneIssues:load:"+target, "[done-issues] load agent %s: %v", target, err)
 					continue
 				}
 				d.notify(a, msg)
@@ -448,6 +470,7 @@ func (d *Daemon) watchDoneIssues() {
 			// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
 			agents, err := agent.List(d.LoomRoot)
 			if err != nil {
+				d.rlog("watchDoneIssues:agents", "[done-issues] agent.List failed: %v", err)
 				continue
 			}
 			for _, a := range agents {
@@ -505,6 +528,7 @@ func (d *Daemon) watchMail() {
 			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
 			entries, err := os.ReadDir(inboxRoot)
 			if err != nil {
+				d.rlog("watchMail:readdir", "[mail] ReadDir inbox: %v", err)
 				continue
 			}
 			for _, e := range entries {
@@ -514,6 +538,7 @@ func (d *Daemon) watchMail() {
 				agentID := e.Name()
 				msgs, err := mail.Read(d.LoomRoot, agentID, true)
 				if err != nil {
+					d.rlog("watchMail:read:"+agentID, "[mail] Read inbox for %s: %v", agentID, err)
 					continue
 				}
 				if len(msgs) == 0 {
@@ -521,6 +546,7 @@ func (d *Daemon) watchMail() {
 				}
 				a, err := agent.Load(d.LoomRoot, agentID)
 				if err != nil {
+					d.rlog("watchMail:load:"+agentID, "[mail] load agent %s: %v", agentID, err)
 					continue
 				}
 				for _, m := range msgs {
@@ -554,6 +580,7 @@ func (d *Daemon) watchHeartbeats() {
 		case <-ticker.C:
 			agents, err := agent.List(d.LoomRoot)
 			if err != nil {
+				d.rlog("watchHeartbeats:list", "[heartbeat] agent.List failed: %v", err)
 				continue
 			}
 			for _, a := range agents {
@@ -718,6 +745,7 @@ func (d *Daemon) watchInboxGC() {
 			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
 			entries, err := os.ReadDir(inboxRoot)
 			if err != nil {
+				d.rlog("watchInboxGC:readdir", "[inbox-gc] ReadDir inbox: %v", err)
 				continue
 			}
 			for _, e := range entries {
