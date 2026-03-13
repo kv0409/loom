@@ -619,6 +619,11 @@ func (d *Daemon) watchHeartbeats() {
 				}
 
 				if a.NudgeCount < 2 {
+					// Skip stale-heartbeat nudge for the orchestrator when there
+					// are no active (non-terminal) issues — it is legitimately idle.
+					if a.Role == "orchestrator" && !d.hasActiveIssues() {
+						continue
+					}
 					d.notify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
 					a.NudgeCount++
 					a.LastNudge = time.Now()
@@ -641,6 +646,15 @@ func (d *Daemon) watchHeartbeats() {
 			}
 		}
 	}
+}
+
+// hasActiveIssues returns true if any issue is in a non-terminal state.
+func (d *Daemon) hasActiveIssues() bool {
+	issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: false})
+	if err != nil {
+		return true // assume active on error to avoid suppressing nudges
+	}
+	return len(issues) > 0
 }
 
 // checkIdleAgents kills active non-orchestrator agents that have no active
