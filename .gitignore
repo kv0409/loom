@@ -4,3 +4,4 @@
 .kiro/*
 !.kiro/agents/
 !.kiro/hooks/
+!.kiro/steering/
