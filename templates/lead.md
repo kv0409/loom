@@ -95,6 +95,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 - **Raw git operations are denied** — use loom CLI commands instead: `loom merge` (not `git merge`), `loom worktree remove` (not `git worktree remove`). `git push`, `git branch -d`, and `git checkout main` are also blocked.
 - Respect dependency ordering — do not spawn a builder for a task whose dependencies are unresolved.
 - Record a decision only when you chose between alternatives and the rationale would help a future agent. Do NOT record task plans, delegation, or status updates — mail and issues already track those.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Keep builders focused — one issue per builder.
 

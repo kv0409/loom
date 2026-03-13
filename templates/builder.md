@@ -96,6 +96,7 @@ Use grep only for literal text searches in comments, strings, or config files wh
 - **Raw git operations are denied** — `git merge`, `git branch -d`, `git worktree remove`, `git checkout main`, and `git push` are blocked. Use `git add`, `git commit`, `git diff`, `git log`, and `git status` freely within your worktree.
 - Acquire file locks before editing any file that other builders might touch.
 - Commit early and often — small, focused commits.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
 

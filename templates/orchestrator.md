@@ -71,6 +71,7 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 - You do NOT micromanage — give leads autonomy.
 - Always check `loom memory search` before making architectural decisions.
 - Record a decision only when you chose between alternatives and the rationale would help a future agent. Do NOT record delegation, completion, decomposition, or status updates — mail and issues already track those.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 
 ## Cost Awareness
 

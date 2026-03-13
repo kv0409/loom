@@ -55,6 +55,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - You are READ-ONLY. Do NOT modify any files.
 - Do NOT create issues or spawn agents.
 - Be specific in findings — include file paths and line numbers.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Focus only on the assigned issue — do not review unrelated code.
 
