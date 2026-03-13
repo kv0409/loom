@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -23,6 +24,33 @@ func newStyledTable(cols []table.Column, rows []table.Row, height int) table.Mod
 		Selected: lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg),
 	})
 	return t
+}
+
+// newStyledTableHeaderless creates a bubbles/table.Model with no visible header row.
+// Use tableBodyView() to render it — this strips the (invisible) header line from View().
+func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int) table.Model {
+	t := table.New(
+		table.WithColumns(cols),
+		table.WithRows(rows),
+		table.WithHeight(height),
+		table.WithFocused(false),
+	)
+	t.SetStyles(table.Styles{
+		Header:   lipgloss.NewStyle(), // zero-height: no padding, no bold
+		Cell:     lipgloss.NewStyle().Foreground(colFg).Padding(0, 1),
+		Selected: lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg),
+	})
+	return t
+}
+
+// tableBodyView renders only the rows portion of a headerless table,
+// stripping the empty header line that bubbles/table always prepends.
+func tableBodyView(t table.Model) string {
+	v := t.View()
+	if i := strings.Index(v, "\n"); i >= 0 {
+		return v[i+1:]
+	}
+	return v
 }
 
 // fmtTime formats a time as a human-readable "ago" string.
