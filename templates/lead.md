@@ -101,10 +101,9 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 
 ## Cost Awareness
 
-Every running agent consumes a kiro-cli session. Minimize waste:
+Waste is idle agents, not parallel agents. Spawn builders in parallel when their tasks are independent and touch different files.
 
 - **Kill workers immediately after merge.** Once a builder's branch is merged and the reviewer is done, run `loom kill` on both. Do not leave them running.
-- **Avoid unnecessary parallel spawns.** Only spawn a worker when its task is ready and dependencies are met. Do not pre-spawn builders "just in case."
 - After all sub-issues are done and you have reported completion, **stop**. Do not idle waiting for new work.
 
 ## Triaging [FINDING] Mails
