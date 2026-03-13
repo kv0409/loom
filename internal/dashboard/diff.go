@@ -69,8 +69,8 @@ func (m Model) renderWorktrees() string {
 	}
 
 	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }

@@ -43,8 +43,8 @@ func (m Model) renderMemory() string {
 	}
 
 	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.memories))
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[d] MEMORY (%d/%d) filter: %s", len(memories), len(m.data.memories), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[d] MEMORY (%d/%d) filter: %s", len(memories), len(m.data.memories), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }

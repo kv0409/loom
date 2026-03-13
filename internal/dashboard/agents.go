@@ -99,8 +99,8 @@ func (m Model) renderAgents() string {
 	}
 
 	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents))
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[a] AGENTS (%d/%d) filter: %s", len(agents), len(m.data.agents), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[a] AGENTS (%d/%d) filter: %s", len(agents), len(m.data.agents), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }

@@ -25,12 +25,12 @@ func searchMatch(query string, fields ...string) bool {
 }
 
 func (m Model) filteredAgents() []*agent.Agent {
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return m.data.agents
 	}
 	var out []*agent.Agent
 	for _, a := range m.data.agents {
-		if searchMatch(m.searchQuery, a.ID, a.Role, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
+		if searchMatch(m.searchTI.Value(), a.ID, a.Role, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
 			out = append(out, a)
 		}
 	}
@@ -39,12 +39,12 @@ func (m Model) filteredAgents() []*agent.Agent {
 
 func (m Model) filteredIssues() []*issue.Issue {
 	display := m.displayIssues()
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return display
 	}
 	var out []*issue.Issue
 	for _, iss := range display {
-		if searchMatch(m.searchQuery, iss.ID, iss.Title, iss.Status, iss.Assignee, iss.Type) {
+		if searchMatch(m.searchTI.Value(), iss.ID, iss.Title, iss.Status, iss.Assignee, iss.Type) {
 			out = append(out, iss)
 		}
 	}
@@ -52,12 +52,12 @@ func (m Model) filteredIssues() []*issue.Issue {
 }
 
 func (m Model) filteredMessages() []*mail.Message {
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return m.data.messages
 	}
 	var out []*mail.Message
 	for _, msg := range m.data.messages {
-		if searchMatch(m.searchQuery, msg.From, msg.To, msg.Subject, msg.Type) {
+		if searchMatch(m.searchTI.Value(), msg.From, msg.To, msg.Subject, msg.Type) {
 			out = append(out, msg)
 		}
 	}
@@ -65,12 +65,12 @@ func (m Model) filteredMessages() []*mail.Message {
 }
 
 func (m Model) filteredMemories() []*memory.Entry {
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return m.data.memories
 	}
 	var out []*memory.Entry
 	for _, e := range m.data.memories {
-		if searchMatch(m.searchQuery, e.ID, e.Title, e.Type, memory.ByField(e)) {
+		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, memory.ByField(e)) {
 			out = append(out, e)
 		}
 	}
@@ -78,12 +78,12 @@ func (m Model) filteredMemories() []*memory.Entry {
 }
 
 func (m Model) filteredWorktrees() []*worktree.Worktree {
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return m.data.worktrees
 	}
 	var out []*worktree.Worktree
 	for _, wt := range m.data.worktrees {
-		if searchMatch(m.searchQuery, wt.Name, wt.Branch, wt.Agent, wt.Issue) {
+		if searchMatch(m.searchTI.Value(), wt.Name, wt.Branch, wt.Agent, wt.Issue) {
 			out = append(out, wt)
 		}
 	}
@@ -91,12 +91,12 @@ func (m Model) filteredWorktrees() []*worktree.Worktree {
 }
 
 func (m Model) filteredActivity() []activityEntry {
-	if m.searchQuery == "" {
+	if m.searchTI.Value() == "" {
 		return m.data.activity
 	}
 	var out []activityEntry
 	for _, e := range m.data.activity {
-		if searchMatch(m.searchQuery, e.AgentID, e.Line) {
+		if searchMatch(m.searchTI.Value(), e.AgentID, e.Line) {
 			out = append(out, e)
 		}
 	}

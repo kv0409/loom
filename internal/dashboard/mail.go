@@ -43,8 +43,8 @@ func (m Model) renderMail() string {
 	}
 
 	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }

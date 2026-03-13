@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/daemon"
@@ -87,7 +88,7 @@ type Model struct {
 	nudgeMode        bool
 	nudgeCursor      int
 	messageMode      bool
-	messageInput     string
+	messageTI        textinput.Model
 	killConfirm      bool
 	selectedWorktree int
 	diffContent      string
@@ -101,8 +102,7 @@ type Model struct {
 	flashMsg         string
 	flashIsErr       bool
 	searchMode       bool
-	searchQuery      string
-	inputCursor      int // cursor position within the active input field
+	searchTI         textinput.Model
 	help             help.Model
 	keys             keyMap
 	reloading        bool // set when quitting due to binary hot-reload
@@ -122,7 +122,14 @@ func New(loomRoot string) Model {
 	h.Styles.ShortKey = helpStyle.Bold(true)
 	h.Styles.ShortDesc = helpStyle
 	h.Styles.ShortSeparator = helpStyle
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap()}
+
+	msgTI := textinput.New()
+	msgTI.Prompt = ""
+
+	searchTI := textinput.New()
+	searchTI.Prompt = ""
+
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI}
 }
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
@@ -134,7 +141,7 @@ func (m *Model) switchView(target view) {
 	m.cursors[m.view] = m.cursor
 	m.view = target
 	m.cursor = m.cursors[target]
-	m.searchQuery = ""
+	m.searchTI.SetValue("")
 	m.searchMode = false
 }
 
@@ -262,51 +269,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flashMsg = ""
 		return m, nil
 	}
-	return m, nil
-}
 
-// editInput handles key events for a text input field with cursor movement and paste support.
-// Returns the updated string, cursor position, and whether the key was consumed.
-func editInput(input string, cursor int, key tea.KeyMsg) (string, int, bool) {
-	k := tea.Key(key)
-	runes := []rune(input)
-	if cursor > len(runes) {
-		cursor = len(runes)
+	// Forward to active textinput
+	var cmd tea.Cmd
+	if m.messageMode {
+		m.messageTI, cmd = m.messageTI.Update(msg)
+	} else if m.searchMode {
+		m.searchTI, cmd = m.searchTI.Update(msg)
 	}
-	switch k.Type {
-	case tea.KeyBackspace:
-		if cursor > 0 {
-			runes = append(runes[:cursor-1], runes[cursor:]...)
-			cursor--
-		}
-		return string(runes), cursor, true
-	case tea.KeyDelete:
-		if cursor < len(runes) {
-			runes = append(runes[:cursor], runes[cursor+1:]...)
-		}
-		return string(runes), cursor, true
-	case tea.KeyLeft:
-		if cursor > 0 {
-			cursor--
-		}
-		return string(runes), cursor, true
-	case tea.KeyRight:
-		if cursor < len(runes) {
-			cursor++
-		}
-		return string(runes), cursor, true
-	case tea.KeyHome:
-		return string(runes), 0, true
-	case tea.KeyEnd:
-		return string(runes), len(runes), true
-	case tea.KeyRunes, tea.KeySpace:
-		before := runes[:cursor]
-		after := append([]rune{}, runes[cursor:]...)
-		runes = append(append(before, k.Runes...), after...)
-		cursor += len(k.Runes)
-		return string(runes), cursor, true
-	}
-	return input, cursor, false
+	return m, cmd
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -366,28 +337,28 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			agents := m.filteredAgents()
-			if m.cursor < len(agents) && m.messageInput != "" {
+			if m.cursor < len(agents) && m.messageTI.Value() != "" {
 				a := agents[m.cursor]
-				err := daemon.Message(m.loomRoot, a.ID, m.messageInput)
+				err := daemon.Message(m.loomRoot, a.ID, m.messageTI.Value())
 				m.messageMode = false
-				m.messageInput = ""
-				m.inputCursor = 0
+				m.messageTI.SetValue("")
+				m.messageTI.Blur()
 				if err != nil {
 					return m, m.setFlash(fmt.Sprintf("Message failed: %s", err), true)
 				}
 				return m, m.setFlash(fmt.Sprintf("Messaged %s", a.ID), false)
 			}
 			m.messageMode = false
-			m.messageInput = ""
-			m.inputCursor = 0
+			m.messageTI.SetValue("")
+			m.messageTI.Blur()
 		case "esc":
 			m.messageMode = false
-			m.messageInput = ""
-			m.inputCursor = 0
+			m.messageTI.SetValue("")
+			m.messageTI.Blur()
 		default:
-			s, c, _ := editInput(m.messageInput, m.inputCursor, msg)
-			m.messageInput = s
-			m.inputCursor = c
+			var cmd tea.Cmd
+			m.messageTI, cmd = m.messageTI.Update(msg)
+			return m, cmd
 		}
 		return m, nil
 	}
@@ -397,21 +368,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			m.searchMode = false
-			m.inputCursor = 0
+			m.searchTI.Blur()
 			m.cursor = 0
 			m.clampCursor()
 		case "esc":
 			m.searchMode = false
-			m.searchQuery = ""
-			m.inputCursor = 0
+			m.searchTI.SetValue("")
+			m.searchTI.Blur()
 			m.cursor = 0
 			m.clampCursor()
 		default:
-			s, c, _ := editInput(m.searchQuery, m.inputCursor, msg)
-			m.searchQuery = s
-			m.inputCursor = c
+			var cmd tea.Cmd
+			m.searchTI, cmd = m.searchTI.Update(msg)
 			m.cursor = 0
 			m.clampCursor()
+			return m, cmd
 		}
 		return m, nil
 	}
@@ -433,8 +404,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.view = viewWorktrees
 			m.cursor = m.selectedWorktree
 		default:
-			if m.searchQuery != "" {
-				m.searchQuery = ""
+			if m.searchTI.Value() != "" {
+				m.searchTI.SetValue("")
 				m.cursor = 0
 				m.clampCursor()
 			} else {
@@ -454,8 +425,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyViewMail: // "m": message-compose in agents/agent-detail; mail view elsewhere
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
 			m.messageMode = true
-			m.messageInput = ""
-			m.inputCursor = 0
+			m.messageTI.SetValue("")
+			m.messageTI.Focus()
 			return m, nil
 		}
 		m.switchView(viewMail)
@@ -504,8 +475,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keySearch:
 		if isListView(m.view) {
 			m.searchMode = true
-			m.searchQuery = ""
-			m.inputCursor = 0
+			m.searchTI.SetValue("")
+			m.searchTI.Focus()
 			return m, nil
 		}
 	case keyTab:
@@ -637,7 +608,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		activity := m.filteredActivity()
 		if m.cursor < len(activity) {
 			aid := activity[m.cursor].AgentID
-			m.searchQuery = ""
+			m.searchTI.SetValue("")
 			for i, a := range m.data.agents {
 				if a.ID == aid {
 					m.cursors[viewAgents] = i
@@ -756,11 +727,8 @@ func (m Model) View() string {
 
 	help := m.helpBar()
 	if m.searchMode {
-		runes := []rune(m.searchQuery)
-		before := string(runes[:m.inputCursor])
-		after := string(runes[m.inputCursor:])
 		searchBox := searchBoxStyle
-		help = searchBox.Render(fmt.Sprintf("/ %s█%s", before, after)) + helpStyle.Render("  [Enter]filter [Esc]cancel")
+		help = searchBox.Render("/ "+m.searchTI.View()) + helpStyle.Render("  [Enter]filter [Esc]cancel")
 	}
 	if m.nudgeMode {
 		agentName := ""
@@ -784,10 +752,7 @@ func (m Model) View() string {
 		if m.cursor < len(agents) {
 			agentName = agents[m.cursor].ID
 		}
-		runes := []rune(m.messageInput)
-		before := string(runes[:m.inputCursor])
-		after := string(runes[m.inputCursor:])
-		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s█%s  [Enter]send [Esc]cancel", agentName, before, after))
+		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s  [Enter]send [Esc]cancel", agentName, m.messageTI.View()))
 	}
 	if m.killConfirm {
 		agentName := ""

@@ -26,7 +26,7 @@ func TestListLen_FilteredMailDetail(t *testing.T) {
 		{From: "c", To: "d", Subject: "world"},
 		{From: "e", To: "f", Subject: "test"},
 	}
-	m.searchQuery = "hello"
+	m.searchTI.SetValue("hello")
 
 	got := m.listLen()
 	want := len(m.filteredMessages())
@@ -98,11 +98,11 @@ func TestSwitchView_SavesAndRestoresCursor(t *testing.T) {
 
 func TestSwitchView_ClearsSearch(t *testing.T) {
 	m := testModel(viewAgents)
-	m.searchQuery = "test"
+	m.searchTI.SetValue("test")
 	m.searchMode = true
 	m.switchView(viewIssues)
-	if m.searchQuery != "" {
-		t.Errorf("expected search cleared, got %q", m.searchQuery)
+	if m.searchTI.Value() != "" {
+		t.Errorf("expected search cleared, got %q", m.searchTI.Value())
 	}
 	if m.searchMode {
 		t.Error("expected searchMode cleared")

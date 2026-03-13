@@ -302,8 +302,8 @@ func (m Model) renderActivity() string {
 	}
 
 	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(entries))
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }

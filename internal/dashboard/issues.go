@@ -112,8 +112,8 @@ func (m Model) renderIssues() string {
 	}
 
 	title := fmt.Sprintf("[i] ISSUES (%d active)", activeCount)
-	if m.searchQuery != "" {
-		title = fmt.Sprintf("[i] ISSUES (%d/%d) filter: %s", len(display), len(m.displayIssues()), m.searchQuery)
+	if m.searchTI.Value() != "" {
+		title = fmt.Sprintf("[i] ISSUES (%d/%d) filter: %s", len(display), len(m.displayIssues()), m.searchTI.Value())
 	}
 	return panel(title, content, m.width-2)
 }
