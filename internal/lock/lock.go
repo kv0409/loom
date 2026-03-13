@@ -17,6 +17,20 @@ type Lock struct {
 	Issue      string    `yaml:"issue"`
 }
 
+type AcquireOpts struct {
+	File   string
+	Agent  string
+	Issue  string
+}
+
+type ReleaseOpts struct {
+	File string
+}
+
+type CheckOpts struct {
+	File string
+}
+
 func lockPath(loomRoot, file string) string {
 	encoded := strings.ReplaceAll(file, "/", "__")
 	return filepath.Join(loomRoot, "locks", encoded+".lock.yaml")

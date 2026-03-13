@@ -22,6 +22,10 @@ type Worktree struct {
 	Issue  string `yaml:"issue"`
 }
 
+type ListOpts struct {
+	Issue string
+}
+
 type DiffStats struct {
 	FilesChanged int
 	Insertions   int

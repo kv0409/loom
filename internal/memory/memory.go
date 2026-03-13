@@ -42,6 +42,31 @@ type Alternative struct {
 	RejectedBecause string `yaml:"rejected_because"`
 }
 
+type AddOpts struct {
+	Type      string
+	Title     string
+	Rationale string
+	// Decision fields
+	Decision  string
+	Context   string
+	// Discovery fields
+	Finding      string
+	Location     string
+	Implications string
+	// Convention fields
+	Rule      string
+	AppliesTo string
+	// Common
+	By      string
+	Affects []string
+	Tags    []string
+}
+
+type SearchOpts struct {
+	Query string
+	Limit int
+}
+
 type ListOpts struct {
 	Type    string
 	Affects string

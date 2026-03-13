@@ -25,6 +25,21 @@ type Message struct {
 	Read      bool      `yaml:"read"`
 }
 
+type SendOpts struct {
+	From     string
+	To       string
+	Subject  string
+	Body     string
+	Type     string
+	Priority string
+	Ref      string
+}
+
+type ReadOpts struct {
+	Agent      string
+	UnreadOnly bool
+}
+
 type LogOpts struct {
 	Agent string
 	Type  string
