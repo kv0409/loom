@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/issue"
 )
 
@@ -32,7 +32,6 @@ func (m Model) displayIssues() []*issue.Issue {
 func (m Model) renderIssues() string {
 	display := m.filteredIssues()
 
-	// Count active issues for the separator position.
 	activeCount := 0
 	for _, iss := range display {
 		if iss.Status != "done" && iss.Status != "cancelled" {
@@ -40,57 +39,75 @@ func (m Model) renderIssues() string {
 		}
 	}
 
-	// Column widths: ID is fixed, assignee fits longest name, title gets the rest.
 	avail := availableWidth(m.width)
-	const idW = 16 // "▶● LOOM-NNN-NN" fits in 16
-	assignW := 8
-	for _, iss := range display {
-		if n := len(iss.Assignee); n > assignW {
-			assignW = n
-		}
-	}
-	titleW := avail - idW - assignW - 2 // 2 for spacing
-	if titleW < 10 {
-		titleW = 10
-	}
+	ws := colWidths(avail, []struct{ pct, min int }{{20, 16}, {15, 8}})
+	idW, assignW := ws[0], ws[1]
+	titleW := max(10, avail-idW-assignW)
 
-	content := tableHeader([]int{idW, assignW, titleW}, []string{"ID", "ASSIGNEE", "TITLE"}, m.width)
-
-	if len(display) == 0 {
-		content += renderEmpty("No issues — loom issue create to add one", m.width-6)
+	cols := []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "ASSIGNEE", Width: assignW},
+		{Title: "TITLE", Width: titleW},
 	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
 
-	for i := start; i < end; i++ {
-		iss := display[i]
-		if i == activeCount && activeCount < len(display) {
+	// Split visible rows into active and done segments to insert separator.
+	activeEnd := end
+	if activeEnd > activeCount {
+		activeEnd = activeCount
+	}
+	doneStart := start
+	if doneStart < activeCount {
+		doneStart = activeCount
+	}
+
+	buildRows := func(from, to int) []table.Row {
+		rows := make([]table.Row, 0, to-from)
+		for i := from; i < to; i++ {
+			iss := display[i]
+			sg := statusGlyphs[iss.Status]
+			if sg == "" {
+				sg = "●"
+			}
+			idCell := statusStyle(iss.Status).Render(sg+typeGlyph(iss.Type)+" "+iss.ID)
+			rows = append(rows, table.Row{idCell, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
+		}
+		return rows
+	}
+
+	var content string
+	if len(display) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No issues — loom issue create to add one", avail)
+	} else {
+		// Active section.
+		activeRows := buildRows(start, activeEnd)
+		activeCursor := -1
+		if m.cursor >= start && m.cursor < activeEnd {
+			activeCursor = m.cursor - start
+		}
+		t := newStyledTable(cols, activeRows, len(activeRows))
+		if activeCursor >= 0 {
+			t.SetCursor(activeCursor)
+		}
+		content = t.View() + "\n"
+
+		// Done section with separator.
+		if doneStart < end {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += separator(m.width)
-		}
-
-		// Build plain-text id column first so padding is ANSI-unaware.
-		// Visual: <statusGlyph><typeGlyph> <ID>
-		sg := statusGlyphs[iss.Status]
-		if sg == "" {
-			sg = "●"
-		}
-		idPlain := sg + typeGlyph(iss.Type) + " " + iss.ID
-		idPadded := idPlain + strings.Repeat(" ", max(0, idW-lipgloss.Width(idPlain)))
-
-		assignPadded := truncate(iss.Assignee, assignW)
-		assignPadded += strings.Repeat(" ", max(0, assignW-lipgloss.Width(assignPadded)))
-
-		titleCol := truncate(iss.Title, titleW)
-
-		if i == m.cursor {
-			line := "  " + idPadded + " " + assignPadded + " " + titleCol
-			content += selectedRow(line) + "\n"
-		} else {
-			// Colour the id column; plain text for assignee and title.
-			line := "  " + statusStyle(iss.Status).Render(idPadded) + " " + assignPadded + " " + titleCol
-			content += line + "\n"
+			doneRows := buildRows(doneStart, end)
+			doneCursor := -1
+			if m.cursor >= doneStart && m.cursor < end {
+				doneCursor = m.cursor - doneStart
+			}
+			dt := newStyledTable(cols, doneRows, len(doneRows))
+			if doneCursor >= 0 {
+				dt.SetCursor(doneCursor)
+			}
+			content += dt.View() + "\n"
 		}
 	}
 
