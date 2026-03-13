@@ -27,6 +27,15 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 
 		// ACP agents: read from .output files
 		if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+			// Top priority: .tools file written by PostToolUse hook.
+			toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
+			if toolsRaw, err := os.ReadFile(toolsPath); err == nil {
+				if line := lastNonEmptyLine(string(toolsRaw)); line != "" {
+					entries = append(entries, activityEntry{AgentID: a.ID, Line: line})
+					continue
+				}
+			}
+
 			outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
 			raw, err := os.ReadFile(outPath)
 			if err != nil {
@@ -74,6 +83,16 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 		}
 	}
 	return entries
+}
+
+func lastNonEmptyLine(s string) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 func parseActivityLines(raw string) []string {
