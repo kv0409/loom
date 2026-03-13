@@ -250,9 +250,9 @@ func formatToolLine(line string, width int, projectRoot string) string {
 	args = strings.TrimSpace(args)
 
 	// Render styled parts
-	timePart := lipgloss.NewStyle().Foreground(colGray).Render(relativeTime(timeStr))
-	label := lipgloss.NewStyle().Foreground(info.labelColor).Bold(true).Width(5).Render(info.label)
-	badge := lipgloss.NewStyle().Foreground(info.color).Render("[" + info.icon + "] " + toolName)
+	timePart := activityTimeStyle.Render(relativeTime(timeStr))
+	label := activityLabelStyle.Foreground(info.labelColor).Render(info.label)
+	badge := activityBadgeStyle.Foreground(info.color).Render("[" + info.icon + "] " + toolName)
 
 	// Calculate remaining width for args
 	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(label) + 1 + lipgloss.Width(badge) + 1

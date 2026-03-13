@@ -282,6 +282,13 @@ func selectedRow(line string) string {
 
 var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 
+// Activity view styles
+var (
+	activityTimeStyle  = lipgloss.NewStyle().Foreground(colGray)
+	activityLabelStyle = lipgloss.NewStyle().Bold(true).Width(5)
+	activityBadgeStyle = lipgloss.NewStyle()
+)
+
 // agentColor returns the role-based color for an agent ID.
 // Role is the prefix before the first dash-digit sequence (e.g. "builder" from "builder-001").
 func agentColor(id string) lipgloss.Color {
