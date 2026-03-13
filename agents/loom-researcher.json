@@ -1,6 +1,6 @@
 {
   "name": "loom-researcher",
-  "description": "Loom researcher — external research via web search and fetch. No code writing.",
+  "description": "Loom researcher \u2014 external research via web search and fetch. No code writing.",
   "model": "claude-sonnet-4.6",
   "tools": [
     "read",
@@ -87,6 +87,7 @@
   },
   "prompt": "file://prompts/loom-researcher.md",
   "resources": [
-    "file://README.md"
+    "file://README.md",
+    "skill://.kiro/skills/**/SKILL.md"
   ]
 }

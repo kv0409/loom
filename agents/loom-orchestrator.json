@@ -1,6 +1,6 @@
 {
   "name": "loom-orchestrator",
-  "description": "Loom orchestrator — receives issues, decomposes work, spawns leads. Never writes code.",
+  "description": "Loom orchestrator \u2014 receives issues, decomposes work, spawns leads. Never writes code.",
   "model": "claude-opus-4.6",
   "tools": [
     "read",
@@ -101,6 +101,7 @@
   "resources": [
     "file://README.md",
     "file://docs/ARCHITECTURE.md",
-    "file://.kiro/steering/**/*.md"
+    "file://.kiro/steering/**/*.md",
+    "skill://.kiro/skills/**/SKILL.md"
   ]
 }
