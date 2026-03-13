@@ -92,7 +92,7 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 
 func (d *Daemon) Start() error {
 	if err := d.startAPI(); err != nil {
-		return err
+		return fmt.Errorf("starting API: %w", err)
 	}
 	var wg sync.WaitGroup
 	wg.Add(8)

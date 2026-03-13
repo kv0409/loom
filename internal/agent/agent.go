@@ -60,10 +60,10 @@ func mailboxDir(loomRoot, id string) string { return filepath.Join(loomRoot, "ma
 
 func Register(loomRoot string, agent *Agent) error {
 	if err := os.MkdirAll(agentsDir(loomRoot), 0755); err != nil {
-		return err
+		return fmt.Errorf("creating agents dir: %w", err)
 	}
 	if err := os.MkdirAll(mailboxDir(loomRoot, agent.ID), 0755); err != nil {
-		return err
+		return fmt.Errorf("creating mailbox dir: %w", err)
 	}
 	return store.WriteYAML(agentPath(loomRoot, agent.ID), agent)
 }
@@ -109,7 +109,7 @@ func Deregister(loomRoot, id string) error {
 func UpdateHeartbeat(loomRoot, id string) error {
 	a, err := Load(loomRoot, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading agent %s: %w", id, err)
 	}
 	a.Heartbeat = time.Now()
 	return Save(loomRoot, a)
@@ -290,7 +290,7 @@ func KillWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[string]bool) error {
 	a, err := Load(loomRoot, id)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading agent %s: %w", id, err)
 	}
 	// Cascade: kill or warn children first, skipping those with unresolved issues.
 	children, _ := listChildren(loomRoot, id)

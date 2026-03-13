@@ -136,7 +136,7 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 	}
 
 	if err := store.WriteYAML(issuePath(loomRoot, id), issue); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating issue: %w", err)
 	}
 	return issue, nil
 }
@@ -144,7 +144,7 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 func Load(loomRoot string, id string) (*Issue, error) {
 	issue := &Issue{}
 	if err := store.ReadYAML(issuePath(loomRoot, id), issue); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("loading issue %s: %w", id, err)
 	}
 	return issue, nil
 }
