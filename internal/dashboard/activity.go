@@ -33,7 +33,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 				continue
 			}
 			events := acp.ReadOutputFile(raw)
-			// Prefer last ToolSummary; fall back to last TokenChunk.
+			// Prefer last ToolSummary; fall back to concatenation of all TokenChunks.
 			var last *acp.ACPEvent
 			for i := range events {
 				if events[i].Kind == acp.ToolSummary {
@@ -41,10 +41,15 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 				}
 			}
 			if last == nil {
+				var sb strings.Builder
 				for i := range events {
 					if events[i].Kind == acp.TokenChunk {
-						last = &events[i]
+						sb.WriteString(events[i].Content)
 					}
+				}
+				if sb.Len() > 0 {
+					combined := acp.ACPEvent{Kind: acp.TokenChunk, Content: sb.String()}
+					last = &combined
 				}
 			}
 			if last != nil {

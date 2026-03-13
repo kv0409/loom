@@ -50,6 +50,35 @@ func TestFetchActivity_NDJSONToolSummaryFiltered(t *testing.T) {
 	}
 }
 
+func TestFetchActivity_TokenChunkFallbackConcatenates(t *testing.T) {
+	root := t.TempDir()
+	agentsDir := filepath.Join(root, "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// No tool_summary events — only token_chunks that should be concatenated.
+	ndjson := `{"kind":"token_chunk","ts":"12:00:01","content":"Hello, "}
+{"kind":"token_chunk","ts":"12:00:02","content":"world"}
+{"kind":"token_chunk","ts":"12:00:03","content":"!"}
+`
+	if err := os.WriteFile(filepath.Join(agentsDir, "builder-002.output"), []byte(ndjson), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := []*agent.Agent{
+		{ID: "builder-002", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
+	}
+
+	entries := fetchActivity(root, agents)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if entries[0].Line != "Hello, world!" {
+		t.Errorf("expected concatenated token chunks %q, got %q", "Hello, world!", entries[0].Line)
+	}
+}
+
 func TestFetchActivity_DeadAgentSkipped(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "agents"), 0755)
