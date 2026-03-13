@@ -115,7 +115,7 @@ func TestFetchActivity_TokenChunkFallbackConcatenates(t *testing.T) {
 	}
 }
 
-func TestFetchActivity_DeadAgentSkipped(t *testing.T) {
+func TestFetchActivity_DeadAgentNoToolsFileSkipped(t *testing.T) {
 	root := t.TempDir()
 	os.MkdirAll(filepath.Join(root, "agents"), 0755)
 
@@ -125,7 +125,31 @@ func TestFetchActivity_DeadAgentSkipped(t *testing.T) {
 
 	entries := fetchActivity(root, agents)
 	if len(entries) != 0 {
-		t.Errorf("expected 0 entries for dead agent, got %d", len(entries))
+		t.Errorf("expected 0 entries for dead agent with no .tools file, got %d", len(entries))
+	}
+}
+
+func TestFetchActivity_DeadAgentToolsFileRead(t *testing.T) {
+	root := t.TempDir()
+	agentsDir := filepath.Join(root, "agents")
+	os.MkdirAll(agentsDir, 0755)
+
+	// Dead agent with a .tools file — activity should still appear.
+	tools := "12:00:01 shell: go build\n12:00:02 read: main.go\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "builder-dead.tools"), []byte(tools), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := []*agent.Agent{
+		{ID: "builder-dead", Status: "dead", Config: agent.AgentConfig{KiroMode: "acp"}},
+	}
+
+	entries := fetchActivity(root, agents)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries for dead agent with .tools file, got %d", len(entries))
+	}
+	if entries[0].Line != "12:00:01 shell: go build" {
+		t.Errorf("unexpected line: %q", entries[0].Line)
 	}
 }
 

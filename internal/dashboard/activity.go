@@ -31,31 +31,32 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 	var timed []timedEntry
 
 	for _, a := range agents {
+		// Always try .tools file first — it persists even after agent death.
+		toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
+		if toolsRaw, err := os.ReadFile(toolsPath); err == nil {
+			added := false
+			for _, line := range strings.Split(string(toolsRaw), "\n") {
+				if t := strings.TrimSpace(line); t != "" {
+					ts := ""
+					if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
+						ts = t[:8]
+					}
+					timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: a.ID, Line: t}})
+					added = true
+				}
+			}
+			if added {
+				continue
+			}
+		}
+
+		// Dead agents have no live pane or output stream — skip fallbacks.
 		if a.Status == "dead" {
 			continue
 		}
 
 		// ACP agents: read from .output files
 		if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-			// Top priority: .tools file — return ALL lines sorted chronologically.
-			toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
-			if toolsRaw, err := os.ReadFile(toolsPath); err == nil {
-				added := false
-				for _, line := range strings.Split(string(toolsRaw), "\n") {
-					if t := strings.TrimSpace(line); t != "" {
-						ts := ""
-						if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
-							ts = t[:8]
-						}
-						timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: a.ID, Line: t}})
-						added = true
-					}
-				}
-				if added {
-					continue
-				}
-			}
-
 			outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
 			raw, err := os.ReadFile(outPath)
 			if err != nil {
