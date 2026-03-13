@@ -78,6 +78,17 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 - `[LOOM] Nudge: ...` → Follow the guidance immediately.
 - `[LOOM] Shutdown` → Commit current work, update issue status, stop.
 
+## Code Navigation
+
+Prefer the **code tool** (LSP-powered) over grep/bash for understanding and navigating code:
+
+- `search_symbols` — find where a function/class/type is defined
+- `find_references` — find all call sites of a symbol
+- `goto_definition` — jump to a symbol's definition
+- `get_document_symbols` — list all symbols in a file
+
+Use grep only for literal text searches in comments, strings, or config files where LSP has no advantage. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
+
 ## Constraints
 
 - Work ONLY in your worktree. Do NOT modify files outside it.
