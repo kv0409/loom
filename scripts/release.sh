@@ -31,4 +31,21 @@ git tag -a "$tag" -m "Release ${tag}"
 git push origin main
 git push origin "$tag"
 
-echo "Released ${tag} — goreleaser will build binaries."
+echo "Released ${tag} — waiting for goreleaser..."
+
+# Poll until the release workflow completes
+while true; do
+  status=$(gh run list --limit 1 --json status -q '.[0].status')
+  if [[ "$status" == "completed" ]]; then
+    conclusion=$(gh run list --limit 1 --json conclusion -q '.[0].conclusion')
+    if [[ "$conclusion" == "success" ]]; then
+      echo "Build succeeded. Updating local binary..."
+      loom update
+      break
+    else
+      echo "Build failed (${conclusion}). Check GitHub Actions." >&2
+      exit 1
+    fi
+  fi
+  sleep 10
+done
