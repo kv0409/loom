@@ -298,8 +298,9 @@ func heartbeatStyle(ago string) lipgloss.Style {
 // selectedRow renders line with selectedStyle, replacing the leading two-space
 // indent with a "▸ " prefix so the cursor is visible across all list views.
 func selectedRow(line string) string {
-	if len(line) >= 2 {
-		return selectedStyle.Render("▸" + line[1:])
+	runes := []rune(line)
+	if len(runes) >= 2 {
+		return selectedStyle.Render("▸" + string(runes[1:]))
 	}
 	return selectedStyle.Render(line)
 }

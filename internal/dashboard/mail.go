@@ -25,14 +25,7 @@ func (m Model) renderMail() string {
 	}
 
 	vRows := visibleRows(m.height, 9)
-	start := m.cursor - vRows + 1
-	if start < 0 {
-		start = 0
-	}
-	end := start + vRows
-	if end > len(messages) {
-		end = len(messages)
-	}
+	start, end := listViewport(m.cursor, len(messages), vRows)
 
 	for i := start; i < end; i++ {
 		msg := messages[i]

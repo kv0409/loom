@@ -220,16 +220,10 @@ func (m Model) renderLogs() string {
 	}
 
 	visible := visibleRows(m.height, 9)
-	if visible < 5 {
-		visible = 5
-	}
-	start := 0
-	if len(lines) > visible {
-		start = len(lines) - visible
-	}
+	start, end := listViewport(m.cursor, len(lines), visible)
 
 	content := header
-	for i := start; i < len(lines); i++ {
+	for i := start; i < end; i++ {
 		l := lines[i]
 		tag := categoryTag(l.Category)
 		content += fmt.Sprintf("  %s %s\n", tag, truncate(l.Text, m.width-16))

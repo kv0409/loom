@@ -629,7 +629,7 @@ func (m Model) listLen() int {
 	case viewMail:
 		return len(m.filteredMessages())
 	case viewMailDetail:
-		return len(m.data.messages)
+		return len(m.filteredMessages())
 	case viewMemory, viewMemoryDetail:
 		return len(m.filteredMemories())
 	case viewWorktrees:
@@ -907,18 +907,25 @@ func isListView(v view) bool {
 	return false
 }
 
-// mouseToListIndex converts a screen Y coordinate to a list item index.
-// The first listHeaderRows rows are fixed chrome (title, panel border, column header, separator).
+// mouseToListIndex converts a screen Y coordinate to a list item index,
+// accounting for the viewport scroll offset so clicks target the correct item.
 func (m Model) mouseToListIndex(y int) int {
 	idx := y - listHeaderRows
-	if m.view == viewIssues {
-		idx = m.adjustIssuesIndex(idx)
+	if idx < 0 {
+		return -1
 	}
-	return idx
+	if m.view == viewIssues {
+		return m.adjustIssuesIndex(idx)
+	}
+	vRows := visibleRows(m.height, 9)
+	start, _ := listViewport(m.cursor, m.listLen(), vRows)
+	return start + idx
 }
 
-// adjustIssuesIndex accounts for the extra separator lines (blank + "RECENTLY DONE" + separator)
-// inserted between active and done sections in the issues view.
+// adjustIssuesIndex converts a screen-relative row index to an absolute
+// display item index, accounting for the viewport scroll offset and the
+// separator lines (blank + "RECENTLY DONE" + separator) between active
+// and done sections.
 func (m Model) adjustIssuesIndex(idx int) int {
 	display := m.filteredIssues()
 	activeCount := 0
@@ -927,11 +934,18 @@ func (m Model) adjustIssuesIndex(idx int) int {
 			activeCount++
 		}
 	}
-	if activeCount < len(display) && idx > activeCount {
-		if idx <= activeCount+issuesSectionGap {
+	vRows := visibleRows(m.height, 9)
+	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
+
+	// If the separator is visible in the current viewport, adjust for it.
+	if activeCount < len(display) && activeCount >= start && activeCount < end {
+		sepScreenPos := activeCount - start
+		if idx >= sepScreenPos && idx < sepScreenPos+issuesSectionGap {
 			return -1
 		}
-		idx -= issuesSectionGap
+		if idx >= sepScreenPos+issuesSectionGap {
+			return start + idx - issuesSectionGap
+		}
 	}
-	return idx
+	return start + idx
 }

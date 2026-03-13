@@ -26,15 +26,8 @@ func (m Model) renderMemory() string {
 		content += renderEmpty("No memory entries yet", m.width-6)
 	}
 
-	vRows := visibleRows(m.height, 9) // header + tab bar + panel chrome + help bar (2 lines)
-	start := m.cursor - vRows + 1
-	if start < 0 {
-		start = 0
-	}
-	end := start + vRows
-	if end > len(memories) {
-		end = len(memories)
-	}
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(memories), vRows)
 
 	for i := start; i < end; i++ {
 		e := memories[i]

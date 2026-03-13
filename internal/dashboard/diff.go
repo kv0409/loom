@@ -36,7 +36,11 @@ func (m Model) renderWorktrees() string {
 
 	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
 	content := tableHeader([]int{nameW, branchW, agentW, issueW, diffW}, []string{"NAME", "BRANCH", "AGENT", "ISSUE", "DIFF"}, m.width)
-	for i, wt := range worktrees {
+
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(worktrees), vRows)
+	for i := start; i < end; i++ {
+		wt := worktrees[i]
 		ds := m.data.diffStats[wt.Name]
 		diffStr := ""
 		if ds != nil && ds.FilesChanged > 0 {

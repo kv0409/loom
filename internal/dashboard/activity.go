@@ -116,15 +116,9 @@ func (m Model) renderActivity() string {
 	content := tableHeader([]int{agentW, lineW}, []string{"AGENT", "RECENT OUTPUT"}, m.width)
 
 	visible := visibleRows(m.height, 9)
-	if visible < 5 {
-		visible = 5
-	}
-	start := 0
-	if len(entries) > visible {
-		start = len(entries) - visible
-	}
+	start, end := listViewport(m.cursor, len(entries), visible)
 
-	for i := start; i < len(entries); i++ {
+	for i := start; i < end; i++ {
 		e := entries[i]
 		line := fmt.Sprintf("  %-*s %s", agentW, truncate(e.AgentID, agentW), truncate(e.Line, lineW))
 		if i == m.cursor {

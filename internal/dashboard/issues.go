@@ -85,8 +85,7 @@ func (m Model) renderIssues() string {
 		titleCol := truncate(iss.Title, titleW)
 
 		if i == m.cursor {
-			// Style the whole row as selected; prefix with ▸ (no byte-slicing).
-			line := "▸ " + idPadded + " " + assignPadded + " " + titleCol
+			line := "  " + idPadded + " " + assignPadded + " " + titleCol
 			content += selectedRow(line) + "\n"
 		} else {
 			// Colour the id column; plain text for assignee and title.
