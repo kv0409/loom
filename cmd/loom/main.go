@@ -835,7 +835,7 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-12s %-8s %-14s %-40s %s\n", "ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE")
+	cliout.PrintInfo(fmt.Sprintf("%-12s %-8s %-14s %-40s %s", "ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE"))
 	for _, iss := range issues {
 		title := iss.Title
 		if len(title) > 40 {
@@ -935,7 +935,7 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("ID:          %s\n", iss.ID)
+	cliout.PrintInfo(fmt.Sprintf("ID:          %s", iss.ID))
 	fmt.Printf("Title:       %s\n", iss.Title)
 	fmt.Printf("Type:        %s\n", iss.Type)
 	fmt.Printf("Status:      %s\n", iss.Status)
@@ -999,14 +999,14 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Cancelled %s\n", args[0])
+		cliout.PrintWarning("Cancelled "+args[0])
 		for _, ci := range cancelled {
 			if ci.PreviousAssignee == "" {
 				continue
 			}
 			msg := fmt.Sprintf("[LOOM] Issue %s cancelled. Stop work immediately.", ci.IssueID)
 			if err := daemon.Message(root, ci.PreviousAssignee, msg); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: could not notify %s: %v\n", ci.PreviousAssignee, err)
+				cliout.PrintError("could not notify "+ci.PreviousAssignee, err.Error())
 			}
 		}
 		return nil
@@ -1018,7 +1018,7 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Updated %s\n", args[0])
+	cliout.PrintSuccess("Updated " + args[0])
 	return nil
 }
 
@@ -1032,7 +1032,7 @@ func runIssueClose(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Closed %s\n", args[0])
+	cliout.PrintSuccess("Closed " + args[0])
 	return nil
 }
 
