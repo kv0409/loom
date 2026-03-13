@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 )
@@ -17,7 +18,6 @@ func (m Model) renderAgents() string {
 	idWidth := 16
 	for _, a := range agents {
 		w := len(a.ID)
-		// Find original index for tree data
 		for oi, oa := range m.data.agents {
 			if oa == a && oi < len(m.data.agentTree) {
 				w += m.data.agentTree[oi].depth * 2
@@ -29,25 +29,24 @@ func (m Model) renderAgents() string {
 		}
 	}
 
-	// Proportional column widths based on terminal width.
-	avail := m.width - 6 // 2 indent + 4 inter-column spaces
-	if avail < 40 {
-		avail = 40
-	}
+	avail := availableWidth(m.width)
 	ws := colWidths(avail, []struct{ pct, min int }{{10, 6}, {0, statusPillWidth + 4}, {22, 8}, {14, 6}, {0, 10}})
 	roleW, statusW, wtW, issueW, hbW := ws[0], ws[1], ws[2], ws[3], ws[4]
 	idW := min(max(idWidth+2, 16), avail*25/100)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds %%-%ds", idW, roleW, statusW, wtW, issueW, hbW)
-	content := tableHeader([]int{idW, roleW, statusW, wtW, issueW, hbW}, []string{"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}, m.width)
-
-	if len(agents) == 0 {
-		content += renderEmpty("No agents running — loom spawn to start", m.width-6)
+	cols := []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "ROLE", Width: roleW},
+		{Title: "STATUS", Width: statusW},
+		{Title: "WORKTREE", Width: wtW},
+		{Title: "ISSUES", Width: issueW},
+		{Title: "HEARTBEAT", Width: hbW},
 	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(agents), vRows)
 
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		a := agents[i]
 		wt := "—"
@@ -64,7 +63,6 @@ func (m Model) renderAgents() string {
 		}
 		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
 
-		// Build tree prefix — find original index for tree data.
 		prefix := ""
 		for oi, oa := range m.data.agents {
 			if oa == a && oi < len(m.data.agentTree) {
@@ -87,12 +85,17 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		id := prefix + agentPill(a.ID)
-		line := fmt.Sprintf(fmtStr, id, a.Role, statusCol, wt, issues, hb)
-		if i == m.cursor {
-			line = selectedRow(line)
-		}
-		content += line + "\n"
+		rows = append(rows, table.Row{prefix + agentPill(a.ID), a.Role, statusCol, wt, issues, hb})
+	}
+
+	var content string
+	if len(agents) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No agents running — loom spawn to start", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
 
 	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents))
