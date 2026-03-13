@@ -236,6 +236,24 @@ func Close(loomRoot string, id string, reason string) (*Issue, error) {
 		return nil, err
 	}
 
+	// Validate all children are in a terminal state before closing
+	if len(issue.Children) > 0 {
+		var openChildren []string
+		for _, childID := range issue.Children {
+			child, err := Load(loomRoot, childID)
+			if err != nil {
+				return nil, fmt.Errorf("loading child %s: %w", childID, err)
+			}
+			if child.Status != "done" && child.Status != "cancelled" {
+				openChildren = append(openChildren, childID)
+			}
+		}
+		if len(openChildren) > 0 {
+			return nil, fmt.Errorf("cannot close %s: %d child issue(s) still open: %s",
+				id, len(openChildren), strings.Join(openChildren, ", "))
+		}
+	}
+
 	now := time.Now()
 	issue.Status = "done"
 	issue.ClosedAt = &now
