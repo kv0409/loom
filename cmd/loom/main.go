@@ -20,6 +20,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/karanagi/loom/agents"
 	"github.com/karanagi/loom/internal/agent"
+	cliout "github.com/karanagi/loom/internal/cli"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/dashboard"
@@ -621,7 +622,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("updating .gitignore: %w", err)
 	}
 
-	fmt.Println("Initialized .loom/ in current directory")
+	cliout.PrintSuccess("Initialized .loom/ in current directory")
 	return nil
 }
 
@@ -747,8 +748,8 @@ func runTask(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Created %s: %s\n", iss.ID, args[0])
-	fmt.Println("The orchestrator will pick this up automatically.")
+	cliout.PrintSuccess("Created "+args[0], iss.ID)
+	cliout.PrintInfo("The orchestrator will pick this up automatically.")
 	return nil
 }
 
@@ -807,7 +808,7 @@ func runIssueCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Created %s: %s\n", iss.ID, iss.Title)
+	cliout.PrintSuccess("Created "+iss.Title, iss.ID)
 	return nil
 }
 
@@ -1063,7 +1064,7 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	if err := mail.Send(root, msg); err != nil {
 		return err
 	}
-	fmt.Printf("Sent to %s: %s\n", args[0], args[1])
+	cliout.PrintSuccess("Sent to "+args[0]+": "+args[1])
 	return nil
 }
 
@@ -1181,7 +1182,7 @@ func runMemoryAdd(cmd *cobra.Command, args []string) error {
 	if err := memory.Add(root, entry); err != nil {
 		return err
 	}
-	fmt.Printf("Added %s: %s\n", entry.ID, entry.Title)
+	cliout.PrintSuccess("Added "+entry.Title, entry.ID)
 	return nil
 }
 
