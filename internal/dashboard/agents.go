@@ -45,7 +45,11 @@ func (m Model) renderAgents() string {
 		content += renderEmpty("No agents running — loom spawn to start", m.width-6)
 	}
 
-	for i, a := range agents {
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(agents), vRows)
+
+	for i := start; i < end; i++ {
+		a := agents[i]
 		wt := "—"
 		if a.WorktreeName != "" {
 			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
