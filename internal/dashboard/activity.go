@@ -30,6 +30,34 @@ type timedEntry struct {
 func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 	var timed []timedEntry
 
+	// Build a set of agent IDs already in the list so we can detect orphans.
+	seen := make(map[string]bool, len(agents))
+	for _, a := range agents {
+		seen[a.ID] = true
+	}
+
+	// Scan for orphaned .tools files (agents whose YAML was deleted after being killed).
+	agentsDir := filepath.Join(loomRoot, "agents")
+	if orphans, err := filepath.Glob(filepath.Join(agentsDir, "*.tools")); err == nil {
+		for _, p := range orphans {
+			id := strings.TrimSuffix(filepath.Base(p), ".tools")
+			if seen[id] {
+				continue
+			}
+			if raw, err := os.ReadFile(p); err == nil {
+				for _, line := range strings.Split(string(raw), "\n") {
+					if t := strings.TrimSpace(line); t != "" {
+						ts := ""
+						if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
+							ts = t[:8]
+						}
+						timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: id, Line: t}})
+					}
+				}
+			}
+		}
+	}
+
 	for _, a := range agents {
 		// Always try .tools file first — it persists even after agent death.
 		toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
