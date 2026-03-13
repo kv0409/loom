@@ -222,7 +222,6 @@ func (m Model) renderStatusBar(fullW int) string {
 		})
 	}
 
-	var barLines []string
 	const maxBars = 3
 	shown := parents
 	overflow := 0
@@ -294,18 +293,12 @@ func (m Model) renderStatusBar(fullW int) string {
 		return bar
 	}
 
-	for _, p := range shown {
-		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
-		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
-		fractionW := len(fraction)
-		// Cap barW at 20 and give reclaimed space to titleMaxW.
-		barW := min(innerW-2-14-1-fractionW-1-20-1, 20)
-		if barW < 6 {
-			barW = 6
-		}
-		titleMaxW := max(20, innerW-2-14-1-fractionW-1-barW-1)
+	// Column widths: id=14, bar=20, fraction=7, title=remainder
+	const idW, barW, fracW = 14, 20, 7
+	titleW := max(20, innerW-2-idW-barW-fracW-4) // 4 = cell padding (0,1) × 4 cols × 2 sides / 2
 
-		// Count children by status
+	var rows []table.Row
+	for _, p := range shown {
 		childCounts := map[string]int{}
 		for _, cid := range p.children {
 			if c, ok := issueMap[cid]; ok {
@@ -313,18 +306,30 @@ func (m Model) renderStatusBar(fullW int) string {
 			}
 		}
 		bar := stackedBar(childCounts, p.total, barW)
-		titleStr := idleStyle.Render(truncate(p.title, titleMaxW))
-
-		barLines = append(barLines, fmt.Sprintf("  %s %s %-*s %s",
-			idStr, bar, fractionW, fraction, titleStr))
+		rows = append(rows, table.Row{
+			barLabel.Render(truncate(p.id, idW)),
+			bar,
+			fmt.Sprintf("%d/%d", p.done, p.total),
+			idleStyle.Render(truncate(p.title, titleW)),
+		})
 	}
 	if overflow > 0 {
-		barLines = append(barLines, idleStyle.Render(fmt.Sprintf("  … +%d more active epics", overflow)))
+		rows = append(rows, table.Row{
+			idleStyle.Render(fmt.Sprintf("… +%d more", overflow)), "", "", "",
+		})
 	}
 
+	cols := []table.Column{
+		{Title: "", Width: idW},
+		{Title: "", Width: barW},
+		{Title: "", Width: fracW},
+		{Title: "", Width: titleW},
+	}
+	tbl := newStyledTableHeaderless(cols, rows, len(rows))
+
 	content := "\n" + summaryLine + "\n"
-	for _, l := range barLines {
-		content += l + "\n"
+	if len(rows) > 0 {
+		content += tableBodyView(tbl) + "\n"
 	}
 
 	return panel("[s] STATUS", content, fullW)
