@@ -3,39 +3,43 @@ package dashboard
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/bubbles/table"
 )
 
 func (m Model) renderMail() string {
 	messages := m.filteredMessages()
 
-	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
+	avail := availableWidth(m.width)
 	ws := colWidths(avail, []struct{ pct, min int }{{10, 5}, {18, 8}, {10, 5}})
 	timeW, routeW, typeW := ws[0], ws[1], ws[2]
 	subjW := max(10, avail-timeW-routeW-typeW)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", timeW, routeW, typeW)
-	content := tableHeader([]int{timeW, routeW, typeW, subjW}, []string{"TIME", "FROM → TO", "TYPE", "SUBJECT"}, m.width)
-
-	if len(messages) == 0 {
-		content += renderEmpty("No messages yet", m.width-6)
+	cols := []table.Column{
+		{Title: "TIME", Width: timeW},
+		{Title: "FROM → TO", Width: routeW},
+		{Title: "TYPE", Width: typeW},
+		{Title: "SUBJECT", Width: subjW},
 	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(messages), vRows)
 
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		msg := messages[i]
 		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
-		line := fmt.Sprintf(fmtStr,
-			msg.Timestamp.Format("15:04"), truncate(route, routeW), msg.Type, truncate(msg.Subject, subjW))
-		if i == m.cursor {
-			line = selectedRow(line)
-		}
-		content += line + "\n"
+		rows = append(rows, table.Row{msg.Timestamp.Format("15:04"), route, msg.Type, msg.Subject})
+	}
+
+	var content string
+	if len(messages) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No messages yet", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
 
 	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)

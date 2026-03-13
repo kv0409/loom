@@ -96,6 +96,6 @@ func (m Model) renderKanban() string {
 		board += "\n" + helpStyle.Render("  "+indicator)
 	}
 
-	header := panelIssues.Render(" [b] BOARD ") + "\n"
+	header := panelTitle.Render(" [b] BOARD ") + "\n"
 	return header + board
 }

@@ -1,8 +1,10 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
@@ -170,6 +172,45 @@ func TestIsListView(t *testing.T) {
 	for _, v := range nonListViews {
 		if isListView(v) {
 			t.Errorf("expected isListView(%d)=false", v)
+		}
+	}
+}
+
+func TestHelpBar_SingleLine(t *testing.T) {
+	views := []view{
+		viewOverview, viewAgents, viewAgentDetail, viewIssues, viewIssueDetail,
+		viewMail, viewMailDetail, viewMemory, viewMemoryDetail, viewActivity,
+		viewLogs, viewWorktrees, viewDiff, viewKanban,
+	}
+	for _, v := range views {
+		m := testModel(v)
+		bar := m.helpBar()
+		if strings.Contains(bar, "\n") {
+			t.Errorf("helpBar() for view %d contains newline", v)
+		}
+	}
+}
+
+func TestKeyMap_ShortHelp(t *testing.T) {
+	km := defaultKeyMap()
+	bindings := km.ShortHelp()
+	if len(bindings) == 0 {
+		t.Error("ShortHelp() returned empty slice")
+	}
+}
+
+func TestTitleBarWidth(t *testing.T) {
+	m := testModel(viewOverview)
+	m.data.agents = nil
+	m.data.unread = 0
+	for _, w := range []int{80, 120, 200} {
+		m.width = w
+		// Extract title bar (first line of View output)
+		output := m.View()
+		firstLine := strings.SplitN(output, "\n", 2)[0]
+		got := lipgloss.Width(firstLine)
+		if got != w {
+			t.Errorf("width=%d: title bar width=%d, want %d", w, got, w)
 		}
 	}
 }

@@ -4,7 +4,27 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 )
+
+// newStyledTable creates a bubbles/table.Model styled with Tokyo Night colors.
+// It is used render-only: rebuilt each frame, not persisted in the dashboard Model.
+func newStyledTable(cols []table.Column, rows []table.Row, height int) table.Model {
+	t := table.New(
+		table.WithColumns(cols),
+		table.WithRows(rows),
+		table.WithHeight(height+1), // +1 for header row
+		table.WithFocused(true),
+	)
+	t.SetStyles(table.Styles{
+		Header:   lipgloss.NewStyle().Bold(true).Foreground(colMagenta).Padding(0, 1),
+		Cell:     lipgloss.NewStyle().Foreground(colFg).Padding(0, 1),
+		Selected: lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg),
+	})
+	return t
+}
 
 // fmtTime formats a time as a human-readable "ago" string.
 // short=true → "30s", "5m", "2h"  (used in overview compact cells)

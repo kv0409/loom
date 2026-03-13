@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/daemon"
@@ -101,6 +102,8 @@ type Model struct {
 	searchMode       bool
 	searchQuery      string
 	inputCursor      int // cursor position within the active input field
+	help             help.Model
+	keys             keyMap
 }
 
 type tickMsg time.Time
@@ -111,7 +114,11 @@ func clearFlashAfter(d time.Duration) tea.Cmd {
 }
 
 func New(loomRoot string) Model {
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int)}
+	h := help.New()
+	h.Styles.ShortKey = helpStyle.Bold(true)
+	h.Styles.ShortDesc = helpStyle
+	h.Styles.ShortSeparator = helpStyle
+	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap()}
 }
 
 // switchView saves the current cursor position and switches to the target view,
@@ -196,6 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = msg.Width
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tickCmd())
@@ -626,9 +634,7 @@ func (m Model) listLen() int {
 		return len(m.filteredAgents())
 	case viewIssues, viewIssueDetail:
 		return len(m.filteredIssues())
-	case viewMail:
-		return len(m.filteredMessages())
-	case viewMailDetail:
+	case viewMail, viewMailDetail:
 		return len(m.filteredMessages())
 	case viewMemory, viewMemoryDetail:
 		return len(m.filteredMemories())
@@ -699,7 +705,7 @@ func (m Model) View() string {
 	if padding < 1 {
 		padding = 1
 	}
-	titleBar := titleStyle.Width(contentW).Render(left + strings.Repeat(" ", padding) + right)
+	titleBar := titleStyle.Width(m.width).Render(left + strings.Repeat(" ", padding) + right)
 
 	help := m.helpBar()
 	if m.searchMode {
@@ -782,9 +788,8 @@ func (m Model) View() string {
 }
 
 func (m Model) helpBar() string {
-	tabLine := " " + helpStyle.Render("[Tab]cycle [Esc]back [/]search [q]uit")
+	base := " " + m.help.View(m.keys)
 
-	// Context-specific shortcuts on second line
 	var ctx string
 	switch m.view {
 	case viewAgentDetail:
@@ -819,9 +824,9 @@ func (m Model) helpBar() string {
 	}
 
 	if ctx != "" {
-		return tabLine + "\n" + helpStyle.Render("  │ "+ctx)
+		return base + " │ " + helpStyle.Render(ctx)
 	}
-	return tabLine + "\n" + helpStyle.Render("  │")
+	return base
 }
 
 func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

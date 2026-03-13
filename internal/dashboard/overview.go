@@ -10,7 +10,7 @@ import (
 
 // agentsBandBudget returns the row budget for the full-width AGENTS band (~40% of usable height).
 func (m Model) agentsBandBudget() int {
-	usable := m.height - 3 // title bar (1) + help bar (2)
+	usable := m.height - 1 - lipgloss.Height(m.helpBar()) // title bar (1) + help bar
 	budget := (usable * 40 / 100) - 3
 	if budget < 1 {
 		budget = 1
@@ -288,55 +288,26 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
 }
 
-// wordWrap splits s into segments of at most width visual columns, breaking on spaces where possible.
+// wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
 func wordWrap(s string, width int) []string {
-	if width <= 0 {
+	if width <= 0 || len(s) == 0 {
 		return []string{s}
 	}
-	var lines []string
-	for _, line := range strings.Split(s, "\n") {
-		for lipgloss.Width(line) > width {
-			runes := []rune(line)
-			cut := 0
-			w := 0
-			for i, r := range runes {
-				rw := lipgloss.Width(string(r))
-				if w+rw > width {
-					break
-				}
-				w += rw
-				cut = i + 1
-			}
-			if cut == 0 {
-				cut = 1 // Single char wider than width; emit it anyway.
-			}
-			// j > 0: breaking at index 0 would emit an empty segment.
-			for j := cut - 1; j > 0; j-- {
-				if runes[j] == ' ' {
-					cut = j
-					break
-				}
-			}
-			lines = append(lines, strings.TrimRight(string(runes[:cut]), " "))
-			line = strings.TrimLeft(string(runes[cut:]), " ")
+	var segments []string
+	for len(s) > 0 {
+		runes := []rune(s)
+		if len(runes) <= width {
+			segments = append(segments, s)
+			break
 		}
-		if line != "" || len(lines) == 0 {
-			lines = append(lines, line)
+		cut := width
+		prefix := string(runes[:width])
+		if idx := strings.LastIndex(prefix, " "); idx > 0 {
+			cut = len([]rune(prefix[:idx])) + 1
 		}
+		segments = append(segments, strings.TrimRight(string(runes[:cut]), " "))
+		s = strings.TrimLeft(string(runes[cut:]), " ")
 	}
-	return lines
+	return segments
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

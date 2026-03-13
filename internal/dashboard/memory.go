@@ -4,39 +4,42 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/memory"
 )
 
 func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
 
-	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
+	avail := availableWidth(m.width)
 	ws := colWidths(avail, []struct{ pct, min int }{{12, 6}, {14, 8}, {14, 6}})
 	idW, typeW, byW := ws[0], ws[1], ws[2]
 	titleW := max(10, avail-idW-typeW-byW)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idW, typeW, titleW)
-	content := tableHeader([]int{idW, typeW, titleW, byW}, []string{"ID", "TYPE", "TITLE", "BY"}, m.width)
-
-	if len(memories) == 0 {
-		content += renderEmpty("No memory entries yet", m.width-6)
+	cols := []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "TYPE", Width: typeW},
+		{Title: "TITLE", Width: titleW},
+		{Title: "BY", Width: byW},
 	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(memories), vRows)
 
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		e := memories[i]
-		line := fmt.Sprintf(fmtStr,
-			truncate(e.ID, idW), truncate(e.Type, typeW), truncate(e.Title, titleW), truncate(memory.ByField(e), byW))
-		if i == m.cursor {
-			line = selectedRow(line)
-		}
-		content += line + "\n"
+		rows = append(rows, table.Row{e.ID, e.Type, e.Title, memory.ByField(e)})
+	}
+
+	var content string
+	if len(memories) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No memory entries yet", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
 
 	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.memories))

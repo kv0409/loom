@@ -47,17 +47,8 @@ var (
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
 )
 
-// Panel header colors by section type
-var (
-	panelAgents   = lipgloss.NewStyle().Bold(true).Background(colTeal).Foreground(colBg).Padding(0, 1)
-	panelIssues   = lipgloss.NewStyle().Bold(true).Background(colYellow).Foreground(colBg).Padding(0, 1)
-	panelMail     = lipgloss.NewStyle().Bold(true).Background(colOrange).Foreground(colBg).Padding(0, 1)
-	panelMemory   = lipgloss.NewStyle().Bold(true).Background(colMagenta).Foreground(colBg).Padding(0, 1)
-	panelWorktree = lipgloss.NewStyle().Bold(true).Background(colCyan).Foreground(colBg).Padding(0, 1)
-	panelDiff     = lipgloss.NewStyle().Bold(true).Background(colGreen).Foreground(colBg).Padding(0, 1)
-	panelActivity = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
-	panelLogs     = lipgloss.NewStyle().Bold(true).Background(colGray).Foreground(colBg).Padding(0, 1)
-)
+// Panel header style — single subtle style for all panels
+var panelTitle = lipgloss.NewStyle().Bold(true).Foreground(colBlue).Padding(0, 1)
 
 // Status-specific colors and glyphs
 var statusColors = map[string]lipgloss.Color{
@@ -153,7 +144,7 @@ func panel(title string, content string, width int) string {
 	if title != "" {
 		lines := splitLines(s)
 		if len(lines) > 0 {
-			t := panelTitleStyle(title).Render(" " + panelIcon(title) + title + " ")
+			t := panelTitle.Render(" " + panelIcon(title) + title + " ")
 			tLen := lipgloss.Width(t)
 			bc := lipgloss.NewStyle().Foreground(colSubtle)
 			remaining := innerW - tLen - 1
@@ -191,31 +182,6 @@ func panelIcon(title string) string {
 		return "▦ "
 	default:
 		return ""
-	}
-}
-
-// panelTitleStyle picks a color based on panel title keyword.
-func panelTitleStyle(title string) lipgloss.Style {
-	t := strings.ToUpper(title)
-	switch {
-	case strings.Contains(t, "AGENT"):
-		return panelAgents
-	case strings.Contains(t, "ISSUE"), strings.Contains(t, "KANBAN"):
-		return panelIssues
-	case strings.Contains(t, "MAIL"):
-		return panelMail
-	case strings.Contains(t, "MEMORY"):
-		return panelMemory
-	case strings.Contains(t, "WORKTREE"):
-		return panelWorktree
-	case strings.Contains(t, "DIFF"):
-		return panelDiff
-	case strings.Contains(t, "ACTIVITY"):
-		return panelActivity
-	case strings.Contains(t, "LOG"):
-		return panelLogs
-	default:
-		return titleStyle
 	}
 }
 
@@ -347,16 +313,6 @@ const statusPillWidth = 13
 
 func statusPill(status string) string {
 	return statusPillStyle(status).Width(statusPillWidth).Render(status)
-}
-
-// detailViewH returns the number of visible lines for a detail-view panel
-// given the terminal height. Accounts for title bar, panel chrome, and help bar.
-func detailViewH(height int) int {
-	h := height - 6
-	if h < 1 {
-		h = 1
-	}
-	return h
 }
 
 // listViewport returns the start and end indices for a cursor-following list

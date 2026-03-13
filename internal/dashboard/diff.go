@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -25,53 +26,48 @@ func fetchDiff(wtPath string) string {
 func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
-	// Proportional column widths.
-	avail := m.width - 6
-	if avail < 40 {
-		avail = 40
-	}
+	avail := availableWidth(m.width)
 	ws := colWidths(avail, []struct{ pct, min int }{{25, 10}, {25, 10}, {14, 8}, {14, 6}, {0, 6}})
 	nameW, branchW, agentW, issueW := ws[0], ws[1], ws[2], ws[3]
 	diffW := max(6, avail-nameW-branchW-agentW-issueW)
 
-	fmtStr := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%-%ds %%s", nameW, branchW, agentW, issueW)
-	content := tableHeader([]int{nameW, branchW, agentW, issueW, diffW}, []string{"NAME", "BRANCH", "AGENT", "ISSUE", "DIFF"}, m.width)
+	cols := []table.Column{
+		{Title: "NAME", Width: nameW},
+		{Title: "BRANCH", Width: branchW},
+		{Title: "AGENT", Width: agentW},
+		{Title: "ISSUE", Width: issueW},
+		{Title: "DIFF", Width: diffW},
+	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(worktrees), vRows)
+
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
 		ds := m.data.diffStats[wt.Name]
 		diffStr := ""
 		if ds != nil && ds.FilesChanged > 0 {
-			diffStr = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
-		}
-		plain := fmt.Sprintf(fmtStr,
-			truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), truncate(diffStr, diffW))
-		if diffStr != "" {
-			// Render line without diff, then append semantically colored diff stats
-			base := fmt.Sprintf(fmtStr,
-				truncate(slugFromWorktree(wt.Name), nameW), truncate(wt.Branch, branchW), truncate(wt.Agent, agentW), truncate(wt.Issue, issueW), "")
 			filesStr := fmt.Sprintf("%df ", ds.FilesChanged)
-			insStr := fmt.Sprintf("+%d ", ds.Insertions)
-			delStr := fmt.Sprintf("-%d", ds.Deletions)
-			colored := truncate(filesStr+diffAdd.Render(insStr)+diffDel.Render(delStr), diffW)
-			line := base + colored
-			if i == m.cursor {
-				line = selectedRow(plain)
-			}
-			content += line + "\n"
-		} else {
-			line := plain
-			if i == m.cursor {
-				line = selectedRow(line)
-			}
-			content += line + "\n"
+			insStr := diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions))
+			delStr := diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
+			diffStr = filesStr + insStr + delStr
 		}
+		rows = append(rows, table.Row{
+			slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, diffStr,
+		})
 	}
+
+	var content string
 	if len(worktrees) == 0 {
-		content += renderEmpty("No worktrees — builders create them automatically", m.width-6)
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No worktrees — builders create them automatically", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
+
 	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
 	if m.searchQuery != "" {
 		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchQuery)

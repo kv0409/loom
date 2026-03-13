@@ -1,13 +1,12 @@
 package dashboard
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 )
 
@@ -79,40 +78,59 @@ func TestFetchActivity_NoOutputFile_Skipped(t *testing.T) {
 	}
 }
 
-func TestFetchActivity_UTF8(t *testing.T) {
+func TestFetchActivity_UTF8ByteSlicing(t *testing.T) {
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "agents"), 0755); err != nil {
+	agentsDir := filepath.Join(root, "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	longText := strings.Repeat("日本語テスト ", 40) // ~280 bytes, exceeds maxLen=200
-	ndjson := fmt.Sprintf("{\"kind\":\"tool_summary\",\"ts\":\"12:00:01\",\"content\":%q}\n", longText)
-	if err := os.WriteFile(filepath.Join(root, "agents", "utf8-001.output"), []byte(ndjson), 0644); err != nil {
+	// Build a string of multi-byte chars that exceeds maxLen (200).
+	// Each '日' is 3 bytes; 210 runes = 630 bytes.
+	longUTF8 := strings.Repeat("日", 210)
+	ndjson := `{"kind":"tool_summary","ts":"12:00:01","content":"` + longUTF8 + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "utf8-agent.output"), []byte(ndjson), 0644); err != nil {
 		t.Fatal(err)
 	}
 
 	agents := []*agent.Agent{
-		{ID: "utf8-001", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
+		{ID: "utf8-agent", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
 	}
 
 	entries := fetchActivity(root, agents)
 	if len(entries) != 1 {
 		t.Fatalf("expected 1 entry, got %d", len(entries))
 	}
-	if !utf8.ValidString(entries[0].Line) {
-		t.Errorf("truncated text is not valid UTF-8: %q", entries[0].Line)
+
+	line := entries[0].Line
+	// Must be valid UTF-8 — no mid-rune slicing.
+	for i, r := range line {
+		if r == 0xFFFD {
+			t.Fatalf("replacement char U+FFFD at byte %d — invalid UTF-8 from truncation", i)
+		}
+	}
+	// Rune count must not exceed maxLen (200).
+	runes := []rune(line)
+	if len(runes) > 200 {
+		t.Errorf("expected ≤200 runes, got %d", len(runes))
 	}
 }
 
-func TestRenderActivity_ColumnWidth(t *testing.T) {
-	// Use the same formula as renderActivity to catch regressions.
-	for _, w := range []int{60, 80, 120, 200} {
-		agentW := proportionalWidth(w, 16, 8)
-		lineW := max(20, w-agentW-7)
-		contentW := 2 + agentW + 1 + lineW
-		innerW := w - 4 // panel(width=w-2) → innerW = (w-2)-2
-		if contentW > innerW {
-			t.Errorf("w=%d: content width %d exceeds panel inner width %d", w, contentW, innerW)
+func TestRenderActivity_ColumnWidthOffByOne(t *testing.T) {
+	m := Model{width: 80, height: 30}
+	// Populate with a few entries so the table renders.
+	m.data.activity = []activityEntry{
+		{AgentID: "agent-1", Line: "Called execute_bash: go test"},
+		{AgentID: "agent-2", Line: "Called fs_read: main.go"},
+	}
+
+	rendered := m.renderActivity()
+	// Each rendered line must fit within the panel width (width-2 for borders).
+	panelW := m.width - 2
+	for i, line := range strings.Split(rendered, "\n") {
+		w := lipgloss.Width(line)
+		if w > panelW {
+			t.Errorf("line %d width %d exceeds panel inner width %d: %q", i, w, panelW, line)
 		}
 	}
 }

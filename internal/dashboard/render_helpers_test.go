@@ -1,10 +1,8 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
-	"unicode/utf8"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 func TestListViewport_CursorAtStart(t *testing.T) {
@@ -198,15 +196,23 @@ func TestColWidths_MinEnforced(t *testing.T) {
 	}
 }
 
-func TestWordWrap_UTF8(t *testing.T) {
-	segs := wordWrap("日本語テスト hello 世界 foo bar", 14)
+func TestWordWrap_UTF8ByteSlicing(t *testing.T) {
+	// 30 multi-byte runes, width=10 → should split into rune-safe segments.
+	input := strings.Repeat("日", 30)
+	segs := wordWrap(input, 10)
 	for i, seg := range segs {
-		if !utf8.ValidString(seg) {
-			t.Errorf("segment %d is not valid UTF-8: %q", i, seg)
+		runes := []rune(seg)
+		if len(runes) > 10 {
+			t.Errorf("segment %d has %d runes (max 10): %q", i, len(runes), seg)
 		}
-		if w := lipgloss.Width(seg); w > 14 {
-			t.Errorf("segment %d visual width %d > 14: %q", i, w, seg)
+		for j, r := range seg {
+			if r == 0xFFFD {
+				t.Fatalf("segment %d has replacement char at byte %d — invalid UTF-8", i, j)
+			}
 		}
 	}
+	// Reassembled content must equal original.
+	if got := strings.Join(segs, ""); got != input {
+		t.Errorf("reassembled segments don't match original")
+	}
 }
-

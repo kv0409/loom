@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -149,14 +150,6 @@ func extractAgent(line string) string {
 	return m[2]
 }
 
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
-}
-
 func (m Model) countLogAgents() int {
 	seen := map[string]bool{}
 	for _, l := range m.data.logs {
@@ -179,7 +172,7 @@ func (m Model) renderLogs() string {
 	for a := range agentSet {
 		agents = append(agents, a)
 	}
-	sortStrings(agents)
+	sort.Strings(agents)
 
 	filter := ""
 	categories := []string{"", "lifecycle", "error", "stderr", "warn"}

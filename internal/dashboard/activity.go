@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/tmux"
@@ -106,28 +107,32 @@ func isActivityLine(line string) bool {
 func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
 
-	if len(entries) == 0 {
-		return panel("[t] ACTIVITY", renderEmpty("No activity detected", m.width-6), m.width-2)
+	avail := availableWidth(m.width)
+	agentW := proportionalWidth(avail, 16, 8)
+	lineW := max(20, avail-agentW)
+
+	cols := []table.Column{
+		{Title: "AGENT", Width: agentW},
+		{Title: "RECENT OUTPUT", Width: lineW},
 	}
 
-	// Proportional column widths.
-	agentW := proportionalWidth(m.width, 16, 8)
-	lineW := max(20, m.width-agentW-7)
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(entries), vRows)
 
-	content := tableHeader([]int{agentW, lineW}, []string{"AGENT", "RECENT OUTPUT"}, m.width)
-
-	visible := visibleRows(m.height, 9)
-	start, end := listViewport(m.cursor, len(entries), visible)
-
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		e := entries[i]
-		line := fmt.Sprintf("  %-*s %s", agentW, truncate(e.AgentID, agentW), truncate(e.Line, lineW))
-		if i == m.cursor {
-			line = selectedRow(line)
-		} else {
-			line = idleStyle.Render(line)
-		}
-		content += line + "\n"
+		rows = append(rows, table.Row{e.AgentID, e.Line})
+	}
+
+	var content string
+	if len(entries) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No activity detected", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
 
 	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(entries))
