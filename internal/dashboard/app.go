@@ -690,14 +690,16 @@ func (m Model) View() string {
 		content = m.renderKanban()
 	}
 
-	// Full-width title bar with status summary
+	// Full-width title bar. titleStyle has Padding(0,2) adding 4 horizontal
+	// chars, so content area is m.width-4 to fill the terminal exactly.
 	left := " ◈ LOOM DASHBOARD"
 	right := fmt.Sprintf("%d agents  %d unread ", len(m.data.agents), m.data.unread)
-	padding := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	contentW := m.width - 4
+	padding := contentW - lipgloss.Width(left) - lipgloss.Width(right)
 	if padding < 1 {
 		padding = 1
 	}
-	titleBar := titleStyle.Width(m.width - 4).Render(left + strings.Repeat(" ", padding) + right)
+	titleBar := titleStyle.Width(contentW).Render(left + strings.Repeat(" ", padding) + right)
 
 	help := m.helpBar()
 	if m.searchMode {
