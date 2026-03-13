@@ -333,34 +333,39 @@ func (m Model) renderStatusBar(fullW int) string {
 
 // renderActivityOverview builds a compact live activity panel for the overview.
 // Shows only ToolSummary lines (human-readable tool use); mail excluded.
-// Lines are full-width — no truncation.
 func (m Model) renderActivityOverview(colW, budget int) string {
-	innerW := colW - 2
-	agentW := 12
-	prefixW := 2 + 2 + agentW + 1 // "  ↯ " + agent + " "
-	lineW := max(8, innerW-prefixW)
+	innerW := colW - 4 // table cell padding (1 each side × 2 cols)
+	agentW := 13
+	lineW := max(8, innerW-agentW)
 
 	projectRoot := filepath.Dir(m.loomRoot)
 
-	var lines []string
-	toolLimit := min(budget, len(m.data.activity))
-	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
-		e := m.data.activity[i]
-		agentCol := agentPill(truncate(e.AgentID, agentW))
-		prefix := fmt.Sprintf("  ↯ %s ", agentCol)
-		formatted := formatToolLine(e.Line, lineW, projectRoot)
-		lines = append(lines, prefix+formatted)
+	cols := []table.Column{
+		{Title: "", Width: agentW},
+		{Title: "", Width: lineW},
 	}
 
-	content := capContent(lines, budget)
-	if content == "" {
-		content = renderEmpty("No recent activity", colW-2)
-	} else {
-		content = "\n" + content
+	toolLimit := min(budget, len(m.data.activity))
+	rows := make([]table.Row, 0, toolLimit)
+	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
+		e := m.data.activity[i]
+		rows = append(rows, table.Row{
+			agentPill(truncate(e.AgentID, agentW)),
+			formatToolLine(e.Line, lineW, projectRoot),
+		})
 	}
+
 	unique := map[string]struct{}{}
 	for _, e := range m.data.activity {
 		unique[e.AgentID] = struct{}{}
+	}
+
+	var content string
+	if len(rows) == 0 {
+		content = renderEmpty("No recent activity", colW-2)
+	} else {
+		t := newStyledTableHeaderless(cols, rows, len(rows))
+		content = "\n" + tableBodyView(t)
 	}
 	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
 }
