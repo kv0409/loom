@@ -177,24 +177,27 @@ func isActivityLine(line string) bool {
 	return false
 }
 
-// toolInfo maps a raw tool name to a display icon and lipgloss color.
+// toolInfo maps a raw tool name to a display icon, icon color, compact label, and label color.
+// labelColor follows the LOOM-083 spec; color is the existing icon badge color.
 type toolInfo struct {
-	icon  string
-	color lipgloss.Color
+	icon       string
+	color      lipgloss.Color
+	label      string
+	labelColor lipgloss.Color
 }
 
 var toolMap = map[string]toolInfo{
-	"shell":        {"$", colCyan},
-	"execute_bash": {"$", colCyan},
-	"read":         {"r", colGreen},
-	"fs_read":      {"r", colGreen},
-	"write":        {"w", colYellow},
-	"fs_write":     {"w", colYellow},
-	"grep":         {"s", colMagenta},
-	"glob":         {"s", colMagenta},
-	"code":         {"<>", colBlue},
-	"use_aws":      {"☁", colOrange},
-	"aws":          {"☁", colOrange},
+	"shell":        {"$", colCyan, "SHELL", colBlue},
+	"execute_bash": {"$", colCyan, "SHELL", colBlue},
+	"read":         {"r", colGreen, "READ", colGreen},
+	"fs_read":      {"r", colGreen, "READ", colGreen},
+	"write":        {"w", colYellow, "WRITE", colYellow},
+	"fs_write":     {"w", colYellow, "WRITE", colYellow},
+	"grep":         {"s", colMagenta, "FIND", colCyan},
+	"glob":         {"s", colMagenta, "FIND", colCyan},
+	"code":         {"<>", colBlue, "CODE", colBlue},
+	"use_aws":      {"☁", colOrange, "AWS", colOrange},
+	"aws":          {"☁", colOrange, "AWS", colOrange},
 }
 
 // formatToolLine parses a .tools line ("HH:MM:SS tool: args") and returns a
@@ -219,11 +222,14 @@ func formatToolLine(line string, width int, projectRoot string) string {
 	// Resolve display info
 	info, ok := toolMap[toolName]
 	if !ok {
-		// MCP tools: @server/tool
-		if strings.HasPrefix(toolName, "@") || strings.Contains(toolName, "/") {
-			info = toolInfo{"~", colTeal}
+		// Loom CLI lines
+		if strings.HasPrefix(toolName, "loom") {
+			info = toolInfo{"◆", colMagenta, "LOOM", colMagenta}
+		} else if strings.HasPrefix(toolName, "@") || strings.Contains(toolName, "/") {
+			// MCP tools: @server/tool
+			info = toolInfo{"~", colTeal, "TOOL", colGray}
 		} else {
-			info = toolInfo{"·", colGray}
+			info = toolInfo{"·", colGray, "TOOL", colGray}
 		}
 	}
 
@@ -244,18 +250,19 @@ func formatToolLine(line string, width int, projectRoot string) string {
 	args = strings.TrimSpace(args)
 
 	// Render styled parts
-	timePart := lipgloss.NewStyle().Foreground(colGray).Render(timeStr)
-	badge := lipgloss.NewStyle().Foreground(info.color).Bold(true).Render("[" + info.icon + "] " + toolName)
+	timePart := lipgloss.NewStyle().Foreground(colGray).Render(relativeTime(timeStr))
+	label := lipgloss.NewStyle().Foreground(info.labelColor).Bold(true).Width(5).Render(info.label)
+	badge := lipgloss.NewStyle().Foreground(info.color).Render("[" + info.icon + "] " + toolName)
 
 	// Calculate remaining width for args
-	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(badge) + 1
+	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(label) + 1 + lipgloss.Width(badge) + 1
 	argW := width - usedW
 	if argW < 4 {
 		argW = 4
 	}
 	argPart := truncate(args, argW)
 
-	return timePart + " " + badge + " " + argPart
+	return timePart + " " + label + " " + badge + " " + argPart
 }
 
 func (m Model) renderActivity() string {

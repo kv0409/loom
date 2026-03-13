@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -306,6 +307,34 @@ func agentColor(id string) lipgloss.Color {
 		return colYellow
 	default:
 		return colFg
+	}
+}
+
+// relativeTime converts an "HH:MM:SS" timestamp (today, local time) to a
+// human-friendly relative string: "5s ago", "3m ago", "2h ago".
+// Returns the original string if it cannot be parsed.
+func relativeTime(ts string) string {
+	if len(ts) != 8 || ts[2] != ':' || ts[5] != ':' {
+		return ts
+	}
+	now := time.Now()
+	t, err := time.ParseInLocation("15:04:05", ts, now.Location())
+	if err != nil {
+		return ts
+	}
+	// Anchor to today
+	t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, now.Location())
+	d := now.Sub(t)
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	default:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
 }
 
