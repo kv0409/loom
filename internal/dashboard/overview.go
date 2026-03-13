@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/issue"
 )
@@ -51,10 +52,11 @@ func (m Model) renderOverview() string {
 	// --- AGENTS band (full width, ~40% height, no task truncation) ---
 	aIdW := min(16, max(8, (innerW-12)*2/5))
 	aRoleW := max(4, min(10, (innerW-12)/5))
-	aAgeW := max(4, 6)
-	aHbW := max(4, 6)
+	aAgeW := max(4, 8)  // "⏱ " (2) + value (6)
+	aHbW := max(4, 8)   // "♥ " (2) + value (6)
 	// task column gets remaining space — no truncation cap
-	fixedCols := 2 + 1 + aIdW + 1 + aRoleW + 1 + 2 + aAgeW + 1 + 2 + aHbW + 1
+	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 5 cols × 2 = 10
+	fixedCols := aIdW + aRoleW + aAgeW + aHbW + 6 + 10
 	aTaskW := max(8, innerW-fixedCols)
 
 	projectRoot := filepath.Dir(m.loomRoot)
@@ -65,7 +67,14 @@ func (m Model) renderOverview() string {
 		lastActivity[e.AgentID] = e.Line
 	}
 
-	var agentLines []string
+	agentCols := []table.Column{
+		{Title: "", Width: aIdW + 2},  // status indicator + pill
+		{Title: "", Width: aRoleW},
+		{Title: "", Width: aAgeW},
+		{Title: "", Width: aHbW},
+		{Title: "", Width: aTaskW},
+	}
+	agentRows := make([]table.Row, 0, len(m.data.agents))
 	for _, a := range m.data.agents {
 		hb := fmtTime(a.Heartbeat, true)
 		age := fmtTime(a.SpawnedAt, true)
@@ -75,22 +84,27 @@ func (m Model) renderOverview() string {
 			task = activeStyle.Render(line)
 		} else if len(a.AssignedIssues) > 0 {
 			taskStr := strings.Join(a.AssignedIssues, ", ")
-			if lipgloss.Width(taskStr) > aTaskW {
-				taskStr = truncate(taskStr, aTaskW)
-			}
-			task = activeStyle.Render(taskStr)
+			task = activeStyle.Render(truncate(taskStr, aTaskW))
 		}
-		idCol := lipgloss.NewStyle().Width(aIdW + 2).Render(agentPill(truncate(a.ID, aIdW)))
-		roleCol := lipgloss.NewStyle().Width(aRoleW).Render(truncate(a.Role, aRoleW))
-		ageCol := idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW, age))
-		hbCol := heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW, hb))
-		agentLines = append(agentLines, "  "+statusIndicator(a.Status)+" "+idCol+" "+roleCol+" "+ageCol+" "+hbCol+" "+task)
+		idCol := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
+		ageCol := idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW-2, age))
+		hbCol := heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW-2, hb))
+		agentRows = append(agentRows, table.Row{idCol, truncate(a.Role, aRoleW), ageCol, hbCol, task})
 	}
-	agentContent := capContent(agentLines, agentBudget)
-	if agentContent == "" {
+
+	var agentContent string
+	if len(agentRows) == 0 {
 		agentContent = renderEmpty("No agents running — loom spawn to start", innerW)
 	} else {
-		agentContent = "\n" + agentContent
+		rows := agentRows
+		if agentBudget > 0 && len(rows) > agentBudget {
+			rows = rows[:agentBudget]
+		}
+		t := newStyledTableHeaderless(agentCols, rows, len(rows))
+		agentContent = "\n" + tableBodyView(t) + "\n"
+		if len(agentRows) > agentBudget && agentBudget > 0 {
+			agentContent += fmt.Sprintf("  ... and %d more\n", len(agentRows)-agentBudget)
+		}
 	}
 	agentPanel := panel(fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents)), agentContent, fullW)
 
