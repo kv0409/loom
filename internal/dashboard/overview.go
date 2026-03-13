@@ -285,13 +285,12 @@ func (m Model) renderStatusBar(fullW int) string {
 		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
 		fractionW := len(fraction)
-		// bar width fills available space: innerW - 2(indent) - 14(id) - 1 - fractionW - 1 - titleMaxW - 1
-		// We fix barW dynamically: use remaining after id + fraction + title
-		titleMaxW := 20
-		barW := innerW - 2 - 14 - 1 - fractionW - 1 - titleMaxW - 1
+		// Cap barW at 40 and give reclaimed space to titleMaxW.
+		barW := min(innerW-2-14-1-fractionW-1-20-1, 40)
 		if barW < 6 {
 			barW = 6
 		}
+		titleMaxW := max(20, innerW-2-14-1-fractionW-1-barW-1)
 
 		// Count children by status
 		childCounts := map[string]int{}
