@@ -171,10 +171,11 @@ func (m Model) renderStatusBar(fullW int) string {
 
 	// --- Lines 2-4: progress bars for active parent issues ---
 	type parentProgress struct {
-		id    string
-		title string
-		done  int
-		total int
+		id       string
+		title    string
+		done     int
+		total    int
+		children []string
 	}
 
 	// Build a map of issue ID → issue for quick lookup
@@ -199,10 +200,11 @@ func (m Model) renderStatusBar(fullW int) string {
 			}
 		}
 		parents = append(parents, parentProgress{
-			id:    iss.ID,
-			title: iss.Title,
-			done:  done,
-			total: len(iss.Children),
+			id:       iss.ID,
+			title:    iss.Title,
+			done:     done,
+			total:    len(iss.Children),
+			children: iss.Children,
 		})
 	}
 
@@ -215,24 +217,90 @@ func (m Model) renderStatusBar(fullW int) string {
 		overflow = len(parents) - maxBars
 	}
 
-	barW := 10
+	// stackedBar renders a continuous stacked bar of width barW using largest-remainder rounding.
+	// Stages ordered left-to-right: done → review → in-progress → assigned → blocked → open
+	stackedBar := func(counts map[string]int, total, barW int) string {
+		type stage struct {
+			key   string
+			char  string
+			style lipgloss.Style
+		}
+		stages := []stage{
+			{"done", "█", barSegDone},
+			{"review", "█", barSegReview},
+			{"in-progress", "█", barSegInProgress},
+			{"assigned", "█", barSegAssigned},
+			{"blocked", "█", barSegBlocked},
+			{"open", "░", barSegOpen},
+		}
+		type entry struct {
+			idx       int
+			exact     float64
+			floor     int
+			remainder float64
+		}
+		entries := make([]entry, len(stages))
+		for i, s := range stages {
+			c := counts[s.key]
+			exact := 0.0
+			if total > 0 {
+				exact = float64(c) * float64(barW) / float64(total)
+			}
+			entries[i] = entry{i, exact, int(exact), exact - float64(int(exact))}
+		}
+		allocated := 0
+		for _, e := range entries {
+			allocated += e.floor
+		}
+		remaining := barW - allocated
+		order := make([]int, len(entries))
+		for i := range order {
+			order[i] = i
+		}
+		for i := 0; i < len(order)-1; i++ {
+			for j := i + 1; j < len(order); j++ {
+				if entries[order[j]].remainder > entries[order[i]].remainder {
+					order[i], order[j] = order[j], order[i]
+				}
+			}
+		}
+		widths := make([]int, len(stages))
+		for i, idx := range order {
+			widths[idx] = entries[idx].floor
+			if i < remaining {
+				widths[idx]++
+			}
+		}
+		var bar string
+		for i, s := range stages {
+			if widths[i] > 0 {
+				bar += s.style.Render(strings.Repeat(s.char, widths[i]))
+			}
+		}
+		return bar
+	}
+
 	for _, p := range shown {
 		idStr := barLabel.Render(fmt.Sprintf("%-14s", truncate(p.id, 14)))
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
-		// bar width: innerW minus id(14) minus fraction(~5) minus title minus spacing
 		fractionW := len(fraction)
-		titleMaxW := innerW - 14 - 1 - barW - 1 - fractionW - 2
-		if titleMaxW < 6 {
-			titleMaxW = 6
+		// bar width fills available space: innerW - 2(indent) - 14(id) - 1 - fractionW - 1 - titleMaxW - 1
+		// We fix barW dynamically: use remaining after id + fraction + title
+		titleMaxW := 20
+		barW := innerW - 2 - 14 - 1 - fractionW - 1 - titleMaxW - 1
+		if barW < 6 {
+			barW = 6
 		}
-		titleStr := idleStyle.Render(truncate(p.title, titleMaxW))
 
-		filled := 0
-		if p.total > 0 {
-			filled = p.done * barW / p.total
+		// Count children by status
+		childCounts := map[string]int{}
+		for _, cid := range p.children {
+			if c, ok := issueMap[cid]; ok {
+				childCounts[c.Status]++
+			}
 		}
-		bar := barFill.Render(strings.Repeat("■", filled)) +
-			barEmpty.Render(strings.Repeat("░", barW-filled))
+		bar := stackedBar(childCounts, p.total, barW)
+		titleStr := idleStyle.Render(truncate(p.title, titleMaxW))
 
 		barLines = append(barLines, fmt.Sprintf("  %s %s %-*s %s",
 			idStr, bar, fractionW, fraction, titleStr))
