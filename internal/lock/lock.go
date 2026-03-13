@@ -36,9 +36,9 @@ func lockPath(loomRoot, file string) string {
 	return filepath.Join(loomRoot, "locks", encoded+".lock.yaml")
 }
 
-func Acquire(loomRoot string, file string, agent string, issue string) error {
-	path := lockPath(loomRoot, file)
-	existing, err := Check(loomRoot, file)
+func Acquire(loomRoot string, opts AcquireOpts) error {
+	path := lockPath(loomRoot, opts.File)
+	existing, err := Check(loomRoot, opts.File)
 	if err != nil {
 		return err
 	}
@@ -46,10 +46,10 @@ func Acquire(loomRoot string, file string, agent string, issue string) error {
 		return fmt.Errorf("LOCKED by %s (%s) since %s", existing.Agent, existing.Issue, existing.AcquiredAt.Format("15:04:05"))
 	}
 	l := &Lock{
-		File:       file,
-		Agent:      agent,
+		File:       opts.File,
+		Agent:      opts.Agent,
 		AcquiredAt: time.Now(),
-		Issue:      issue,
+		Issue:      opts.Issue,
 	}
 	return store.WriteYAML(path, l)
 }

@@ -1052,7 +1052,7 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	ref, _ := cmd.Flags().GetString("ref")
 	body, _ := cmd.Flags().GetString("body")
 
-	msg := &mail.Message{
+	if err := mail.Send(root, mail.SendOpts{
 		From:     from,
 		To:       args[0],
 		Type:     typ,
@@ -1060,8 +1060,7 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 		Ref:      ref,
 		Subject:  args[1],
 		Body:     body,
-	}
-	if err := mail.Send(root, msg); err != nil {
+	}); err != nil {
 		return err
 	}
 	cliout.PrintSuccess("Sent to "+args[0]+": "+args[1])
@@ -1082,7 +1081,7 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 	}
 	unreadOnly, _ := cmd.Flags().GetBool("unread")
 
-	msgs, err := mail.Read(root, agent, unreadOnly)
+	msgs, err := mail.Read(root, mail.ReadOpts{Agent: agent, UnreadOnly: unreadOnly})
 	if err != nil {
 		return err
 	}
@@ -1154,7 +1153,7 @@ func runMemoryAdd(cmd *cobra.Command, args []string) error {
 	tagsStr, _ := cmd.Flags().GetString("tags")
 	source, _ := cmd.Flags().GetString("source")
 
-	entry := &memory.Entry{
+	opts := memory.AddOpts{
 		Type:      typ,
 		Title:     title,
 		Context:   ctx,
@@ -1163,23 +1162,17 @@ func runMemoryAdd(cmd *cobra.Command, args []string) error {
 		Finding:   finding,
 		Rule:      rule,
 		Location:  location,
+		By:        source,
 	}
 	if affectsStr != "" {
-		entry.Affects = splitCSV(affectsStr)
+		opts.Affects = splitCSV(affectsStr)
 	}
 	if tagsStr != "" {
-		entry.Tags = splitCSV(tagsStr)
-	}
-	switch typ {
-	case "decision":
-		entry.DecidedBy = source
-	case "discovery":
-		entry.DiscoveredBy = source
-	case "convention":
-		entry.EstablishedBy = source
+		opts.Tags = splitCSV(tagsStr)
 	}
 
-	if err := memory.Add(root, entry); err != nil {
+	entry, err := memory.Add(root, opts)
+	if err != nil {
 		return err
 	}
 	cliout.PrintSuccess("Added "+entry.Title, entry.ID)
@@ -1192,7 +1185,7 @@ func runMemorySearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	limit, _ := cmd.Flags().GetInt("limit")
-	results, err := memory.Search(root, args[0], limit)
+	results, err := memory.Search(root, memory.SearchOpts{Query: args[0], Limit: limit})
 	if err != nil {
 		return err
 	}
@@ -1377,7 +1370,7 @@ func runLockAcquire(cmd *cobra.Command, args []string) error {
 	}
 	agent, _ := cmd.Flags().GetString("agent")
 	issue, _ := cmd.Flags().GetString("issue")
-	if err := lock.Acquire(root, args[0], agent, issue); err != nil {
+	if err := lock.Acquire(root, lock.AcquireOpts{File: args[0], Agent: agent, Issue: issue}); err != nil {
 		return err
 	}
 	fmt.Printf("Locked %s\n", args[0])
@@ -2429,7 +2422,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			if !e.IsDir() {
 				continue
 			}
-			msgs, err := mail.Read(root, e.Name(), true)
+			msgs, err := mail.Read(root, mail.ReadOpts{Agent: e.Name(), UnreadOnly: true})
 			if err == nil {
 				undelivered += len(msgs)
 			}
@@ -2605,14 +2598,13 @@ func runFinding(cmd *cobra.Command, args []string) error {
 	}
 
 	ref, _ := cmd.Flags().GetString("ref")
-	msg := &mail.Message{
+	if err := mail.Send(root, mail.SendOpts{
 		From:    from,
 		To:      to,
 		Type:    "finding",
 		Subject: args[0],
 		Ref:     ref,
-	}
-	if err := mail.Send(root, msg); err != nil {
+	}); err != nil {
 		return err
 	}
 	fmt.Printf("Finding sent to %s\n", to)

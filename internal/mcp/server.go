@@ -137,7 +137,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 	}
 	switch name {
 	case "loom_mail_send":
-		msg := &mail.Message{
+		if err := mail.Send(s.LoomRoot, mail.SendOpts{
 			From:     s.AgentID,
 			To:       str(args, "to"),
 			Subject:  str(args, "subject"),
@@ -145,15 +145,14 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			Type:     strOr(args, "type", "status"),
 			Priority: strOr(args, "priority", "normal"),
 			Ref:      str(args, "ref"),
-		}
-		if err := mail.Send(s.LoomRoot, msg); err != nil {
+		}); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Sent to %s: %s", msg.To, msg.Subject), nil
+		return fmt.Sprintf("Sent to %s: %s", str(args, "to"), str(args, "subject")), nil
 
 	case "loom_mail_read":
 		unread, _ := args["unread_only"].(bool)
-		msgs, err := mail.Read(s.LoomRoot, s.AgentID, unread)
+		msgs, err := mail.Read(s.LoomRoot, mail.ReadOpts{Agent: s.AgentID, UnreadOnly: unread})
 		if err != nil {
 			return "", err
 		}
@@ -169,7 +168,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_mail_count":
-		msgs, err := mail.Read(s.LoomRoot, s.AgentID, true)
+		msgs, err := mail.Read(s.LoomRoot, mail.ReadOpts{Agent: s.AgentID, UnreadOnly: true})
 		if err != nil {
 			return "", err
 		}
@@ -220,7 +219,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_memory_add":
-		entry := &memory.Entry{
+		entry, err := memory.Add(s.LoomRoot, memory.AddOpts{
 			Type:      str(args, "type"),
 			Title:     str(args, "title"),
 			Context:   str(args, "context"),
@@ -229,8 +228,9 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			Finding:   str(args, "finding"),
 			Rule:      str(args, "rule"),
 			Location:  str(args, "location"),
-		}
-		if err := memory.Add(s.LoomRoot, entry); err != nil {
+			By:        s.AgentID,
+		})
+		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Added %s: %s", entry.ID, entry.Title), nil
@@ -240,7 +240,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if limit == 0 {
 			limit = 5
 		}
-		results, err := memory.Search(s.LoomRoot, str(args, "query"), limit)
+		results, err := memory.Search(s.LoomRoot, memory.SearchOpts{Query: str(args, "query"), Limit: limit})
 		if err != nil {
 			return "", err
 		}
@@ -259,8 +259,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_lock_acquire":
-		issueRef := str(args, "issue")
-		if err := lock.Acquire(s.LoomRoot, str(args, "file"), s.AgentID, issueRef); err != nil {
+		if err := lock.Acquire(s.LoomRoot, lock.AcquireOpts{File: str(args, "file"), Agent: s.AgentID, Issue: str(args, "issue")}); err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("Locked %s", str(args, "file")), nil

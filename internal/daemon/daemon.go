@@ -536,7 +536,7 @@ func (d *Daemon) watchMail() {
 					continue
 				}
 				agentID := e.Name()
-				msgs, err := mail.Read(d.LoomRoot, agentID, true)
+				msgs, err := mail.Read(d.LoomRoot, mail.ReadOpts{Agent: agentID, UnreadOnly: true})
 				if err != nil {
 					d.rlog("watchMail:read:"+agentID, "[mail] Read inbox for %s: %v", agentID, err)
 					continue

@@ -95,19 +95,39 @@ func prefixToType(prefix string) (string, string) {
 	return "", ""
 }
 
-func Add(loomRoot string, entry *Entry) error {
+func Add(loomRoot string, opts AddOpts) (*Entry, error) {
+	entry := &Entry{
+		Type:      opts.Type,
+		Title:     opts.Title,
+		Context:   opts.Context,
+		Rationale: opts.Rationale,
+		Decision:  opts.Decision,
+		Finding:   opts.Finding,
+		Rule:      opts.Rule,
+		Location:  opts.Location,
+		Affects:   opts.Affects,
+		Tags:      opts.Tags,
+	}
+	switch opts.Type {
+	case "decision":
+		entry.DecidedBy = opts.By
+	case "discovery":
+		entry.DiscoveredBy = opts.By
+	case "convention":
+		entry.EstablishedBy = opts.By
+	}
 	ti, ok := typeInfo[entry.Type]
 	if !ok {
-		return fmt.Errorf("unknown memory type: %s", entry.Type)
+		return nil, fmt.Errorf("unknown memory type: %s", entry.Type)
 	}
 	dir := filepath.Join(loomRoot, "memory", ti.subdir)
 	n, err := store.NextCounter(filepath.Join(dir, "counter.txt"))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	entry.ID = fmt.Sprintf("%s-%03d", ti.prefix, n)
 	entry.Timestamp = time.Now()
-	return store.WriteYAML(filepath.Join(dir, entry.ID+".yaml"), entry)
+	return entry, store.WriteYAML(filepath.Join(dir, entry.ID+".yaml"), entry)
 }
 
 func Load(loomRoot string, id string) (*Entry, error) {
@@ -154,11 +174,12 @@ func List(loomRoot string, opts ListOpts) ([]*Entry, error) {
 	return entries, nil
 }
 
-func Search(loomRoot string, query string, limit int) ([]SearchResult, error) {
+func Search(loomRoot string, opts SearchOpts) ([]SearchResult, error) {
+	limit := opts.Limit
 	if limit <= 0 {
 		limit = 5
 	}
-	terms := tokenize(query)
+	terms := tokenize(opts.Query)
 	if len(terms) == 0 {
 		return nil, nil
 	}

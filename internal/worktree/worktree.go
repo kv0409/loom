@@ -204,7 +204,11 @@ func Remove(loomRoot string, name string, force bool) error {
 	return nil
 }
 
-func List(loomRoot string) ([]*Worktree, error) {
+func List(loomRoot string, opts ...ListOpts) ([]*Worktree, error) {
+	var filter ListOpts
+	if len(opts) > 0 {
+		filter = opts[0]
+	}
 	root := projectRoot(loomRoot)
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = root
@@ -253,6 +257,15 @@ func List(loomRoot string) ([]*Worktree, error) {
 		worktrees = append(worktrees, wt)
 	}
 
+	if filter.Issue != "" {
+		var filtered []*Worktree
+		for _, wt := range worktrees {
+			if wt.Issue == filter.Issue {
+				filtered = append(filtered, wt)
+			}
+		}
+		return filtered, nil
+	}
 	return worktrees, nil
 }
 

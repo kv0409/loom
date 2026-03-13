@@ -223,7 +223,7 @@ func countUnread(loomRoot string) int {
 		if !e.IsDir() {
 			continue
 		}
-		msgs, err := mail.Read(loomRoot, e.Name(), true)
+		msgs, err := mail.Read(loomRoot, mail.ReadOpts{Agent: e.Name(), UnreadOnly: true})
 		if err == nil {
 			count += len(msgs)
 		}

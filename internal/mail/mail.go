@@ -46,7 +46,16 @@ type LogOpts struct {
 	Since time.Duration
 }
 
-func Send(loomRoot string, msg *Message) error {
+func Send(loomRoot string, opts SendOpts) error {
+	msg := &Message{
+		From:     opts.From,
+		To:       opts.To,
+		Subject:  opts.Subject,
+		Body:     opts.Body,
+		Type:     opts.Type,
+		Priority: opts.Priority,
+		Ref:      opts.Ref,
+	}
 	msg.Timestamp = time.Now()
 	msg.ID = fmt.Sprintf("%d-%s-%s", msg.Timestamp.Unix(), msg.From, slug(msg.Subject))
 
@@ -63,8 +72,8 @@ func Send(loomRoot string, msg *Message) error {
 	return store.WriteYAML(filepath.Join(dir, msg.ID+".yaml"), msg)
 }
 
-func Read(loomRoot string, agent string, unreadOnly bool) ([]*Message, error) {
-	dir := filepath.Join(loomRoot, "mail", "inbox", agent)
+func Read(loomRoot string, opts ReadOpts) ([]*Message, error) {
+	dir := filepath.Join(loomRoot, "mail", "inbox", opts.Agent)
 	files, err := store.ListYAMLFiles(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -78,7 +87,7 @@ func Read(loomRoot string, agent string, unreadOnly bool) ([]*Message, error) {
 		if err := store.ReadYAML(f, &m); err != nil {
 			continue
 		}
-		if unreadOnly && m.Read {
+		if opts.UnreadOnly && m.Read {
 			continue
 		}
 		msgs = append(msgs, &m)
