@@ -228,6 +228,15 @@ func Load(loomRoot string) (*Config, error) {
 	if cfg.Models == (ModelsConfig{}) {
 		cfg.Models = defaults.Models
 	}
+	if cfg.Polling.PendingAgentsIntervalMs == 0 {
+		cfg.Polling.PendingAgentsIntervalMs = defaults.Polling.PendingAgentsIntervalMs
+	}
+	if cfg.Polling.ACPOutputIntervalMs == 0 {
+		cfg.Polling.ACPOutputIntervalMs = defaults.Polling.ACPOutputIntervalMs
+	}
+	if cfg.Polling.WorktreeGCIntervalMs == 0 {
+		cfg.Polling.WorktreeGCIntervalMs = defaults.Polling.WorktreeGCIntervalMs
+	}
 	return cfg, nil
 }
 
