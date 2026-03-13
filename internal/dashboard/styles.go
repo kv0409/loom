@@ -281,6 +281,34 @@ func selectedRow(line string) string {
 
 var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 
+// agentColor returns the role-based color for an agent ID.
+// Role is the prefix before the first dash-digit sequence (e.g. "builder" from "builder-001").
+func agentColor(id string) lipgloss.Color {
+	role := id
+	for i := 1; i < len(id); i++ {
+		if id[i-1] == '-' && id[i] >= '0' && id[i] <= '9' {
+			role = id[:i-1]
+			break
+		}
+	}
+	switch role {
+	case "orchestrator":
+		return colBlue
+	case "lead":
+		return colMagenta
+	case "builder":
+		return colGreen
+	case "reviewer":
+		return colCyan
+	case "explorer":
+		return colOrange
+	case "researcher":
+		return colYellow
+	default:
+		return colFg
+	}
+}
+
 func renderEmpty(msg string, width int) string {
 	centered := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
 	return centered.Render(emptyMsgStyle.Render(msg)) + "\n"

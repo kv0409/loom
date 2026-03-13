@@ -80,8 +80,9 @@ func (m Model) renderOverview() string {
 			}
 			task = activeStyle.Render(taskStr)
 		}
-		agentLines = append(agentLines, fmt.Sprintf("  %s %-*s %-*s %s %s %s",
-			statusIndicator(a.Status), aIdW, truncate(a.ID, aIdW),
+		idCol := lipgloss.NewStyle().Foreground(agentColor(a.ID)).Render(fmt.Sprintf("%-*s", aIdW, truncate(a.ID, aIdW)))
+		agentLines = append(agentLines, fmt.Sprintf("  %s %s %-*s %s %s %s",
+			statusIndicator(a.Status), idCol,
 			aRoleW, truncate(a.Role, aRoleW),
 			idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW, age)),
 			heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW, hb)),
@@ -333,7 +334,8 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	toolLimit := min(budget, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		prefix := fmt.Sprintf("  ↯ %-*s ", agentW, truncate(e.AgentID, agentW))
+		agentCol := lipgloss.NewStyle().Foreground(agentColor(e.AgentID)).Render(fmt.Sprintf("%-*s", agentW, truncate(e.AgentID, agentW)))
+		prefix := fmt.Sprintf("  ↯ %s ", agentCol)
 		formatted := formatToolLine(e.Line, lineW, projectRoot)
 		lines = append(lines, prefix+formatted)
 	}
