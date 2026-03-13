@@ -49,8 +49,9 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			if last != nil {
 				text := last.Content
 				const maxLen = 200
-				if len(text) > maxLen {
-					text = "…" + text[len(text)-(maxLen-1):]
+				runes := []rune(text)
+				if len(runes) > maxLen {
+					text = "…" + string(runes[len(runes)-(maxLen-1):])
 				}
 				entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
 			}
@@ -111,7 +112,7 @@ func (m Model) renderActivity() string {
 
 	// Proportional column widths.
 	agentW := proportionalWidth(m.width, 16, 8)
-	lineW := max(20, m.width-agentW-6)
+	lineW := max(20, m.width-agentW-7)
 
 	content := tableHeader([]int{agentW, lineW}, []string{"AGENT", "RECENT OUTPUT"}, m.width)
 

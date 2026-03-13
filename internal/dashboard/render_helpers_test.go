@@ -1,6 +1,11 @@
 package dashboard
 
-import "testing"
+import (
+	"testing"
+	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 func TestListViewport_CursorAtStart(t *testing.T) {
 	start, end := listViewport(0, 20, 10)
@@ -192,3 +197,16 @@ func TestColWidths_MinEnforced(t *testing.T) {
 		t.Errorf("expected min=15 enforced, got %d", widths[0])
 	}
 }
+
+func TestWordWrap_UTF8(t *testing.T) {
+	segs := wordWrap("日本語テスト hello 世界 foo bar", 14)
+	for i, seg := range segs {
+		if !utf8.ValidString(seg) {
+			t.Errorf("segment %d is not valid UTF-8: %q", i, seg)
+		}
+		if w := lipgloss.Width(seg); w > 14 {
+			t.Errorf("segment %d visual width %d > 14: %q", i, w, seg)
+		}
+	}
+}
+

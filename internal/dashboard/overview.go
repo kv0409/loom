@@ -288,26 +288,43 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
 }
 
-// wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
+// wordWrap splits s into segments of at most width visual columns, breaking on spaces where possible.
 func wordWrap(s string, width int) []string {
-	if width <= 0 || len(s) == 0 {
+	if width <= 0 {
 		return []string{s}
 	}
-	var segments []string
-	for len(s) > 0 {
-		if len(s) <= width {
-			segments = append(segments, s)
-			break
+	var lines []string
+	for _, line := range strings.Split(s, "\n") {
+		for lipgloss.Width(line) > width {
+			runes := []rune(line)
+			cut := 0
+			w := 0
+			for i, r := range runes {
+				rw := lipgloss.Width(string(r))
+				if w+rw > width {
+					break
+				}
+				w += rw
+				cut = i + 1
+			}
+			if cut == 0 {
+				cut = 1 // Single char wider than width; emit it anyway.
+			}
+			// j > 0: breaking at index 0 would emit an empty segment.
+			for j := cut - 1; j > 0; j-- {
+				if runes[j] == ' ' {
+					cut = j
+					break
+				}
+			}
+			lines = append(lines, strings.TrimRight(string(runes[:cut]), " "))
+			line = strings.TrimLeft(string(runes[cut:]), " ")
 		}
-		// Try to break at last space within width
-		cut := width
-		if idx := strings.LastIndex(s[:width], " "); idx > 0 {
-			cut = idx + 1
+		if line != "" || len(lines) == 0 {
+			lines = append(lines, line)
 		}
-		segments = append(segments, strings.TrimRight(s[:cut], " "))
-		s = strings.TrimLeft(s[cut:], " ")
 	}
-	return segments
+	return lines
 }
 
 func min(a, b int) int {
