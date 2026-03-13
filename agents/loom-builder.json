@@ -1,6 +1,6 @@
 {
   "name": "loom-builder",
-  "description": "Loom builder \u2014 implements code changes in an isolated worktree. Most restricted writer agent.",
+  "description": "Loom builder — implements code changes in an isolated worktree. Most restricted writer agent.",
   "model": "claude-opus-4.6",
   "tools": [
     "read",
@@ -70,6 +70,11 @@
       },
       {
         "command": "loom issue list --assignee $LOOM_AGENT_ID 2>/dev/null || echo 'No assigned issues'",
+        "timeout_ms": 5000
+      },
+      {
+        "command": "./loom --help",
+        "description": "Show available loom CLI commands",
         "timeout_ms": 5000
       }
     ],
