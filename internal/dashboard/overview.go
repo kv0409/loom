@@ -81,7 +81,7 @@ func (m Model) renderOverview() string {
 			task = activeStyle.Render(taskStr)
 		}
 		idCol := lipgloss.NewStyle().Width(aIdW + 2).Render(agentPill(truncate(a.ID, aIdW)))
-		roleCol := fmt.Sprintf("%-*s", aRoleW, truncate(a.Role, aRoleW))
+		roleCol := lipgloss.NewStyle().Width(aRoleW).Render(truncate(a.Role, aRoleW))
 		ageCol := idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW, age))
 		hbCol := heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW, hb))
 		agentLines = append(agentLines, "  "+statusIndicator(a.Status)+" "+idCol+" "+roleCol+" "+ageCol+" "+hbCol+" "+task)
