@@ -1,13 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -2141,45 +2145,137 @@ func runRestart(cmd *cobra.Command, args []string) error {
 func runUpdate(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Current: %s (%s)\n", version, commitHash)
 
-	// Fetch latest commit via git ls-remote (works with private repos)
-	fmt.Print("Checking for updates... ")
-	lsRemote := exec.Command("git", "ls-remote", "origin", "refs/heads/main")
-	out, err := lsRemote.Output()
-	if err != nil {
-		return fmt.Errorf("git ls-remote failed: %w", err)
-	}
-	fields := strings.Fields(string(out))
-	if len(fields) == 0 {
-		return fmt.Errorf("could not determine remote HEAD")
-	}
-	remoteFull := fields[0]
-	remoteShort := remoteFull[:7]
-	fmt.Printf("latest is %s\n", remoteShort)
+	const repoAPI = "https://api.github.com/repos/kv0409/loom/releases/latest"
 
-	if commitHash == remoteShort {
+	fmt.Print("Checking for updates... ")
+	req, _ := http.NewRequest("GET", repoAPI, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("checking releases: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadURL string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return fmt.Errorf("parsing release: %w", err)
+	}
+	latest := strings.TrimPrefix(release.TagName, "v")
+	fmt.Printf("latest is %s\n", latest)
+
+	if latest == version {
 		fmt.Println("Already up to date.")
 		return nil
 	}
 
-	// Pull latest and rebuild
-	fmt.Print("Pulling... ")
-	pull := exec.Command("git", "pull", "--ff-only", "origin", "main")
-	if out, err := pull.CombinedOutput(); err != nil {
-		return fmt.Errorf("git pull failed: %s\n%s", err, out)
+	// Find the asset for this OS/arch
+	want := fmt.Sprintf("loom_%s_%s_%s.tar.gz", latest, runtime.GOOS, runtime.GOARCH)
+	var assetURL string
+	for _, a := range release.Assets {
+		if a.Name == want {
+			assetURL = a.BrowserDownloadURL
+			break
+		}
 	}
+	if assetURL == "" {
+		return fmt.Errorf("no release binary for %s/%s (looked for %s)", runtime.GOOS, runtime.GOARCH, want)
+	}
+
+	// Download to temp file
+	fmt.Printf("Downloading %s... ", want)
+	dlResp, err := http.Get(assetURL)
+	if err != nil {
+		return fmt.Errorf("downloading: %w", err)
+	}
+	defer dlResp.Body.Close()
+
+	tmpFile, err := os.CreateTemp("", "loom-update-*.tar.gz")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+	if _, err := io.Copy(tmpFile, dlResp.Body); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("saving download: %w", err)
+	}
+	tmpFile.Close()
 	fmt.Println("done.")
 
-	fmt.Print("Building... ")
-	build := exec.Command("make", "install")
-	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("make install failed: %s\n%s", err, out)
+	// Extract binary from tarball
+	fmt.Print("Installing... ")
+	extractDir, err := os.MkdirTemp("", "loom-extract-*")
+	if err != nil {
+		return fmt.Errorf("creating extract dir: %w", err)
 	}
-	fmt.Println("done.")
+	defer os.RemoveAll(extractDir)
+
+	tar := exec.Command("tar", "xzf", tmpPath, "-C", extractDir)
+	if out, err := tar.CombinedOutput(); err != nil {
+		return fmt.Errorf("extracting: %s\n%s", err, out)
+	}
+
+	newBin := filepath.Join(extractDir, "loom")
+	if _, err := os.Stat(newBin); err != nil {
+		return fmt.Errorf("extracted binary not found: %w", err)
+	}
+
+	// Replace current binary
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding current executable: %w", err)
+	}
+	self, err = filepath.EvalSymlinks(self)
+	if err != nil {
+		return fmt.Errorf("resolving executable path: %w", err)
+	}
+
+	// Atomic replace: copy new binary to temp next to target, then rename
+	destDir := filepath.Dir(self)
+	staged, err := os.CreateTemp(destDir, ".loom-update-*")
+	if err != nil {
+		return fmt.Errorf("staging new binary: %w", err)
+	}
+	stagedPath := staged.Name()
+
+	src, err := os.Open(newBin)
+	if err != nil {
+		staged.Close()
+		os.Remove(stagedPath)
+		return fmt.Errorf("opening new binary: %w", err)
+	}
+	if _, err := io.Copy(staged, src); err != nil {
+		src.Close()
+		staged.Close()
+		os.Remove(stagedPath)
+		return fmt.Errorf("copying new binary: %w", err)
+	}
+	src.Close()
+	staged.Close()
+
+	if err := os.Chmod(stagedPath, 0755); err != nil {
+		os.Remove(stagedPath)
+		return fmt.Errorf("setting permissions: %w", err)
+	}
+	if err := os.Rename(stagedPath, self); err != nil {
+		os.Remove(stagedPath)
+		return fmt.Errorf("replacing binary: %w", err)
+	}
+	fmt.Printf("done. Updated to %s\n", latest)
 
 	// Restart daemon if running
 	root, err := config.FindLoomRoot()
 	if err != nil {
-		return nil // no project context, skip restart
+		return nil
 	}
 	pid, alive := daemon.CheckLock(root)
 	if !alive {
@@ -2199,10 +2295,6 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	self, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("finding executable: %w", err)
-	}
 	logPath := filepath.Join(root, "logs", "daemon.log")
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {

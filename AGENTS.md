@@ -7,6 +7,14 @@ make build    # REQUIRED — injects version/commit via ldflags. Plain `go build
 make vet      # go vet ./... — run after every change
 ```
 
+## Releasing
+
+```bash
+./scripts/release.sh <major|minor|patch>   # Maintainer-only. Bumps VERSION in Makefile, commits, tags, pushes. GitHub Actions + goreleaser builds binaries.
+```
+
+End users update via `loom update`, which downloads pre-built binaries from GitHub Releases — no git/make/Go required.
+
 ## Conventions
 
 - All CLI commands live in `cmd/loom/main.go` (monolithic by design). Don't create separate command files — add new commands there.
