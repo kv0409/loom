@@ -483,16 +483,29 @@ func isDashboardRunning(root string) bool {
 }
 
 func launchDashboard(root string) error {
-	if isDashboardRunning(root) {
-		fmt.Println("Dashboard is already running.")
+	for {
+		if isDashboardRunning(root) {
+			fmt.Println("Dashboard is already running.")
+			return nil
+		}
+		os.WriteFile(dashPidFile(root), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
+		m := dashboard.New(root)
+		p := tea.NewProgram(m, dashboard.ProgramOptions()...)
+		finalModel, err := p.Run()
+		os.Remove(dashPidFile(root))
+		if err != nil {
+			return err
+		}
+		if dm, ok := finalModel.(dashboard.Model); ok && dm.Reloading() {
+			// Binary changed — re-exec with the same arguments.
+			self, execErr := os.Executable()
+			if execErr != nil {
+				return execErr
+			}
+			return syscall.Exec(self, os.Args, os.Environ())
+		}
 		return nil
 	}
-	os.WriteFile(dashPidFile(root), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
-	defer os.Remove(dashPidFile(root))
-	m := dashboard.New(root)
-	p := tea.NewProgram(m, dashboard.ProgramOptions()...)
-	_, err := p.Run()
-	return err
 }
 
 func runDash(cmd *cobra.Command, args []string) error {

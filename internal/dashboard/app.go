@@ -104,10 +104,12 @@ type Model struct {
 	inputCursor      int // cursor position within the active input field
 	help             help.Model
 	keys             keyMap
+	reloading        bool // set when quitting due to binary hot-reload
 }
 
 type tickMsg time.Time
 type clearFlashMsg struct{}
+type binaryReloadMsg struct{}
 
 func clearFlashAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return clearFlashMsg{} })
@@ -120,6 +122,9 @@ func New(loomRoot string) Model {
 	h.Styles.ShortSeparator = helpStyle
 	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap()}
 }
+
+// Reloading reports whether the dashboard exited due to a binary hot-reload.
+func (m Model) Reloading() bool { return m.reloading }
 
 // switchView saves the current cursor position and switches to the target view,
 // restoring its previously saved cursor position.
@@ -138,8 +143,40 @@ func (m *Model) setFlash(msg string, isErr bool) tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(), tickCmd())
+	return tea.Batch(m.refresh(), tickCmd(), watchBinary())
 }
+
+// watchBinary polls the loom binary's mtime every 2s and sends binaryReloadMsg when it changes.
+func watchBinary() tea.Cmd {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	info, err := os.Stat(exe)
+	if err != nil {
+		return nil
+	}
+	return watchBinaryFrom(info.ModTime())
+}
+
+func watchBinaryFrom(mtime time.Time) tea.Cmd {
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		exe, err := os.Executable()
+		if err != nil {
+			return watchBinaryTickMsg{mtime: mtime}
+		}
+		info, err := os.Stat(exe)
+		if err != nil {
+			return watchBinaryTickMsg{mtime: mtime}
+		}
+		if info.ModTime().After(mtime) {
+			return binaryReloadMsg{}
+		}
+		return watchBinaryTickMsg{mtime: info.ModTime()}
+	})
+}
+
+type watchBinaryTickMsg struct{ mtime time.Time }
 
 // ProgramOptions returns the tea.ProgramOption set needed by the dashboard,
 // including alt-screen and mouse support.
@@ -207,6 +244,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tickCmd())
+	case watchBinaryTickMsg:
+		return m, watchBinaryFrom(msg.mtime)
+	case binaryReloadMsg:
+		m.reloading = true
+		return m, tea.Quit
 	case data:
 		m.data = msg
 		m.clampCursor()
