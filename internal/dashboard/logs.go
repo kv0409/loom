@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/charmbracelet/bubbles/table"
 )
 
 type logLine struct {
@@ -215,25 +217,35 @@ func (m Model) renderLogs() string {
 	visible := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(lines), visible)
 
-	content := header
+	tagW := 10
+	textW := m.width - tagW - 8
+	if textW < 10 {
+		textW = 10
+	}
+	cols := []table.Column{
+		{Title: "CAT", Width: tagW},
+		{Title: "MESSAGE", Width: textW},
+	}
+	rows := make([]table.Row, 0, end-start)
 	for i := start; i < end; i++ {
 		l := lines[i]
-		tag := categoryTag(l.Category)
-		content += fmt.Sprintf("  %s %s\n", tag, truncate(l.Text, m.width-16))
+		rows = append(rows, table.Row{categoryTag(l.Category), truncate(l.Text, textW)})
 	}
+	t := newStyledTable(cols, rows, end-start)
 
+	content := header + t.View()
 	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, m.width-2)
 }
 
 func categoryTag(cat string) string {
 	switch cat {
 	case "error":
-		return deadStyle.Render(fmt.Sprintf("%-10s", "ERROR"))
+		return deadStyle.Render("ERROR")
 	case "stderr":
-		return idleStyle.Render(fmt.Sprintf("%-10s", "STDERR"))
+		return idleStyle.Render("STDERR")
 	case "warn":
-		return idleStyle.Render(fmt.Sprintf("%-10s", "WARN"))
+		return idleStyle.Render("WARN")
 	default:
-		return activeStyle.Render(fmt.Sprintf("%-10s", cat))
+		return activeStyle.Render(cat)
 	}
 }
