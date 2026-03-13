@@ -20,6 +20,18 @@ Loom spawns and coordinates AI agents across tmux sessions. An orchestrator brea
 - `tmux` ≥ 3.0
 - `kiro-cli`
 
+## Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/kv0409/loom/main/install.sh | bash
+```
+
+To update to the latest version:
+
+```bash
+loom update
+```
+
 ## Tech Stack
 
 - **Language**: Go
