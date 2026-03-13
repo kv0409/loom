@@ -10,6 +10,42 @@ import (
 	"github.com/karanagi/loom/internal/agent"
 )
 
+func TestFetchActivity_ToolsFileAllLinesSortedChronologically(t *testing.T) {
+	root := t.TempDir()
+	agentsDir := filepath.Join(root, "agents")
+	if err := os.MkdirAll(agentsDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two agents with .tools files; lines interleaved by timestamp.
+	toolsA := "12:00:03 shell: go test\n12:00:01 read: main.go\n"
+	toolsB := "12:00:02 write: output.go\n"
+	if err := os.WriteFile(filepath.Join(agentsDir, "agent-a.tools"), []byte(toolsA), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentsDir, "agent-b.tools"), []byte(toolsB), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := []*agent.Agent{
+		{ID: "agent-a", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
+		{ID: "agent-b", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
+	}
+
+	entries := fetchActivity(root, agents)
+
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	// Sorted by timestamp: 12:00:01, 12:00:02, 12:00:03
+	wantLines := []string{"12:00:01 read: main.go", "12:00:02 write: output.go", "12:00:03 shell: go test"}
+	for i, want := range wantLines {
+		if entries[i].Line != want {
+			t.Errorf("entry[%d]: want %q, got %q", i, want, entries[i].Line)
+		}
+	}
+}
+
 func TestFetchActivity_NDJSONToolSummaryFiltered(t *testing.T) {
 	// Set up a temp loom root with an agent .output file containing NDJSON.
 	root := t.TempDir()

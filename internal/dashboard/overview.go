@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -56,6 +57,8 @@ func (m Model) renderOverview() string {
 	fixedCols := 2 + 1 + aIdW + 1 + aRoleW + 1 + 2 + aAgeW + 1 + 2 + aHbW + 1
 	aTaskW := max(8, innerW-fixedCols)
 
+	projectRoot := filepath.Dir(m.loomRoot)
+
 	// Build a map of agent ID → last ACP activity line for quick lookup.
 	lastActivity := map[string]string{}
 	for _, e := range m.data.activity {
@@ -68,9 +71,7 @@ func (m Model) renderOverview() string {
 		age := fmtTime(a.SpawnedAt, true)
 		task := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
-			if lipgloss.Width(line) > aTaskW {
-				line = truncate(line, aTaskW)
-			}
+			line = formatToolLine(line, aTaskW, projectRoot)
 			task = activeStyle.Render(line)
 		} else if len(a.AssignedIssues) > 0 {
 			taskStr := strings.Join(a.AssignedIssues, ", ")
@@ -327,20 +328,15 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	prefixW := 2 + 2 + agentW + 1 // "  ↯ " + agent + " "
 	lineW := max(8, innerW-prefixW)
 
+	projectRoot := filepath.Dir(m.loomRoot)
+
 	var lines []string
 	toolLimit := min(budget, len(m.data.activity))
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		// Wrap long lines instead of truncating
 		prefix := fmt.Sprintf("  ↯ %-*s ", agentW, truncate(e.AgentID, agentW))
-		wrapped := wordWrap(e.Line, lineW)
-		for j, seg := range wrapped {
-			if j == 0 {
-				lines = append(lines, prefix+seg)
-			} else {
-				lines = append(lines, strings.Repeat(" ", prefixW)+seg)
-			}
-		}
+		formatted := formatToolLine(e.Line, lineW, projectRoot)
+		lines = append(lines, prefix+formatted)
 	}
 
 	content := capContent(lines, budget)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -18,9 +19,17 @@ type activityEntry struct {
 	Line    string
 }
 
+type timedEntry struct {
+	ts    string // HH:MM:SS or "" for stable sort
+	entry activityEntry
+}
+
 // fetchActivity is called from refresh() (tea.Cmd), not from View().
+// It returns all lines from .tools files across all agents, sorted chronologically.
+// For agents without a .tools file it falls back to .output / tmux scraping (single entry).
 func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
-	var entries []activityEntry
+	var timed []timedEntry
+
 	for _, a := range agents {
 		if a.Status == "dead" {
 			continue
@@ -28,11 +37,21 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 
 		// ACP agents: read from .output files
 		if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-			// Top priority: .tools file written by PostToolUse hook.
+			// Top priority: .tools file — return ALL lines sorted chronologically.
 			toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
 			if toolsRaw, err := os.ReadFile(toolsPath); err == nil {
-				if line := lastNonEmptyLine(string(toolsRaw)); line != "" {
-					entries = append(entries, activityEntry{AgentID: a.ID, Line: line})
+				added := false
+				for _, line := range strings.Split(string(toolsRaw), "\n") {
+					if t := strings.TrimSpace(line); t != "" {
+						ts := ""
+						if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
+							ts = t[:8]
+						}
+						timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: a.ID, Line: t}})
+						added = true
+					}
+				}
+				if added {
 					continue
 				}
 			}
@@ -69,7 +88,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 				if len(runes) > maxLen {
 					text = "…" + string(runes[len(runes)-(maxLen-1):])
 				}
-				entries = append(entries, activityEntry{AgentID: a.ID, Line: text})
+				timed = append(timed, timedEntry{entry: activityEntry{AgentID: a.ID, Line: text}})
 			}
 			continue
 		}
@@ -80,20 +99,20 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			continue
 		}
 		for _, line := range parseActivityLines(out) {
-			entries = append(entries, activityEntry{AgentID: a.ID, Line: line})
+			timed = append(timed, timedEntry{entry: activityEntry{AgentID: a.ID, Line: line}})
 		}
+	}
+
+	// Sort by timestamp (stable to preserve original order for equal/empty timestamps).
+	sort.SliceStable(timed, func(i, j int) bool {
+		return timed[i].ts < timed[j].ts
+	})
+
+	entries := make([]activityEntry, len(timed))
+	for i, te := range timed {
+		entries[i] = te.entry
 	}
 	return entries
-}
-
-func lastNonEmptyLine(s string) string {
-	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if t := strings.TrimSpace(lines[i]); t != "" {
-			return t
-		}
-	}
-	return ""
 }
 
 func parseActivityLines(raw string) []string {
