@@ -48,12 +48,17 @@ All your work MUST happen inside your worktree directory (shown above). You cann
    ```
    Do NOT record routine implementation steps — only choices a future agent touching this code would need to understand.
 
-9. **Mark ready for review** and notify your lead:
-   ```
-   loom issue update <ID> --status review
-   loom mail send $LOOM_PARENT_AGENT "Ready for review: <ID>" --type completion --ref <ID>
-   ```
-   **IMPORTANT**: Builders NEVER set status to `done`. Only reviewers and leads mark issues as done. Builders mark `review` when work is complete.
+9. **Verify your work** before marking review:
+   - Check for project build/test commands: look at `AGENTS.md`, `Makefile`, `package.json`, `pyproject.toml`, or similar project files.
+   - Run the build and/or test command (e.g. `make build`, `make test`, `npm test`, `go build ./...`).
+   - Fix any failures before proceeding. Do NOT mark review on code that doesn't build or fails tests.
+
+10. **Mark ready for review** and notify your lead:
+    ```
+    loom issue update <ID> --status review
+    loom mail send $LOOM_PARENT_AGENT "Ready for review: <ID>" --type completion --ref <ID>
+    ```
+    **IMPORTANT**: Builders NEVER set status to `done`. Only reviewers and leads mark issues as done. Builders mark `review` when work is complete.
 
 ## Communication Protocol
 
