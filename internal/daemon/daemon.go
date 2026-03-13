@@ -158,7 +158,7 @@ func (d *Daemon) GetACPOutput(agentID string, n int) []acp.ACPEvent {
 }
 
 func (d *Daemon) watchPendingAgents() {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(time.Duration(d.Config.Polling.PendingAgentsIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -181,7 +181,7 @@ func (d *Daemon) watchPendingAgents() {
 }
 
 func (d *Daemon) watchACPOutput() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(time.Duration(d.Config.Polling.ACPOutputIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 	// Track how many events we've already seen per agent (index-based dedup).
 	lastCount := make(map[string]int)
@@ -740,7 +740,7 @@ func (d *Daemon) watchWorktreeGC() {
 	case <-time.After(2 * time.Minute):
 	}
 
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(time.Duration(d.Config.Polling.WorktreeGCIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
 
 	d.runWorktreeGC()

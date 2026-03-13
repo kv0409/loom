@@ -116,9 +116,12 @@ type MergeConfig struct {
 }
 
 type PollingConfig struct {
-	IssueIntervalMs    int `yaml:"issue_interval_ms"`
-	MailIntervalMs     int `yaml:"mail_interval_ms"`
-	HeartbeatIntervalMs int `yaml:"heartbeat_interval_ms"`
+	IssueIntervalMs          int `yaml:"issue_interval_ms"`
+	MailIntervalMs           int `yaml:"mail_interval_ms"`
+	HeartbeatIntervalMs      int `yaml:"heartbeat_interval_ms"`
+	PendingAgentsIntervalMs  int `yaml:"pending_agents_interval_ms"`
+	ACPOutputIntervalMs      int `yaml:"acp_output_interval_ms"`
+	WorktreeGCIntervalMs     int `yaml:"worktree_gc_interval_ms"`
 }
 
 type TmuxConfig struct {
@@ -154,9 +157,12 @@ func DefaultConfig() *Config {
 			RequireReview:    true,
 		},
 		Polling: PollingConfig{
-			IssueIntervalMs:     2000,
-			MailIntervalMs:      2000,
-			HeartbeatIntervalMs: 30000,
+			IssueIntervalMs:         2000,
+			MailIntervalMs:          2000,
+			HeartbeatIntervalMs:     30000,
+			PendingAgentsIntervalMs: 2000,
+			ACPOutputIntervalMs:     1000,
+			WorktreeGCIntervalMs:    300000,
 		},
 		Tmux: TmuxConfig{
 			SessionName:        "loom",
