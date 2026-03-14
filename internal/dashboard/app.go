@@ -799,11 +799,10 @@ func (m Model) View() string {
 	if len(lines) > m.height {
 		lines = lines[:m.height]
 	}
-	bg := lipgloss.NewStyle().Background(colBg).Foreground(colFg)
 	for i, l := range lines {
 		w := lipgloss.Width(l)
 		if w < m.width {
-			lines[i] = l + bg.Render(strings.Repeat(" ", m.width-w))
+			lines[i] = l + bgFillStyle.Render(strings.Repeat(" ", m.width-w))
 		}
 	}
 	return strings.Join(lines, "\n")
