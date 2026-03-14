@@ -55,7 +55,8 @@ func (m Model) renderOverview() string {
 	aHbW := max(4, 8)   // "♥ " (2) + value (6)
 	// task column gets remaining space — no truncation cap
 	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 4 cols × 2 = 8
-	fixedCols := aIdW + aAgeW + aHbW + 2 + 8
+	// +4 = glyph(1) + space(1) + agentPill Padding(0,1)(+2)
+	fixedCols := aIdW + aAgeW + aHbW + 4 + 8
 	aTaskW := max(8, innerW-fixedCols)
 
 	projectRoot := filepath.Dir(m.loomRoot)
@@ -67,7 +68,7 @@ func (m Model) renderOverview() string {
 	}
 
 	agentCols := []table.Column{
-		{Title: "", Width: aIdW + 2},  // status indicator + pill
+		{Title: "", Width: aIdW + 4},  // glyph + space + agentPill (with Padding(0,1))
 		{Title: "", Width: aAgeW},
 		{Title: "", Width: aHbW},
 		{Title: "", Width: aTaskW},
@@ -80,9 +81,10 @@ func (m Model) renderOverview() string {
 		plainTask := "idle"
 		styledTask := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
-			formattedLine := formatToolLine(line, aTaskW, projectRoot)
-			plainTask = truncate(line, aTaskW)
-			styledTask = formattedLine
+			styledTask = formatToolLine(line, aTaskW, projectRoot)
+			sw := lipgloss.Width(styledTask)
+			raw := truncate(line, sw)
+			plainTask = raw + strings.Repeat(" ", max(0, sw-lipgloss.Width(raw)))
 		} else if len(a.AssignedIssues) > 0 {
 			taskStr := truncate(strings.Join(a.AssignedIssues, ", "), aTaskW)
 			plainTask = taskStr
@@ -92,8 +94,9 @@ func (m Model) renderOverview() string {
 		if glyph == "" {
 			glyph = "●"
 		}
-		plainID := glyph + " " + truncate(a.ID, aIdW)
-		styledID := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
+		truncID := truncate(a.ID, aIdW)
+		plainID := glyph + " " + agentPillPlain(truncID)
+		styledID := statusIndicator(a.Status) + " " + agentPill(truncID)
 		plainAge := "⏱ " + age
 		styledAge := idleStyle.Render(plainAge)
 		plainHb := "♥ " + hb
@@ -329,8 +332,9 @@ func (m Model) renderStatusBar(fullW int) string {
 		plainTitle := truncate(p.title, titleW)
 		styledTitle := idleStyle.Render(plainTitle)
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
-		// bar is already styled; use a unique placeholder to replace it
-		barPlaceholder := fmt.Sprintf("BAR_%s", p.id)
+		// bar is already styled; use a unique placeholder padded to barW width
+		barTag := "BAR_" + p.id
+		barPlaceholder := barTag + strings.Repeat("_", max(0, barW-lipgloss.Width(barTag)))
 		rows = append(rows, table.Row{plainID, barPlaceholder, fraction, plainTitle})
 		statusReplacements = append(statusReplacements,
 			[2]string{plainID, styledID},
@@ -381,10 +385,13 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	var replacements [][2]string
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		plainAgent := truncate(e.AgentID, agentW)
-		styledAgent := agentPill(plainAgent)
-		plainLine := truncate(e.Line, lineW)
+		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
+		plainAgent := agentPillPlain(truncAgent)
+		styledAgent := agentPill(truncAgent)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
+		styledW := lipgloss.Width(styledLine)
+		raw := truncate(e.Line, styledW)
+		plainLine := raw + strings.Repeat(" ", max(0, styledW-lipgloss.Width(raw)))
 		rows = append(rows, table.Row{plainAgent, plainLine})
 		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
 	}

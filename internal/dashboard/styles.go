@@ -337,6 +337,22 @@ func agentPill(id string) string {
 		Render(id)
 }
 
+// agentPillPlain returns a plain-text string with the same visual width as agentPill(id).
+// The pill's Padding(0,1) adds 1 space each side, so we mirror that here.
+func agentPillPlain(id string) string {
+	return " " + id + " "
+}
+
+// statusColPlain returns a plain-text string with the same visual width as
+// statusIndicator(status) + " " + statusPill(status).
+func statusColPlain(status string) string {
+	glyph := "●"
+	if g, ok := statusGlyphs[status]; ok {
+		glyph = g
+	}
+	return fmt.Sprintf("%s %-*s", glyph, statusPillWidth, status)
+}
+
 // relativeTime converts an "HH:MM:SS" timestamp (today, local time) to a
 // human-friendly relative string: "5s ago", "3m ago", "2h ago".
 // Returns the original string if it cannot be parsed.

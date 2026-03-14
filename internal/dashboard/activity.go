@@ -289,10 +289,13 @@ func (m Model) renderActivity() string {
 	var replacements [][2]string
 	for i := start; i < end; i++ {
 		e := entries[i]
-		plainAgent := truncate(e.AgentID, agentW)
-		styledAgent := agentPill(plainAgent)
-		plainLine := truncate(e.Line, lineW)
+		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
+		plainAgent := agentPillPlain(truncAgent)
+		styledAgent := agentPill(truncAgent)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
+		styledW := lipgloss.Width(styledLine)
+		raw := truncate(e.Line, styledW)
+		plainLine := raw + strings.Repeat(" ", max(0, styledW-lipgloss.Width(raw)))
 		rows = append(rows, table.Row{plainAgent, plainLine})
 		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
 	}

@@ -1,9 +1,12 @@
 package dashboard
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestSelectedRow_ASCIIPrefix(t *testing.T) {
@@ -40,6 +43,26 @@ func TestSelectedRow_SingleChar(t *testing.T) {
 	result := selectedRow("x")
 	if !utf8.ValidString(result) {
 		t.Errorf("selectedRow produced invalid UTF-8 for single char input")
+	}
+}
+
+func TestStyledReplacementWidthParity(t *testing.T) {
+	// agentPillPlain vs agentPill must have identical visual width.
+	for _, id := range []string{"orchestrator", "builder-001", "b", "researcher-001"} {
+		plain := agentPillPlain(id)
+		styled := agentPill(id)
+		if pw, sw := lipgloss.Width(plain), lipgloss.Width(styled); pw != sw {
+			t.Errorf("agentPillPlain(%q) width=%d, agentPill width=%d", id, pw, sw)
+		}
+	}
+
+	// statusColPlain vs statusIndicator + statusPill must have identical visual width.
+	for _, status := range []string{"active", "in-progress", "done", "blocked", "review", "error", "dead", "open", "assigned", "cancelled", "unknown"} {
+		plain := statusColPlain(status)
+		styled := fmt.Sprintf("%s %s", statusIndicator(status), statusPill(status))
+		if pw, sw := lipgloss.Width(plain), lipgloss.Width(styled); pw != sw {
+			t.Errorf("statusColPlain(%q) width=%d, styled width=%d", status, pw, sw)
+		}
 	}
 }
 

@@ -90,9 +90,10 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		plainID := prefix + truncate(a.ID, idW)
-		styledID := prefix + agentPill(truncate(a.ID, idW))
-		plainStatus := a.Status
+		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
+		plainID := prefix + agentPillPlain(truncID)
+		styledID := prefix + agentPill(truncID)
+		plainStatus := statusColPlain(a.Status)
 		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
 		rows = append(rows, table.Row{plainID, a.Role, plainStatus, wt, issues, hb})
 		replacements = append(replacements, [2]string{plainID, styledID}, [2]string{plainStatus, styledStatus})
