@@ -141,6 +141,10 @@ func (m *Model) switchView(target view) {
 	m.cursors[m.view] = m.cursor
 	m.view = target
 	m.cursor = m.cursors[target]
+	// Activity view: auto-scroll to bottom (latest entries) on first open.
+	if target == viewActivity && m.cursor == 0 && len(m.data.activity) > 0 {
+		m.cursor = len(m.data.activity) - 1
+	}
 	m.searchTI.SetValue("")
 	m.searchMode = false
 }

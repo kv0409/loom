@@ -381,11 +381,12 @@ func relativeTime(ts string) string {
 	if err != nil {
 		return ts
 	}
-	// Anchor to today
+	// Anchor to today; if that puts the time in the future (entry from a
+	// previous day), show the raw timestamp instead of a bogus "0s ago".
 	t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, now.Location())
 	d := now.Sub(t)
 	if d < 0 {
-		d = 0
+		return ts
 	}
 	switch {
 	case d < time.Minute:
