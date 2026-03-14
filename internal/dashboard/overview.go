@@ -56,7 +56,7 @@ func (m Model) renderOverview() string {
 	aHbW := max(4, 8)   // "♥ " (2) + value (6)
 	// task column gets remaining space — no truncation cap
 	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 5 cols × 2 = 10
-	fixedCols := aIdW + aRoleW + aAgeW + aHbW + 6 + 10
+	fixedCols := aIdW + aRoleW + aAgeW + aHbW + 2 + 10
 	aTaskW := max(8, innerW-fixedCols)
 
 	projectRoot := filepath.Dir(m.loomRoot)
