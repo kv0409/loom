@@ -329,12 +329,19 @@ func agentColor(id string) lipgloss.Color {
 
 // agentPill renders a background-filled badge for an agent ID (dark text on role color).
 func agentPill(id string) string {
+	return agentPillFor(id, id)
+}
+
+// agentPillFor renders a pill displaying displayText but using colorID for the
+// role-based background color. Use this when the display text has been truncated
+// and would no longer match a role in agentColor.
+func agentPillFor(displayText, colorID string) string {
 	return lipgloss.NewStyle().
-		Background(agentColor(id)).
+		Background(agentColor(colorID)).
 		Foreground(colBg).
 		Bold(true).
 		Padding(0, 1).
-		Render(id)
+		Render(displayText)
 }
 
 // agentPillPlain returns a plain-text string with the same visual width as agentPill(id).

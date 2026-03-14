@@ -291,7 +291,7 @@ func (m Model) renderActivity() string {
 		e := entries[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
 		plainAgent := agentPillPlain(truncAgent)
-		styledAgent := agentPill(truncAgent)
+		styledAgent := agentPillFor(truncAgent, e.AgentID)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
 		styledW := lipgloss.Width(styledLine)
 		raw := truncate(e.Line, styledW)

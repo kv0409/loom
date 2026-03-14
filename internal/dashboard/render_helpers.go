@@ -32,13 +32,13 @@ func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int)
 	t := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
-		table.WithHeight(height),
+		table.WithHeight(height+1), // +1: invisible header still occupies one viewport line
 		table.WithFocused(false),
 	)
 	t.SetStyles(table.Styles{
 		Header:   lipgloss.NewStyle(), // zero-height: no padding, no bold
 		Cell:     tableCellStyle,
-		Selected: tableSelectedStyle,
+		Selected: tableCellStyle, // no cursor highlight in headerless tables
 	})
 	return t
 }

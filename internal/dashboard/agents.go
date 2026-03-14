@@ -92,7 +92,7 @@ func (m Model) renderAgents() string {
 
 		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
 		plainID := prefix + agentPillPlain(truncID)
-		styledID := prefix + agentPill(truncID)
+		styledID := prefix + agentPillFor(truncID, a.ID)
 		plainStatus := statusColPlain(a.Status)
 		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
 		rows = append(rows, table.Row{plainID, a.Role, plainStatus, wt, issues, hb})

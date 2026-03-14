@@ -96,7 +96,7 @@ func (m Model) renderOverview() string {
 		}
 		truncID := truncate(a.ID, aIdW)
 		plainID := glyph + " " + agentPillPlain(truncID)
-		styledID := statusIndicator(a.Status) + " " + agentPill(truncID)
+		styledID := statusIndicator(a.Status) + " " + agentPillFor(truncID, a.ID)
 		plainAge := "⏱ " + age
 		styledAge := idleStyle.Render(plainAge)
 		plainHb := "♥ " + hb
@@ -387,7 +387,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		e := m.data.activity[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
 		plainAgent := agentPillPlain(truncAgent)
-		styledAgent := agentPill(truncAgent)
+		styledAgent := agentPillFor(truncAgent, e.AgentID)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
 		styledW := lipgloss.Width(styledLine)
 		raw := truncate(e.Line, styledW)
