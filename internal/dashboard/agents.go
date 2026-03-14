@@ -246,23 +246,25 @@ func wrapEventContent(content string, maxW int) string {
 			continue
 		}
 		first := true
-		for len(bodyLine) > maxW {
+		runes := []rune(bodyLine)
+		for len(runes) > maxW {
 			cut := maxW
-			if sp := strings.LastIndex(bodyLine[:cut], " "); sp > 0 {
-				cut = sp
+			prefix := string(runes[:cut])
+			if sp := strings.LastIndex(prefix, " "); sp > 0 {
+				cut = len([]rune(prefix[:sp]))
 			}
 			if !first {
 				sb.WriteByte('\n')
 			}
-			sb.WriteString("  " + bodyLine[:cut])
-			bodyLine = strings.TrimSpace(bodyLine[cut:])
+			sb.WriteString("  " + string(runes[:cut]))
+			runes = []rune(strings.TrimSpace(string(runes[cut:])))
 			first = false
 		}
-		if bodyLine != "" {
+		if len(runes) > 0 {
 			if !first {
 				sb.WriteByte('\n')
 			}
-			sb.WriteString("  " + bodyLine)
+			sb.WriteString("  " + string(runes))
 		}
 	}
 	return sb.String()
