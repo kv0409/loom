@@ -176,8 +176,8 @@ func DefaultConfig() *Config {
 		},
 		Models: ModelsConfig{
 			Orchestrator: "sonnet",
-			Lead:         "sonnet",
-			Builder:      "sonnet",
+			Lead:         "opus",
+			Builder:      "opus",
 			Reviewer:     "opus",
 			Explorer:     "haiku",
 			Researcher:   "haiku",
