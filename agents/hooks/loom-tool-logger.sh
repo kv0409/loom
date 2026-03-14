@@ -9,7 +9,7 @@ TOOL=$(echo "$EVENT" | jq -r '.tool_name // ""')
 [ -z "$TOOL" ] && exit 0
 
 FIRST_VAL=$(echo "$EVENT" | jq -r '.tool_input | to_entries[0].value // ""' 2>/dev/null | head -c 120)
-TIMESTAMP=$(date +%H:%M:%S)
+TIMESTAMP=$(date +%Y-%m-%dT%H:%M:%S)
 
 TOOLS_FILE="${LOOM_ROOT}/agents/${LOOM_AGENT_ID}.tools"
 echo "${TIMESTAMP} ${TOOL}: ${FIRST_VAL}" >> "$TOOLS_FILE"

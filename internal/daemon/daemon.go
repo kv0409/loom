@@ -235,7 +235,7 @@ func (d *Daemon) watchACPOutput() {
 					d.rlog("watchACPOutput:open:"+id, "[acp-output] open output file for %s: %v", id, err)
 					continue
 				}
-				ts := time.Now().Format("15:04:05")
+				ts := time.Now().Format("2006-01-02T15:04:05")
 				enc := json.NewEncoder(f)
 				for i := range newEvents {
 					newEvents[i].Timestamp = ts

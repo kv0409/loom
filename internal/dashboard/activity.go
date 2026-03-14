@@ -20,8 +20,20 @@ type activityEntry struct {
 }
 
 type timedEntry struct {
-	ts    string // HH:MM:SS or "" for stable sort
+	ts    string // ISO datetime, HH:MM:SS, or "" for stable sort
 	entry activityEntry
+}
+
+// extractTimestamp returns the timestamp prefix and remaining text from a .tools line.
+// Supports ISO "2006-01-02T15:04:05" (19 chars) and legacy "HH:MM:SS" (8 chars).
+func extractTimestamp(line string) (ts, rest string) {
+	if len(line) >= 19 && line[4] == '-' && line[10] == 'T' && line[13] == ':' && line[16] == ':' {
+		return line[:19], strings.TrimSpace(line[19:])
+	}
+	if len(line) >= 8 && line[2] == ':' && line[5] == ':' {
+		return line[:8], strings.TrimSpace(line[8:])
+	}
+	return "", line
 }
 
 // fetchActivity is called from refresh() (tea.Cmd), not from View().
@@ -47,10 +59,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			if raw, err := os.ReadFile(p); err == nil {
 				for _, line := range strings.Split(string(raw), "\n") {
 					if t := strings.TrimSpace(line); t != "" {
-						ts := ""
-						if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
-							ts = t[:8]
-						}
+						ts, _ := extractTimestamp(t)
 						timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: id, Line: t}})
 					}
 				}
@@ -65,10 +74,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []activityEntry {
 			added := false
 			for _, line := range strings.Split(string(toolsRaw), "\n") {
 				if t := strings.TrimSpace(line); t != "" {
-					ts := ""
-					if len(t) >= 8 && t[2] == ':' && t[5] == ':' {
-						ts = t[:8]
-					}
+					ts, _ := extractTimestamp(t)
 					timed = append(timed, timedEntry{ts: ts, entry: activityEntry{AgentID: a.ID, Line: t}})
 					added = true
 				}
@@ -200,16 +206,10 @@ var toolMap = map[string]toolInfo{
 	"aws":          {"☁", colOrange, "AWS", colOrange},
 }
 
-// formatToolLine parses a .tools line ("HH:MM:SS tool: args") and returns a
+// formatToolLine parses a .tools line ("TIMESTAMP tool: args") and returns a
 // styled string suitable for display in the activity table.
 func formatToolLine(line string, width int, projectRoot string) string {
-	// Split timestamp from the rest: "HH:MM:SS tool: args"
-	timeStr := ""
-	rest := line
-	if len(line) >= 8 && line[2] == ':' && line[5] == ':' {
-		timeStr = line[:8]
-		rest = strings.TrimSpace(line[8:])
-	}
+	timeStr, rest := extractTimestamp(line)
 
 	// Split "tool: args"
 	toolName := rest

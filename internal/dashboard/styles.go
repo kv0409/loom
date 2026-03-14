@@ -370,20 +370,29 @@ func statusColPlain(status string) string {
 }
 
 // relativeTime converts an "HH:MM:SS" timestamp (today, local time) to a
-// human-friendly relative string: "5s ago", "3m ago", "2h ago".
-// Returns the original string if it cannot be parsed.
+// human-friendly relative string: "5s ago", "3m ago", "2h ago", "1d ago",
+// or the date for older entries. Accepts ISO "2006-01-02T15:04:05" (preferred)
+// and legacy "HH:MM:SS" (anchored to today). Returns the original string on
+// parse failure.
 func relativeTime(ts string) string {
-	if len(ts) != 8 || ts[2] != ':' || ts[5] != ':' {
-		return ts
-	}
 	now := time.Now()
-	t, err := time.ParseInLocation("15:04:05", ts, now.Location())
-	if err != nil {
+	var t time.Time
+	switch {
+	case len(ts) == 19 && ts[4] == '-' && ts[10] == 'T':
+		var err error
+		t, err = time.ParseInLocation("2006-01-02T15:04:05", ts, now.Location())
+		if err != nil {
+			return ts
+		}
+	case len(ts) == 8 && ts[2] == ':' && ts[5] == ':':
+		parsed, err := time.ParseInLocation("15:04:05", ts, now.Location())
+		if err != nil {
+			return ts
+		}
+		t = time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, now.Location())
+	default:
 		return ts
 	}
-	// Anchor to today; if that puts the time in the future (entry from a
-	// previous day), show the raw timestamp instead of a bogus "0s ago".
-	t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, now.Location())
 	d := now.Sub(t)
 	if d < 0 {
 		return ts
@@ -393,8 +402,12 @@ func relativeTime(ts string) string {
 		return fmt.Sprintf("%ds ago", int(d.Seconds()))
 	case d < time.Hour:
 		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	default:
+	case d < 24*time.Hour:
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("Jan 02")
 	}
 }
 
