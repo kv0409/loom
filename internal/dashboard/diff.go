@@ -27,6 +27,8 @@ func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
 	avail := availableWidth(m.width)
+	const numColsDiff = 5
+	avail -= numColsDiff * 2
 	ws := colWidths(avail, []struct{ pct, min int }{{25, 10}, {25, 10}, {14, 8}, {14, 6}, {0, 6}})
 	nameW, branchW, agentW, issueW := ws[0], ws[1], ws[2], ws[3]
 	diffW := max(6, avail-nameW-branchW-agentW-issueW)

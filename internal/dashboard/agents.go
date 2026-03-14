@@ -30,6 +30,8 @@ func (m Model) renderAgents() string {
 	}
 
 	avail := availableWidth(m.width)
+	const numColsAgents = 6
+	avail -= numColsAgents * 2
 	ws := colWidths(avail, []struct{ pct, min int }{{10, 6}, {0, statusPillWidth + 4}, {22, 8}, {14, 6}, {0, 10}})
 	roleW, statusW, wtW, issueW, hbW := ws[0], ws[1], ws[2], ws[3], ws[4]
 	idW := min(max(idWidth+2, 16), avail*25/100)

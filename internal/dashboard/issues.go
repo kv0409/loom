@@ -40,6 +40,8 @@ func (m Model) renderIssues() string {
 	}
 
 	avail := availableWidth(m.width)
+	const numColsIssues = 3
+	avail -= numColsIssues * 2
 	ws := colWidths(avail, []struct{ pct, min int }{{20, 16}, {15, 8}})
 	idW, assignW := ws[0], ws[1]
 	titleW := max(10, avail-idW-assignW)

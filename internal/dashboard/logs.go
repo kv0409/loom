@@ -218,7 +218,8 @@ func (m Model) renderLogs() string {
 	start, end := listViewport(m.cursor, len(lines), visible)
 
 	tagW := 10
-	textW := m.width - tagW - 8
+	const numColsLogs = 2
+	textW := m.width - tagW - 8 - numColsLogs*2
 	if textW < 10 {
 		textW = 10
 	}

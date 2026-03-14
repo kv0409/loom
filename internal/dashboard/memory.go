@@ -13,6 +13,8 @@ func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
 
 	avail := availableWidth(m.width)
+	const numColsMemory = 4
+	avail -= numColsMemory * 2
 	ws := colWidths(avail, []struct{ pct, min int }{{12, 6}, {14, 8}, {14, 6}})
 	idW, typeW, byW := ws[0], ws[1], ws[2]
 	titleW := max(10, avail-idW-typeW-byW)

@@ -269,6 +269,8 @@ func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
 
 	avail := availableWidth(m.width)
+	const numColsActivity = 2
+	avail -= numColsActivity * 2
 	agentW := proportionalWidth(avail, 16, 8)
 	lineW := max(20, avail-agentW)
 

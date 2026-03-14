@@ -11,6 +11,8 @@ func (m Model) renderMail() string {
 	messages := m.filteredMessages()
 
 	avail := availableWidth(m.width)
+	const numColsMail = 4
+	avail -= numColsMail * 2
 	ws := colWidths(avail, []struct{ pct, min int }{{10, 5}, {18, 8}, {10, 5}})
 	timeW, routeW, typeW := ws[0], ws[1], ws[2]
 	subjW := max(10, avail-timeW-routeW-typeW)
