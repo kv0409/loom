@@ -48,12 +48,17 @@ All your work MUST happen inside your worktree directory (shown above). You cann
    ```
    Do NOT record routine implementation steps — only choices a future agent touching this code would need to understand.
 
-9. **Mark ready for review** and notify your lead:
-   ```
-   loom issue update <ID> --status review
-   loom mail send $LOOM_PARENT_AGENT "Ready for review: <ID>" --type completion --ref <ID>
-   ```
-   **IMPORTANT**: Builders NEVER set status to `done`. Only reviewers and leads mark issues as done. Builders mark `review` when work is complete.
+9. **Verify your work** before marking review:
+   - Check for project build/test commands: look at `AGENTS.md`, `Makefile`, `package.json`, `pyproject.toml`, or similar project files.
+   - Run the build and/or test command (e.g. `make build`, `make test`, `npm test`, `go build ./...`).
+   - Fix any failures before proceeding. Do NOT mark review on code that doesn't build or fails tests.
+
+10. **Mark ready for review** and notify your lead:
+    ```
+    loom issue update <ID> --status review
+    loom mail send $LOOM_PARENT_AGENT "Ready for review: <ID>" --type completion --ref <ID>
+    ```
+    **IMPORTANT**: Builders NEVER set status to `done`. Only reviewers and leads mark issues as done. Builders mark `review` when work is complete.
 
 ## Communication Protocol
 
@@ -73,6 +78,17 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 - `[LOOM] Nudge: ...` → Follow the guidance immediately.
 - `[LOOM] Shutdown` → Commit current work, update issue status, stop.
 
+## Code Navigation
+
+Prefer the **code tool** (LSP-powered) over grep/bash for understanding and navigating code:
+
+- `search_symbols` — find where a function/class/type is defined
+- `find_references` — find all call sites of a symbol
+- `goto_definition` — jump to a symbol's definition
+- `get_document_symbols` — list all symbols in a file
+
+Use grep only for literal text searches in comments, strings, or config files where LSP has no advantage. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
+
 ## Constraints
 
 - Work ONLY in your worktree. Do NOT modify files outside it.
@@ -80,6 +96,7 @@ All your work MUST happen inside your worktree directory (shown above). You cann
 - **Raw git operations are denied** — `git merge`, `git branch -d`, `git worktree remove`, `git checkout main`, and `git push` are blocked. Use `git add`, `git commit`, `git diff`, `git log`, and `git status` freely within your worktree.
 - Acquire file locks before editing any file that other builders might touch.
 - Commit early and often — small, focused commits.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
 

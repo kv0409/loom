@@ -1,6 +1,6 @@
 {
   "name": "loom-explorer",
-  "description": "Loom explorer \u2014 read-only codebase exploration and analysis.",
+  "description": "Loom explorer — read-only codebase exploration and analysis.",
   "model": "claude-haiku-4.5",
   "tools": [
     "read",
@@ -60,6 +60,11 @@
       },
       {
         "command": "tree -L 3 -I 'node_modules|.git|dist|build|vendor' --dirsfirst 2>/dev/null || find . -maxdepth 3 -type d | head -50",
+        "timeout_ms": 5000
+      },
+      {
+        "command": "./loom --help",
+        "description": "Show available loom CLI commands",
         "timeout_ms": 5000
       }
     ],

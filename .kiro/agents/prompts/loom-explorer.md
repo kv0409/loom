@@ -38,12 +38,25 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - `[LOOM] Nudge: ...` → Adjust your exploration focus.
 - `[LOOM] Shutdown` → Record current findings, send completion, stop.
 
+## Code Navigation
+
+Prefer the **code tool** (LSP-powered) over grep/bash for navigating and understanding code:
+
+- `search_symbols` — find where a function/class/type is defined
+- `find_references` — find all call sites of a symbol
+- `goto_definition` — jump to a symbol's definition
+- `get_document_symbols` — list all symbols in a file
+- `pattern_search` — structural AST search across the codebase
+
+Use grep only for literal text in comments, strings, or config files. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
+
 ## Constraints
 
 - You are READ-ONLY. Do NOT modify any project files.
 - Do NOT create issues or spawn agents.
 - Focus on the assigned issue — do not explore unrelated areas.
 - Be precise — include file paths, function names, and line numbers.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 
 ## Cost Awareness

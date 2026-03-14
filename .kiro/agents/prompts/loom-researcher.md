@@ -45,6 +45,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Focus on the assigned topic — do not research unrelated areas.
 - Cite sources when possible.
 - Be actionable — provide concrete recommendations, not just information.
+- Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
 - Send heartbeat periodically: `loom agent heartbeat`.
 
 ## Cost Awareness
