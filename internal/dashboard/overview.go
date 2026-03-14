@@ -51,12 +51,11 @@ func (m Model) renderOverview() string {
 
 	// --- AGENTS band (full width, ~40% height, no task truncation) ---
 	aIdW := min(16, max(8, (innerW-12)*2/5))
-	aRoleW := max(4, min(10, (innerW-12)/5))
 	aAgeW := max(4, 8)  // "⏱ " (2) + value (6)
 	aHbW := max(4, 8)   // "♥ " (2) + value (6)
 	// task column gets remaining space — no truncation cap
-	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 5 cols × 2 = 10
-	fixedCols := aIdW + aRoleW + aAgeW + aHbW + 2 + 10
+	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 4 cols × 2 = 8
+	fixedCols := aIdW + aAgeW + aHbW + 2 + 8
 	aTaskW := max(8, innerW-fixedCols)
 
 	projectRoot := filepath.Dir(m.loomRoot)
@@ -69,7 +68,6 @@ func (m Model) renderOverview() string {
 
 	agentCols := []table.Column{
 		{Title: "", Width: aIdW + 2},  // status indicator + pill
-		{Title: "", Width: aRoleW},
 		{Title: "", Width: aAgeW},
 		{Title: "", Width: aHbW},
 		{Title: "", Width: aTaskW},
@@ -89,7 +87,7 @@ func (m Model) renderOverview() string {
 		idCol := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
 		ageCol := idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW-2, age))
 		hbCol := heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW-2, hb))
-		agentRows = append(agentRows, table.Row{idCol, truncate(a.Role, aRoleW), ageCol, hbCol, task})
+		agentRows = append(agentRows, table.Row{idCol, ageCol, hbCol, task})
 	}
 
 	var agentContent string
