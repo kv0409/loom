@@ -45,19 +45,24 @@ func (m Model) renderWorktrees() string {
 	start, end := listViewport(m.cursor, len(worktrees), vRows)
 
 	rows := make([]table.Row, 0, end-start)
+	var replacements [][2]string
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
 		ds := m.data.diffStats[wt.Name]
-		diffStr := ""
+		plainDiff := ""
+		styledDiff := ""
 		if ds != nil && ds.FilesChanged > 0 {
-			filesStr := fmt.Sprintf("%df ", ds.FilesChanged)
-			insStr := diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions))
-			delStr := diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
-			diffStr = filesStr + insStr + delStr
+			plainDiff = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
+			styledDiff = fmt.Sprintf("%df ", ds.FilesChanged) +
+				diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions)) +
+				diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
 		}
 		rows = append(rows, table.Row{
-			slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, diffStr,
+			slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, plainDiff,
 		})
+		if plainDiff != "" {
+			replacements = append(replacements, [2]string{plainDiff, styledDiff})
+		}
 	}
 
 	var content string
@@ -67,7 +72,7 @@ func (m Model) renderWorktrees() string {
 	} else {
 		t := newStyledTable(cols, rows, vRows)
 		t.SetCursor(m.cursor - start)
-		content = t.View() + "\n"
+		content = styledTableView(t, replacements) + "\n"
 	}
 
 	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))

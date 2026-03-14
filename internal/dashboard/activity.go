@@ -286,11 +286,15 @@ func (m Model) renderActivity() string {
 	start, end := listViewport(m.cursor, len(entries), vRows)
 
 	rows := make([]table.Row, 0, end-start)
+	var replacements [][2]string
 	for i := start; i < end; i++ {
 		e := entries[i]
-		displayLine := formatToolLine(e.Line, lineW, projectRoot)
-		agentCol := agentPill(e.AgentID)
-		rows = append(rows, table.Row{agentCol, displayLine})
+		plainAgent := truncate(e.AgentID, agentW)
+		styledAgent := agentPill(plainAgent)
+		plainLine := truncate(e.Line, lineW)
+		styledLine := formatToolLine(e.Line, lineW, projectRoot)
+		rows = append(rows, table.Row{plainAgent, plainLine})
+		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
 	}
 
 	var content string
@@ -300,7 +304,7 @@ func (m Model) renderActivity() string {
 	} else {
 		t := newStyledTable(cols, rows, vRows)
 		t.SetCursor(m.cursor - start)
-		content = t.View() + "\n"
+		content = styledTableView(t, replacements) + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
 		}

@@ -65,18 +65,21 @@ func (m Model) renderIssues() string {
 		doneStart = activeCount
 	}
 
-	buildRows := func(from, to int) []table.Row {
+	buildRows := func(from, to int) ([]table.Row, [][2]string) {
 		rows := make([]table.Row, 0, to-from)
+		var replacements [][2]string
 		for i := from; i < to; i++ {
 			iss := display[i]
 			sg := statusGlyphs[iss.Status]
 			if sg == "" {
 				sg = "●"
 			}
-			idCell := statusStyle(iss.Status).Render(sg+typeGlyph(iss.Type)+" "+iss.ID)
-			rows = append(rows, table.Row{idCell, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
+			plainID := sg + typeGlyph(iss.Type) + " " + iss.ID
+			styledID := statusStyle(iss.Status).Render(plainID)
+			rows = append(rows, table.Row{plainID, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
+			replacements = append(replacements, [2]string{plainID, styledID})
 		}
-		return rows
+		return rows, replacements
 	}
 
 	var content string
@@ -85,7 +88,7 @@ func (m Model) renderIssues() string {
 		content = t.View() + "\n" + renderEmpty("No issues — loom issue create to add one", avail)
 	} else {
 		// Active section.
-		activeRows := buildRows(start, activeEnd)
+		activeRows, activeRepl := buildRows(start, activeEnd)
 		activeCursor := -1
 		if m.cursor >= start && m.cursor < activeEnd {
 			activeCursor = m.cursor - start
@@ -94,13 +97,13 @@ func (m Model) renderIssues() string {
 		if activeCursor >= 0 {
 			t.SetCursor(activeCursor)
 		}
-		content = t.View() + "\n"
+		content = styledTableView(t, activeRepl) + "\n"
 
 		// Done section with separator (headerless — avoids duplicate column headers).
 		if doneStart < end {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += separator(m.width)
-			doneRows := buildRows(doneStart, end)
+			doneRows, doneRepl := buildRows(doneStart, end)
 			doneCursor := -1
 			if m.cursor >= doneStart && m.cursor < end {
 				doneCursor = m.cursor - doneStart
@@ -110,7 +113,11 @@ func (m Model) renderIssues() string {
 				dt.Focus()
 				dt.SetCursor(doneCursor)
 			}
-			content += tableBodyView(dt) + "\n"
+			doneView := tableBodyView(dt)
+			for _, r := range doneRepl {
+				doneView = strings.Replace(doneView, r[0], r[1], 1)
+			}
+			content += doneView + "\n"
 		}
 	}
 

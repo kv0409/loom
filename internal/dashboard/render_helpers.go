@@ -84,6 +84,27 @@ func fmtTimeFull(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
+// styledTableView renders t.View() and replaces each plain-text cell value with its
+// styled equivalent. Pass pairs as (plain, styled) in the order they appear in the output.
+// This is necessary because bubbles/table calls runewidth.Truncate on cell values, which
+// counts ANSI escape bytes as display width and mangles pre-styled strings.
+func styledTableView(t table.Model, replacements [][2]string) string {
+	out := t.View()
+	for _, r := range replacements {
+		out = strings.Replace(out, r[0], r[1], 1)
+	}
+	return out
+}
+
+// styledTableBodyView is like styledTableView but strips the header line (for headerless tables).
+func styledTableBodyView(t table.Model, replacements [][2]string) string {
+	out := styledTableView(t, replacements)
+	if i := strings.Index(out, "\n"); i >= 0 {
+		return out[i+1:]
+	}
+	return out
+}
+
 // colWidths computes proportional column widths from a list of (percent, min) pairs
 // given the available pixel budget. Each entry is {pct: percentage of avail, min: minimum width}.
 func colWidths(avail int, cols []struct{ pct, min int }) []int {

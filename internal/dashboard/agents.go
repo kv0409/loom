@@ -53,6 +53,7 @@ func (m Model) renderAgents() string {
 	start, end := listViewport(m.cursor, len(agents), vRows)
 
 	rows := make([]table.Row, 0, end-start)
+	var replacements [][2]string
 	for i := start; i < end; i++ {
 		a := agents[i]
 		wt := "—"
@@ -67,8 +68,6 @@ func (m Model) renderAgents() string {
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
-		statusCol := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
-
 		prefix := ""
 		for oi, oa := range m.data.agents {
 			if oa == a && oi < len(m.data.agentTree) {
@@ -91,7 +90,12 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		rows = append(rows, table.Row{prefix + agentPill(a.ID), a.Role, statusCol, wt, issues, hb})
+		plainID := prefix + truncate(a.ID, idW)
+		styledID := prefix + agentPill(truncate(a.ID, idW))
+		plainStatus := a.Status
+		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
+		rows = append(rows, table.Row{plainID, a.Role, plainStatus, wt, issues, hb})
+		replacements = append(replacements, [2]string{plainID, styledID}, [2]string{plainStatus, styledStatus})
 	}
 
 	var content string
@@ -101,7 +105,7 @@ func (m Model) renderAgents() string {
 	} else {
 		t := newStyledTable(cols, rows, vRows)
 		t.SetCursor(m.cursor - start)
-		content = t.View() + "\n"
+		content = styledTableView(t, replacements) + "\n"
 	}
 
 	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents))

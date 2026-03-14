@@ -228,13 +228,20 @@ func (m Model) renderLogs() string {
 		{Title: "MESSAGE", Width: textW},
 	}
 	rows := make([]table.Row, 0, end-start)
+	var replacements [][2]string
 	for i := start; i < end; i++ {
 		l := lines[i]
-		rows = append(rows, table.Row{categoryTag(l.Category), truncate(l.Text, textW)})
+		plainCat := l.Category
+		if plainCat == "" {
+			plainCat = "info"
+		}
+		styledCat := categoryTag(l.Category)
+		rows = append(rows, table.Row{plainCat, truncate(l.Text, textW)})
+		replacements = append(replacements, [2]string{plainCat, styledCat})
 	}
 	t := newStyledTable(cols, rows, end-start)
 
-	content := header + t.View()
+	content := header + styledTableView(t, replacements)
 	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, panelWidth(m.width))
 }
 

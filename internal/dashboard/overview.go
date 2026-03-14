@@ -73,21 +73,38 @@ func (m Model) renderOverview() string {
 		{Title: "", Width: aTaskW},
 	}
 	agentRows := make([]table.Row, 0, len(m.data.agents))
+	var agentReplacements [][2]string
 	for _, a := range m.data.agents {
 		hb := fmtTime(a.Heartbeat, true)
 		age := fmtTime(a.SpawnedAt, true)
-		task := idleStyle.Render("idle")
+		plainTask := "idle"
+		styledTask := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
-			line = formatToolLine(line, aTaskW, projectRoot)
-			task = activeStyle.Render(line)
+			formattedLine := formatToolLine(line, aTaskW, projectRoot)
+			plainTask = truncate(line, aTaskW)
+			styledTask = formattedLine
 		} else if len(a.AssignedIssues) > 0 {
-			taskStr := strings.Join(a.AssignedIssues, ", ")
-			task = activeStyle.Render(truncate(taskStr, aTaskW))
+			taskStr := truncate(strings.Join(a.AssignedIssues, ", "), aTaskW)
+			plainTask = taskStr
+			styledTask = activeStyle.Render(taskStr)
 		}
-		idCol := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
-		ageCol := idleStyle.Render("⏱ " + age)
-		hbCol := heartbeatStyle(hb).Render("♥ " + hb)
-		agentRows = append(agentRows, table.Row{idCol, ageCol, hbCol, task})
+		glyph := statusGlyphs[a.Status]
+		if glyph == "" {
+			glyph = "●"
+		}
+		plainID := glyph + " " + truncate(a.ID, aIdW)
+		styledID := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
+		plainAge := "⏱ " + age
+		styledAge := idleStyle.Render(plainAge)
+		plainHb := "♥ " + hb
+		styledHb := heartbeatStyle(hb).Render(plainHb)
+		agentRows = append(agentRows, table.Row{plainID, plainAge, plainHb, plainTask})
+		agentReplacements = append(agentReplacements,
+			[2]string{plainID, styledID},
+			[2]string{plainAge, styledAge},
+			[2]string{plainHb, styledHb},
+			[2]string{plainTask, styledTask},
+		)
 	}
 
 	var agentContent string
@@ -95,11 +112,13 @@ func (m Model) renderOverview() string {
 		agentContent = renderEmpty("No agents running — loom spawn to start", innerW)
 	} else {
 		rows := agentRows
+		repl := agentReplacements
 		if agentBudget > 0 && len(rows) > agentBudget {
 			rows = rows[:agentBudget]
+			repl = repl[:agentBudget*4]
 		}
 		t := newStyledTableHeaderless(agentCols, rows, len(rows))
-		agentContent = "\n" + tableBodyView(t) + "\n"
+		agentContent = "\n" + styledTableBodyView(t, repl) + "\n"
 		if len(agentRows) > agentBudget && agentBudget > 0 {
 			agentContent += fmt.Sprintf("  ... and %d more\n", len(agentRows)-agentBudget)
 		}
@@ -296,6 +315,7 @@ func (m Model) renderStatusBar(fullW int) string {
 	titleW := max(20, innerW-2-idW-barW-fracW-4) // 4 = cell padding (0,1) × 4 cols × 2 sides / 2
 
 	var rows []table.Row
+	var statusReplacements [][2]string
 	for _, p := range shown {
 		childCounts := map[string]int{}
 		for _, cid := range p.children {
@@ -304,17 +324,25 @@ func (m Model) renderStatusBar(fullW int) string {
 			}
 		}
 		bar := stackedBar(childCounts, p.total, barW)
-		rows = append(rows, table.Row{
-			barLabel.Render(truncate(p.id, idW)),
-			bar,
-			fmt.Sprintf("%d/%d", p.done, p.total),
-			idleStyle.Render(truncate(p.title, titleW)),
-		})
+		plainID := truncate(p.id, idW)
+		styledID := barLabel.Render(plainID)
+		plainTitle := truncate(p.title, titleW)
+		styledTitle := idleStyle.Render(plainTitle)
+		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
+		// bar is already styled; use a unique placeholder to replace it
+		barPlaceholder := fmt.Sprintf("BAR_%s", p.id)
+		rows = append(rows, table.Row{plainID, barPlaceholder, fraction, plainTitle})
+		statusReplacements = append(statusReplacements,
+			[2]string{plainID, styledID},
+			[2]string{barPlaceholder, bar},
+			[2]string{plainTitle, styledTitle},
+		)
 	}
 	if overflow > 0 {
-		rows = append(rows, table.Row{
-			idleStyle.Render(fmt.Sprintf("… +%d more", overflow)), "", "", "",
-		})
+		overflowText := fmt.Sprintf("… +%d more", overflow)
+		styledOverflow := idleStyle.Render(overflowText)
+		rows = append(rows, table.Row{overflowText, "", "", ""})
+		statusReplacements = append(statusReplacements, [2]string{overflowText, styledOverflow})
 	}
 
 	cols := []table.Column{
@@ -327,7 +355,7 @@ func (m Model) renderStatusBar(fullW int) string {
 
 	content := "\n" + summaryLine + "\n"
 	if len(rows) > 0 {
-		content += tableBodyView(tbl) + "\n"
+		content += styledTableBodyView(tbl, statusReplacements) + "\n"
 	}
 
 	return panel("[s] STATUS", content, fullW)
@@ -350,12 +378,15 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 
 	toolLimit := min(budget, len(m.data.activity))
 	rows := make([]table.Row, 0, toolLimit)
+	var replacements [][2]string
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
-		rows = append(rows, table.Row{
-			agentPill(truncate(e.AgentID, agentW)),
-			formatToolLine(e.Line, lineW, projectRoot),
-		})
+		plainAgent := truncate(e.AgentID, agentW)
+		styledAgent := agentPill(plainAgent)
+		plainLine := truncate(e.Line, lineW)
+		styledLine := formatToolLine(e.Line, lineW, projectRoot)
+		rows = append(rows, table.Row{plainAgent, plainLine})
+		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
 	}
 
 	unique := map[string]struct{}{}
@@ -368,7 +399,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		content = renderEmpty("No recent activity", colW-2)
 	} else {
 		t := newStyledTableHeaderless(cols, rows, len(rows))
-		content = "\n" + tableBodyView(t)
+		content = "\n" + styledTableBodyView(t, replacements)
 	}
 	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
 }
