@@ -292,6 +292,13 @@ var (
 	activityBadgeStyle = lipgloss.NewStyle()
 )
 
+// Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
+var (
+	tableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableCellStyle     = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	tableSelectedStyle = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg)
+)
+
 // agentColor returns the role-based color for an agent ID.
 // Role is the prefix before the first dash-digit sequence (e.g. "builder" from "builder-001").
 func agentColor(id string) lipgloss.Color {

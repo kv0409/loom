@@ -19,9 +19,9 @@ func newStyledTable(cols []table.Column, rows []table.Row, height int) table.Mod
 		table.WithFocused(true),
 	)
 	t.SetStyles(table.Styles{
-		Header:   lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1),
-		Cell:     lipgloss.NewStyle().Foreground(colFg).Padding(0, 1),
-		Selected: lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg),
+		Header:   tableHeaderStyle,
+		Cell:     tableCellStyle,
+		Selected: tableSelectedStyle,
 	})
 	return t
 }
@@ -37,8 +37,8 @@ func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int)
 	)
 	t.SetStyles(table.Styles{
 		Header:   lipgloss.NewStyle(), // zero-height: no padding, no bold
-		Cell:     lipgloss.NewStyle().Foreground(colFg).Padding(0, 1),
-		Selected: lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg),
+		Cell:     tableCellStyle,
+		Selected: tableSelectedStyle,
 	})
 	return t
 }
