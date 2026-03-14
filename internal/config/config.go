@@ -122,6 +122,7 @@ type PollingConfig struct {
 	PendingAgentsIntervalMs  int `yaml:"pending_agents_interval_ms"`
 	ACPOutputIntervalMs      int `yaml:"acp_output_interval_ms"`
 	WorktreeGCIntervalMs     int `yaml:"worktree_gc_interval_ms"`
+	IdleShutdownSeconds      int `yaml:"idle_shutdown_seconds"`
 }
 
 type TmuxConfig struct {
@@ -163,6 +164,7 @@ func DefaultConfig() *Config {
 			PendingAgentsIntervalMs: 2000,
 			ACPOutputIntervalMs:     1000,
 			WorktreeGCIntervalMs:    300000,
+			IdleShutdownSeconds:     300,
 		},
 		Tmux: TmuxConfig{
 			SessionName:        "loom",
