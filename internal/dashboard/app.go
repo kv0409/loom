@@ -802,7 +802,7 @@ func (m Model) View() string {
 	for i, l := range lines {
 		w := lipgloss.Width(l)
 		if w < m.width {
-			lines[i] = l + bgFillStyle.Render(strings.Repeat(" ", m.width-w))
+			lines[i] = l + strings.Repeat(" ", m.width-w)
 		}
 	}
 	return strings.Join(lines, "\n")

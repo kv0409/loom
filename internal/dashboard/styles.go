@@ -265,9 +265,6 @@ var (
 	barSegOpen       = lipgloss.NewStyle().Foreground(colSubtle)
 )
 
-// bgFillStyle is used to fill remaining horizontal space with the background color.
-var bgFillStyle = lipgloss.NewStyle().Background(colBg).Foreground(colFg)
-
 // searchBoxStyle is used for the inline search input in the help bar.
 var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
 
