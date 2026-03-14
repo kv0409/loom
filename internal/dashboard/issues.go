@@ -94,7 +94,7 @@ func (m Model) renderIssues() string {
 		}
 		content = t.View() + "\n"
 
-		// Done section with separator.
+		// Done section with separator (headerless — avoids duplicate column headers).
 		if doneStart < end {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += separator(m.width)
@@ -103,11 +103,12 @@ func (m Model) renderIssues() string {
 			if m.cursor >= doneStart && m.cursor < end {
 				doneCursor = m.cursor - doneStart
 			}
-			dt := newStyledTable(cols, doneRows, len(doneRows))
+			dt := newStyledTableHeaderless(cols, doneRows, len(doneRows))
 			if doneCursor >= 0 {
+				dt.Focus()
 				dt.SetCursor(doneCursor)
 			}
-			content += dt.View() + "\n"
+			content += tableBodyView(dt) + "\n"
 		}
 	}
 
