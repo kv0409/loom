@@ -214,12 +214,11 @@ func TestRenderActivity_ColumnWidthOffByOne(t *testing.T) {
 	}
 
 	rendered := m.renderActivity()
-	// Each rendered line must fit within the panel width (width-2 for borders).
-	panelW := m.width - 2
+	// Each rendered line must fit within the full terminal width.
 	for i, line := range strings.Split(rendered, "\n") {
 		w := lipgloss.Width(line)
-		if w > panelW {
-			t.Errorf("line %d width %d exceeds panel inner width %d: %q", i, w, panelW, line)
+		if w > m.width {
+			t.Errorf("line %d width %d exceeds terminal width %d: %q", i, w, m.width, line)
 		}
 	}
 }

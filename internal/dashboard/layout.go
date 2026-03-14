@@ -13,8 +13,8 @@ func availableWidth(w int) int {
 	return avail
 }
 
-// panelWidth returns the standard content width passed to panel() (w - 2).
-func panelWidth(w int) int { return w - 2 }
+// panelWidth returns the standard width passed to panel(), spanning the full terminal.
+func panelWidth(w int) int { return w }
 
 // separatorWidth returns the width of the horizontal separator line drawn
 // inside a panel (max(20, w-6)).
