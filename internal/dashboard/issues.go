@@ -118,7 +118,7 @@ func (m Model) renderIssues() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[i] ISSUES (%d/%d) filter: %s", len(display), len(m.displayIssues()), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderIssueDetail() string {
@@ -181,5 +181,5 @@ func (m Model) renderIssueDetail() string {
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	return panel("Issue: "+iss.ID+scrollInfo, viewContent+"\n", m.width-2)
+	return panel("Issue: "+iss.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }

@@ -314,5 +314,5 @@ func (m Model) renderActivity() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }

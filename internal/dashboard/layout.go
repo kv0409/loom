@@ -54,6 +54,10 @@ func visibleRows(h, headerRows int) int {
 // (h - 6), enforcing a minimum of 1.
 func scrollViewport(h int) int { return visibleRows(h, 6) }
 
+// detailContentWidth returns the usable text-wrap width for detail/body fields
+// inside a panel (w - 8).
+func detailContentWidth(w int) int { return w - 8 }
+
 // issuesViewport returns start/end for the issues list, accounting for the
 // "RECENTLY DONE" separator that consumes issuesSectionGap extra lines when
 // visible. It recalculates with reduced rows so the cursor stays visible.

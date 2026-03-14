@@ -74,7 +74,7 @@ func (m Model) renderWorktrees() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderDiff() string {
@@ -84,7 +84,7 @@ func (m Model) renderDiff() string {
 	}
 
 	if m.diffContent == "" || m.diffContent == "(no diff available)" || m.diffContent == "(no changes)" {
-		return panel(title, renderEmpty("No changes", m.width-6), m.width-2)
+		return panel(title, renderEmpty("No changes", availableWidth(m.width)), panelWidth(m.width))
 	}
 
 	lines := splitLines(m.diffContent)
@@ -108,5 +108,5 @@ func (m Model) renderDiff() string {
 	viewContent, clampedScroll, total := renderViewport(styledLines, m.diffScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	return panel(title+scrollInfo, viewContent+"\n", m.width-2)
+	return panel(title+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }

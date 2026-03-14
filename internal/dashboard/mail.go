@@ -48,7 +48,7 @@ func (m Model) renderMail() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderMailDetail() string {
@@ -86,5 +86,5 @@ func (m Model) renderMailDetail() string {
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, viewContent+"\n", m.width-2)
+	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }

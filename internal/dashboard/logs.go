@@ -210,8 +210,8 @@ func (m Model) renderLogs() string {
 	}
 
 	if len(lines) == 0 {
-		header += renderEmpty("No matching log entries", m.width-6)
-		return panel("[l] LOGS", header, m.width-2)
+		header += renderEmpty("No matching log entries", availableWidth(m.width))
+		return panel("[l] LOGS", header, panelWidth(m.width))
 	}
 
 	visible := visibleRows(m.height, 9)
@@ -235,7 +235,7 @@ func (m Model) renderLogs() string {
 	t := newStyledTable(cols, rows, end-start)
 
 	content := header + t.View()
-	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, m.width-2)
+	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, panelWidth(m.width))
 }
 
 func categoryTag(cat string) string {

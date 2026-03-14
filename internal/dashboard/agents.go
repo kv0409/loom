@@ -104,7 +104,7 @@ func (m Model) renderAgents() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[a] AGENTS (%d/%d) filter: %s", len(agents), len(m.data.agents), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderAgentDetail() string {
@@ -234,7 +234,7 @@ func (m Model) renderAgentDetail() string {
 	if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
 		hint = " [Enter]attach"
 	}
-	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, m.width-2)
+	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, panelWidth(m.width))
 }
 
 // wrapEventContent word-wraps content into indented lines for the detail view.

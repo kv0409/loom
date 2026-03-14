@@ -49,7 +49,7 @@ func (m Model) renderMemory() string {
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[d] MEMORY (%d/%d) filter: %s", len(memories), len(m.data.memories), m.searchTI.Value())
 	}
-	return panel(title, content, m.width-2)
+	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderMemoryDetail() string {
@@ -68,15 +68,15 @@ func (m Model) renderMemoryDetail() string {
 	case "decision":
 		if e.Context != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("CONTEXT"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Context, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Context, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 		if e.Decision != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("DECISION"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Decision, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Decision, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 		if e.Rationale != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("RATIONALE"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rationale, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rationale, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 		if len(e.Alternatives) > 0 {
 			lines = append(lines, "", "  "+headerStyle.Render("ALTERNATIVES"))
@@ -93,16 +93,16 @@ func (m Model) renderMemoryDetail() string {
 		}
 		if e.Finding != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("FINDING"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Finding, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Finding, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 		if e.Implications != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("IMPLICATIONS"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Implications, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Implications, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 	case "convention":
 		if e.Rule != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("RULE"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rule, m.width-8), "\n"), "\n")...)
+			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rule, detailContentWidth(m.width)), "\n"), "\n")...)
 		}
 		if e.AppliesTo != "" {
 			lines = append(lines, fmt.Sprintf("  Applies to: %s", e.AppliesTo))
@@ -126,7 +126,7 @@ func (m Model) renderMemoryDetail() string {
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	return panel("Memory: "+e.ID+scrollInfo, viewContent+"\n", m.width-2)
+	return panel("Memory: "+e.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }
 
 // wrapField formats a multi-line text field with indentation.
