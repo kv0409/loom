@@ -36,9 +36,9 @@ func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int)
 		table.WithFocused(false),
 	)
 	t.SetStyles(table.Styles{
-		Header:   lipgloss.NewStyle(), // zero-height: no padding, no bold
-		Cell:     tableCellStyle,
-		Selected: tableCellStyle, // no cursor highlight in headerless tables
+		Header:   lipgloss.NewStyle(),                          // zero-height: no padding, no bold
+		Cell:     tableCellStyle,                               // Padding(0,1) per cell
+		Selected: lipgloss.NewStyle().Foreground(colFg), // no Padding — bubbles wraps the whole row with Selected, so Padding here would double-indent
 	})
 	return t
 }
