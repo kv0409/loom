@@ -252,41 +252,36 @@ func (m Model) renderStatusBar(fullW int) string {
 	}
 
 	// stackedBar renders a continuous stacked bar of width barW using largest-remainder rounding.
-	// Stages ordered left-to-right: done → review → in-progress → assigned → blocked → open
+	// Visual groups left-to-right: done(█) → active(▓) → blocked(▓) → remaining(░)
+	// Active merges assigned + in-progress + review.
 	stackedBar := func(counts map[string]int, total, barW int) string {
 		type stage struct {
-			key   string
 			char  string
+			count int
 			style lipgloss.Style
 		}
 		stages := []stage{
-			{"done", "█", barSegDone},
-			{"review", "█", barSegReview},
-			{"in-progress", "█", barSegInProgress},
-			{"assigned", "█", barSegAssigned},
-			{"blocked", "█", barSegBlocked},
-			{"open", "░", barSegOpen},
+			{"█", counts["done"] + counts["cancelled"], barSegDone},
+			{"▓", counts["assigned"] + counts["in-progress"] + counts["review"], barSegActive},
+			{"▓", counts["blocked"], barSegBlocked},
+			{"░", counts["open"], barSegRemaining},
 		}
 		type entry struct {
-			idx       int
 			exact     float64
 			floor     int
 			remainder float64
 		}
 		entries := make([]entry, len(stages))
+		allocated := 0
 		for i, s := range stages {
-			c := counts[s.key]
 			exact := 0.0
 			if total > 0 {
-				exact = float64(c) * float64(barW) / float64(total)
+				exact = float64(s.count) * float64(barW) / float64(total)
 			}
-			entries[i] = entry{i, exact, int(exact), exact - float64(int(exact))}
+			entries[i] = entry{exact, int(exact), exact - float64(int(exact))}
+			allocated += int(exact)
 		}
-		allocated := 0
-		for _, e := range entries {
-			allocated += e.floor
-		}
-		remaining := barW - allocated
+		rem := barW - allocated
 		order := make([]int, len(entries))
 		for i := range order {
 			order[i] = i
@@ -301,7 +296,7 @@ func (m Model) renderStatusBar(fullW int) string {
 		widths := make([]int, len(stages))
 		for i, idx := range order {
 			widths[idx] = entries[idx].floor
-			if i < remaining {
+			if i < rem {
 				widths[idx]++
 			}
 		}

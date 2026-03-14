@@ -257,12 +257,10 @@ var (
 
 // Stacked status bar segment styles (one per lifecycle stage)
 var (
-	barSegDone       = lipgloss.NewStyle().Foreground(colGreen)
-	barSegReview     = lipgloss.NewStyle().Foreground(colCyan)
-	barSegInProgress = lipgloss.NewStyle().Foreground(colTeal)
-	barSegAssigned   = lipgloss.NewStyle().Foreground(colBlue)
-	barSegBlocked    = lipgloss.NewStyle().Foreground(colRed)
-	barSegOpen       = lipgloss.NewStyle().Foreground(colSubtle)
+	barSegDone      = lipgloss.NewStyle().Foreground(colGreen)
+	barSegActive    = lipgloss.NewStyle().Foreground(colTeal)
+	barSegBlocked   = lipgloss.NewStyle().Foreground(colRed)
+	barSegRemaining = lipgloss.NewStyle().Foreground(colSubtle)
 )
 
 // searchBoxStyle is used for the inline search input in the help bar.
