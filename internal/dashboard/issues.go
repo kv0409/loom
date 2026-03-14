@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/issue"
 )
 
@@ -112,6 +113,11 @@ func (m Model) renderIssues() string {
 			if doneCursor >= 0 {
 				dt.Focus()
 				dt.SetCursor(doneCursor)
+				dt.SetStyles(table.Styles{
+					Header:   lipgloss.NewStyle(),
+					Cell:     tableCellStyle,
+					Selected: tableSelectedStyle,
+				})
 			}
 			doneView := tableBodyView(dt)
 			for _, r := range doneRepl {
