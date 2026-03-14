@@ -72,11 +72,9 @@ func (m Model) renderMailDetail() string {
 			maxW = 40
 		}
 		for _, bl := range strings.Split(msg.Body, "\n") {
-			for len(bl) > maxW {
-				lines = append(lines, "  "+bl[:maxW])
-				bl = bl[maxW:]
+			for _, seg := range wordWrap(bl, maxW) {
+				lines = append(lines, "  "+seg)
 			}
-			lines = append(lines, "  "+bl)
 		}
 	} else {
 		lines = append(lines, "  (no body)")
