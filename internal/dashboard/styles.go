@@ -212,6 +212,18 @@ func joinLines(lines []string) string {
 	return result
 }
 
+// plural returns the simple English plural of a singular noun.
+// Handles: "discovery" → "discoveries", "worktree" → "worktrees".
+func plural(n int, singular string) string {
+	if n == 1 {
+		return singular
+	}
+	if strings.HasSuffix(singular, "y") && !strings.HasSuffix(singular, "ey") {
+		return singular[:len(singular)-1] + "ies"
+	}
+	return singular + "s"
+}
+
 func truncate(s string, n int) string {
 	if lipgloss.Width(s) <= n {
 		return s

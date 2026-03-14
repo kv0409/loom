@@ -188,13 +188,14 @@ func (m Model) renderStatusBar(fullW int) string {
 	var memParts []string
 	for _, t := range []string{"decision", "discovery", "convention"} {
 		if c := memCounts[t]; c > 0 {
-			memParts = append(memParts, fmt.Sprintf("%d %ss", c, t))
+			memParts = append(memParts, fmt.Sprintf("%d %s", c, plural(c, t)))
 		}
 	}
 
 	summaryParts := countParts
 	if len(m.data.worktrees) > 0 {
-		summaryParts = append(summaryParts, idleStyle.Render(fmt.Sprintf("%d worktrees", len(m.data.worktrees))))
+		n := len(m.data.worktrees)
+		summaryParts = append(summaryParts, idleStyle.Render(fmt.Sprintf("%d %s", n, plural(n, "worktree"))))
 	}
 	if len(memParts) > 0 {
 		summaryParts = append(summaryParts, idleStyle.Render(strings.Join(memParts, " · ")))
@@ -370,7 +371,7 @@ func (m Model) renderStatusBar(fullW int) string {
 // Shows only ToolSummary lines (human-readable tool use); mail excluded.
 func (m Model) renderActivityOverview(colW, budget int) string {
 	innerW := colW - 2 // panel border (1 each side)
-	agentW := 13
+	agentW := 16 // "orchestrator" (12) + pill padding (2) + cell padding (2) = 16
 	lineW := max(8, innerW-agentW-4) // 4 = cell padding (0,1) × 2 cols × 2 sides
 
 	projectRoot := filepath.Dir(m.loomRoot)
