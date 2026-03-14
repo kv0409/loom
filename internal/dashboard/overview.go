@@ -85,8 +85,8 @@ func (m Model) renderOverview() string {
 			task = activeStyle.Render(truncate(taskStr, aTaskW))
 		}
 		idCol := statusIndicator(a.Status) + " " + agentPill(truncate(a.ID, aIdW))
-		ageCol := idleStyle.Render(fmt.Sprintf("⏱ %-*s", aAgeW-2, age))
-		hbCol := heartbeatStyle(hb).Render(fmt.Sprintf("♥ %-*s", aHbW-2, hb))
+		ageCol := idleStyle.Render("⏱ " + age)
+		hbCol := heartbeatStyle(hb).Render("♥ " + hb)
 		agentRows = append(agentRows, table.Row{idCol, ageCol, hbCol, task})
 	}
 
