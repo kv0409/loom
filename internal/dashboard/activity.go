@@ -304,7 +304,11 @@ func (m Model) renderActivity() string {
 		}
 	}
 
-	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(entries))
+	uniqueAgents := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		uniqueAgents[e.AgentID] = struct{}{}
+	}
+	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(uniqueAgents))
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.activity), m.searchTI.Value())
 	}
