@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/karanagi/loom/internal/acp"
@@ -29,21 +30,23 @@ type Daemon struct {
 	mu         sync.Mutex
 	acpClients map[string]*acp.Client
 	apiLn      net.Listener
-	lastSeen   map[string]time.Time // ephemeral: detect heartbeat changes between ticks
-	idleSince  map[string]time.Time // ephemeral: when agent became idle (no active issues)
-	loggedAt   map[string]time.Time // rate-limit: last time a log key was emitted
+	lastSeen     map[string]time.Time // ephemeral: detect heartbeat changes between ticks
+	idleSince    map[string]time.Time // ephemeral: when agent became idle (no active issues)
+	loggedAt     map[string]time.Time // rate-limit: last time a log key was emitted
+	lastActivity time.Time            // ephemeral: last time any watcher observed activity
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
 	return &Daemon{
-		LoomRoot:   loomRoot,
-		Config:     cfg,
-		stop:       make(chan struct{}),
-		done:       make(chan struct{}),
-		acpClients: make(map[string]*acp.Client),
-		lastSeen:   make(map[string]time.Time),
-		idleSince:  make(map[string]time.Time),
-		loggedAt:   make(map[string]time.Time),
+		LoomRoot:     loomRoot,
+		Config:       cfg,
+		stop:         make(chan struct{}),
+		done:         make(chan struct{}),
+		acpClients:   make(map[string]*acp.Client),
+		lastSeen:     make(map[string]time.Time),
+		idleSince:    make(map[string]time.Time),
+		loggedAt:     make(map[string]time.Time),
+		lastActivity: time.Now(),
 	}
 }
 
@@ -58,6 +61,14 @@ func (d *Daemon) rlog(key, format string, args ...any) {
 	d.loggedAt[key] = time.Now()
 	d.mu.Unlock()
 	log.Printf(format, args...)
+}
+
+// touchActivity records that something meaningful happened, resetting the
+// idle-shutdown timer.
+func (d *Daemon) touchActivity() {
+	d.mu.Lock()
+	d.lastActivity = time.Now()
+	d.mu.Unlock()
 }
 
 // notify delivers a message to an agent. ACP agents receive a session/prompt;
@@ -95,7 +106,7 @@ func (d *Daemon) Start() error {
 		return fmt.Errorf("starting API: %w", err)
 	}
 	var wg sync.WaitGroup
-	wg.Add(8)
+	wg.Add(9)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
@@ -104,6 +115,7 @@ func (d *Daemon) Start() error {
 	go func() { defer wg.Done(); d.watchACPOutput() }()
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { defer wg.Done(); d.watchWorktreeGC() }()
+	go func() { defer wg.Done(); d.watchIdleShutdown() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -140,6 +152,7 @@ func (d *Daemon) Reload() error {
 	d.lastSeen = make(map[string]time.Time)
 	d.idleSince = make(map[string]time.Time)
 	d.loggedAt = make(map[string]time.Time)
+	d.lastActivity = time.Now()
 
 	log.Println("[daemon] reload: restarting goroutines")
 	return d.Start()
@@ -188,6 +201,7 @@ func (d *Daemon) watchPendingAgents() {
 			}
 			for _, a := range agents {
 				if a.Status == "pending-acp" {
+					d.touchActivity()
 					a.Status = "activating"
 					agent.Save(d.LoomRoot, a)
 					go d.activateACPAgent(a)
@@ -384,6 +398,7 @@ func (d *Daemon) watchIssues() {
 					continue
 				}
 				notified[iss.ID] = true
+				d.touchActivity()
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
 				orch, err := agent.Load(d.LoomRoot, "orchestrator")
 				if err != nil {
@@ -452,6 +467,7 @@ func (d *Daemon) watchDoneIssues() {
 				if !allDescendantsResolved(d.LoomRoot, iss.ID) {
 					continue
 				}
+				d.touchActivity()
 				issue.Close(d.LoomRoot, iss.ID, "all children resolved")
 				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
@@ -544,6 +560,7 @@ func (d *Daemon) watchMail() {
 				if len(msgs) == 0 {
 					continue
 				}
+				d.touchActivity()
 				a, err := agent.Load(d.LoomRoot, agentID)
 				if err != nil {
 					d.rlog("watchMail:load:"+agentID, "[mail] load agent %s: %v", agentID, err)
@@ -636,6 +653,7 @@ func (d *Daemon) watchHeartbeats() {
 				// Heartbeat was refreshed since last check — reset nudge count.
 				if a.Heartbeat.After(prev) {
 					d.lastSeen[a.ID] = a.Heartbeat
+					d.touchActivity()
 					if a.NudgeCount > 0 {
 						a.NudgeCount = 0
 						agent.Save(d.LoomRoot, a)
@@ -836,6 +854,81 @@ func (d *Daemon) runWorktreeGC() {
 			log.Printf("[gc] failed to remove worktree %s: %v", name, err)
 		}
 	}
+}
+
+// watchIdleShutdown monitors lastActivity and triggers graceful shutdown
+// (SIGTERM to self) when the daemon has been idle longer than
+// Config.Polling.IdleShutdownSeconds. Disabled when the value is 0.
+func (d *Daemon) watchIdleShutdown() {
+	threshold := time.Duration(d.Config.Polling.IdleShutdownSeconds) * time.Second
+	if threshold <= 0 {
+		// Disabled — block until stop.
+		<-d.stop
+		return
+	}
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	warned := false
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			d.mu.Lock()
+			idle := time.Since(d.lastActivity)
+			d.mu.Unlock()
+			if idle < threshold {
+				warned = false
+				continue
+			}
+			// Double-check: any non-terminal issues or active agents mean
+			// the system is not truly idle.
+			if d.hasNonTerminalIssues() || d.hasActiveAgents() {
+				d.touchActivity()
+				warned = false
+				continue
+			}
+			if !warned {
+				log.Printf("[idle-shutdown] daemon idle for %v (threshold %v), will shut down", idle.Truncate(time.Second), threshold)
+				warned = true
+			}
+			log.Printf("[idle-shutdown] shutting down: no activity for %v", idle.Truncate(time.Second))
+			p, _ := os.FindProcess(os.Getpid())
+			p.Signal(syscall.SIGTERM)
+			return
+		}
+	}
+}
+
+// hasNonTerminalIssues returns true if any issue is not done/cancelled.
+func (d *Daemon) hasNonTerminalIssues() bool {
+	issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
+	if err != nil {
+		return true // assume active on error
+	}
+	for _, iss := range issues {
+		if iss.Status != "done" && iss.Status != "cancelled" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasActiveAgents returns true if any non-orchestrator agent is active.
+func (d *Daemon) hasActiveAgents() bool {
+	agents, err := agent.List(d.LoomRoot)
+	if err != nil {
+		return true // assume active on error
+	}
+	for _, a := range agents {
+		if a.Role == "orchestrator" {
+			continue
+		}
+		if a.Status == "active" || a.Status == "activating" || a.Status == "pending-acp" {
+			return true
+		}
+	}
+	return false
 }
 
 func itoa(n int) string {
