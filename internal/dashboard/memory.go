@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/karanagi/loom/internal/memory"
@@ -127,6 +128,7 @@ func (m Model) renderMemoryDetail() string {
 }
 
 // wrapField formats a multi-line text field with indentation.
+// Uses rune-based slicing to avoid splitting multi-byte UTF-8 characters.
 func wrapField(text string, maxW int) string {
 	var s string
 	for _, line := range strings.Split(text, "\n") {
@@ -135,17 +137,20 @@ func wrapField(text string, maxW int) string {
 			s += "\n"
 			continue
 		}
-		for len(line) > maxW {
+		runes := []rune(line)
+		for len(runes) > maxW {
 			cut := maxW
-			if sp := strings.LastIndex(line[:cut], " "); sp > 0 {
-				cut = sp
+			segment := string(runes[:cut])
+			if sp := strings.LastIndex(segment, " "); sp > 0 {
+				cut = utf8.RuneCountInString(segment[:sp])
 			}
-			s += "    " + line[:cut] + "\n"
-			line = line[cut:]
-			line = strings.TrimSpace(line)
+			s += "    " + string(runes[:cut]) + "\n"
+			runes = runes[cut:]
+			line = strings.TrimSpace(string(runes))
+			runes = []rune(line)
 		}
-		if line != "" {
-			s += "    " + line + "\n"
+		if len(runes) > 0 {
+			s += "    " + string(runes) + "\n"
 		}
 	}
 	return s
