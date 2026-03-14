@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
 )
@@ -54,6 +55,7 @@ func (m Model) renderAgents() string {
 
 	rows := make([]table.Row, 0, end-start)
 	var replacements [][2]string
+	ri := 0
 	for i := start; i < end; i++ {
 		a := agents[i]
 		wt := "—"
@@ -91,12 +93,13 @@ func (m Model) renderAgents() string {
 		}
 
 		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
-		plainID := prefix + agentPillPlain(truncID)
 		styledID := prefix + agentPillFor(truncID, a.ID)
-		plainStatus := statusColPlain(a.Status)
 		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
-		rows = append(rows, table.Row{plainID, a.Role, plainStatus, wt, issues, hb})
-		replacements = append(replacements, [2]string{plainID, styledID}, [2]string{plainStatus, styledStatus})
+		phID := cellPlaceholder(ri, lipgloss.Width(prefix+agentPillPlain(truncID)))
+		phStatus := cellPlaceholder(ri+1, lipgloss.Width(styledStatus))
+		rows = append(rows, table.Row{phID, a.Role, phStatus, wt, issues, hb})
+		replacements = append(replacements, [2]string{phID, styledID}, [2]string{phStatus, styledStatus})
+		ri += 2
 	}
 
 	var content string

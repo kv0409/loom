@@ -66,6 +66,7 @@ func (m Model) renderIssues() string {
 		doneStart = activeCount
 	}
 
+	ri := 0
 	buildRows := func(from, to int) ([]table.Row, [][2]string) {
 		rows := make([]table.Row, 0, to-from)
 		var replacements [][2]string
@@ -77,8 +78,10 @@ func (m Model) renderIssues() string {
 			}
 			plainID := sg + typeGlyph(iss.Type) + " " + iss.ID
 			styledID := statusStyle(iss.Status).Render(plainID)
-			rows = append(rows, table.Row{plainID, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
-			replacements = append(replacements, [2]string{plainID, styledID})
+			ph := cellPlaceholder(ri, lipgloss.Width(styledID))
+			rows = append(rows, table.Row{ph, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
+			replacements = append(replacements, [2]string{ph, styledID})
+			ri++
 		}
 		return rows, replacements
 	}

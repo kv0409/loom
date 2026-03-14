@@ -287,17 +287,17 @@ func (m Model) renderActivity() string {
 
 	rows := make([]table.Row, 0, end-start)
 	var replacements [][2]string
+	ri := 0
 	for i := start; i < end; i++ {
 		e := entries[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
-		plainAgent := agentPillPlain(truncAgent)
 		styledAgent := agentPillFor(truncAgent, e.AgentID)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
-		styledW := lipgloss.Width(styledLine)
-		raw := truncate(e.Line, styledW)
-		plainLine := raw + strings.Repeat(" ", max(0, styledW-lipgloss.Width(raw)))
-		rows = append(rows, table.Row{plainAgent, plainLine})
-		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
+		phAgent := cellPlaceholder(ri, lipgloss.Width(agentPillPlain(truncAgent)))
+		phLine := cellPlaceholder(ri+1, lipgloss.Width(styledLine))
+		rows = append(rows, table.Row{phAgent, phLine})
+		replacements = append(replacements, [2]string{phAgent, styledAgent}, [2]string{phLine, styledLine})
+		ri += 2
 	}
 
 	var content string

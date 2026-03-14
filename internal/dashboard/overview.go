@@ -75,39 +75,40 @@ func (m Model) renderOverview() string {
 	}
 	agentRows := make([]table.Row, 0, len(m.data.agents))
 	var agentReplacements [][2]string
+	ri := 0
 	for _, a := range m.data.agents {
 		hb := fmtTime(a.Heartbeat, true)
 		age := fmtTime(a.SpawnedAt, true)
-		plainTask := "idle"
 		styledTask := idleStyle.Render("idle")
+		taskW := lipgloss.Width(styledTask)
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
 			styledTask = formatToolLine(line, aTaskW, projectRoot)
-			sw := lipgloss.Width(styledTask)
-			raw := truncate(line, sw)
-			plainTask = raw + strings.Repeat(" ", max(0, sw-lipgloss.Width(raw)))
+			taskW = lipgloss.Width(styledTask)
 		} else if len(a.AssignedIssues) > 0 {
 			taskStr := truncate(strings.Join(a.AssignedIssues, ", "), aTaskW)
-			plainTask = taskStr
 			styledTask = activeStyle.Render(taskStr)
+			taskW = lipgloss.Width(styledTask)
 		}
 		glyph := statusGlyphs[a.Status]
 		if glyph == "" {
 			glyph = "●"
 		}
 		truncID := truncate(a.ID, aIdW)
-		plainID := glyph + " " + agentPillPlain(truncID)
 		styledID := statusIndicator(a.Status) + " " + agentPillFor(truncID, a.ID)
-		plainAge := "⏱ " + age
-		styledAge := idleStyle.Render(plainAge)
-		plainHb := "♥ " + hb
-		styledHb := heartbeatStyle(hb).Render(plainHb)
-		agentRows = append(agentRows, table.Row{plainID, plainAge, plainHb, plainTask})
+		styledAge := idleStyle.Render("⏱ " + age)
+		styledHb := heartbeatStyle(hb).Render("♥ " + hb)
+		phID := cellPlaceholder(ri, lipgloss.Width(glyph+" "+agentPillPlain(truncID)))
+		phAge := cellPlaceholder(ri+1, lipgloss.Width(styledAge))
+		phHb := cellPlaceholder(ri+2, lipgloss.Width(styledHb))
+		phTask := cellPlaceholder(ri+3, taskW)
+		agentRows = append(agentRows, table.Row{phID, phAge, phHb, phTask})
 		agentReplacements = append(agentReplacements,
-			[2]string{plainID, styledID},
-			[2]string{plainAge, styledAge},
-			[2]string{plainHb, styledHb},
-			[2]string{plainTask, styledTask},
+			[2]string{phID, styledID},
+			[2]string{phAge, styledAge},
+			[2]string{phHb, styledHb},
+			[2]string{phTask, styledTask},
 		)
+		ri += 4
 	}
 
 	var agentContent string
@@ -315,6 +316,7 @@ func (m Model) renderStatusBar(fullW int) string {
 
 	var rows []table.Row
 	var statusReplacements [][2]string
+	ri := 0
 	for _, p := range shown {
 		childCounts := map[string]int{}
 		for _, cid := range p.children {
@@ -323,26 +325,26 @@ func (m Model) renderStatusBar(fullW int) string {
 			}
 		}
 		bar := stackedBar(childCounts, p.total, barW)
-		plainID := truncate(p.id, idW)
-		styledID := barLabel.Render(plainID)
-		plainTitle := truncate(p.title, titleW)
-		styledTitle := idleStyle.Render(plainTitle)
+		styledID := barLabel.Render(truncate(p.id, idW))
+		styledTitle := idleStyle.Render(truncate(p.title, titleW))
+		phID := cellPlaceholder(ri, lipgloss.Width(styledID))
+		phBar := cellPlaceholder(ri+1, barW)
+		phTitle := cellPlaceholder(ri+2, lipgloss.Width(styledTitle))
 		fraction := fmt.Sprintf("%d/%d", p.done, p.total)
-		// bar is already styled; use a unique placeholder padded to barW width
-		barTag := "BAR_" + p.id
-		barPlaceholder := barTag + strings.Repeat("_", max(0, barW-lipgloss.Width(barTag)))
-		rows = append(rows, table.Row{plainID, barPlaceholder, fraction, plainTitle})
+		rows = append(rows, table.Row{phID, phBar, fraction, phTitle})
 		statusReplacements = append(statusReplacements,
-			[2]string{plainID, styledID},
-			[2]string{barPlaceholder, bar},
-			[2]string{plainTitle, styledTitle},
+			[2]string{phID, styledID},
+			[2]string{phBar, bar},
+			[2]string{phTitle, styledTitle},
 		)
+		ri += 3
 	}
 	if overflow > 0 {
 		overflowText := fmt.Sprintf("… +%d more", overflow)
 		styledOverflow := idleStyle.Render(overflowText)
-		rows = append(rows, table.Row{overflowText, "", "", ""})
-		statusReplacements = append(statusReplacements, [2]string{overflowText, styledOverflow})
+		phOverflow := cellPlaceholder(ri, lipgloss.Width(styledOverflow))
+		rows = append(rows, table.Row{phOverflow, "", "", ""})
+		statusReplacements = append(statusReplacements, [2]string{phOverflow, styledOverflow})
 	}
 
 	cols := []table.Column{
@@ -379,17 +381,17 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	toolLimit := min(budget, len(m.data.activity))
 	rows := make([]table.Row, 0, toolLimit)
 	var replacements [][2]string
+	ri := 0
 	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
 		e := m.data.activity[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
-		plainAgent := agentPillPlain(truncAgent)
 		styledAgent := agentPillFor(truncAgent, e.AgentID)
 		styledLine := formatToolLine(e.Line, lineW, projectRoot)
-		styledW := lipgloss.Width(styledLine)
-		raw := truncate(e.Line, styledW)
-		plainLine := raw + strings.Repeat(" ", max(0, styledW-lipgloss.Width(raw)))
-		rows = append(rows, table.Row{plainAgent, plainLine})
-		replacements = append(replacements, [2]string{plainAgent, styledAgent}, [2]string{plainLine, styledLine})
+		phAgent := cellPlaceholder(ri, lipgloss.Width(agentPillPlain(truncAgent)))
+		phLine := cellPlaceholder(ri+1, lipgloss.Width(styledLine))
+		rows = append(rows, table.Row{phAgent, phLine})
+		replacements = append(replacements, [2]string{phAgent, styledAgent}, [2]string{phLine, styledLine})
+		ri += 2
 	}
 
 	unique := map[string]struct{}{}

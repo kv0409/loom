@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type logLine struct {
@@ -231,13 +232,14 @@ func (m Model) renderLogs() string {
 	var replacements [][2]string
 	for i := start; i < end; i++ {
 		l := lines[i]
-		plainCat := l.Category
-		if plainCat == "" {
-			plainCat = "info"
+		cat := l.Category
+		if cat == "" {
+			cat = "info"
 		}
-		styledCat := categoryTag(l.Category)
-		rows = append(rows, table.Row{plainCat, truncate(l.Text, textW)})
-		replacements = append(replacements, [2]string{plainCat, styledCat})
+		styledCat := categoryTag(cat)
+		ph := cellPlaceholder(i-start, lipgloss.Width(styledCat))
+		rows = append(rows, table.Row{ph, truncate(l.Text, textW)})
+		replacements = append(replacements, [2]string{ph, styledCat})
 	}
 	t := newStyledTable(cols, rows, end-start)
 

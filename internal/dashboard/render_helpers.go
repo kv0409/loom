@@ -84,8 +84,21 @@ func fmtTimeFull(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-// styledTableView renders t.View() and replaces each plain-text cell value with its
-// styled equivalent. Pass pairs as (plain, styled) in the order they appear in the output.
+// cellPlaceholder returns a unique placeholder string of the given visual width.
+// It uses a \x00 prefix + index suffix so it cannot collide with real cell content.
+// Callers pass these as plain-text values in table.Row, then styledTableView replaces
+// each placeholder with the corresponding styled string.
+func cellPlaceholder(index, width int) string {
+	tag := fmt.Sprintf("\x00%d\x00", index)
+	pad := width - len(tag)
+	if pad < 0 {
+		pad = 0
+	}
+	return tag + strings.Repeat(" ", pad)
+}
+
+// styledTableView renders t.View() and replaces each placeholder cell value with its
+// styled equivalent. Pass pairs as (placeholder, styled) in any order.
 // This is necessary because bubbles/table calls runewidth.Truncate on cell values, which
 // counts ANSI escape bytes as display width and mangles pre-styled strings.
 func styledTableView(t table.Model, replacements [][2]string) string {

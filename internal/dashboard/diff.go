@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -46,22 +47,24 @@ func (m Model) renderWorktrees() string {
 
 	rows := make([]table.Row, 0, end-start)
 	var replacements [][2]string
+	ri := 0
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
 		ds := m.data.diffStats[wt.Name]
-		plainDiff := ""
-		styledDiff := ""
 		if ds != nil && ds.FilesChanged > 0 {
-			plainDiff = fmt.Sprintf("%df +%d -%d", ds.FilesChanged, ds.Insertions, ds.Deletions)
-			styledDiff = fmt.Sprintf("%df ", ds.FilesChanged) +
+			styledDiff := fmt.Sprintf("%df ", ds.FilesChanged) +
 				diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions)) +
 				diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
-		}
-		rows = append(rows, table.Row{
-			slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, plainDiff,
-		})
-		if plainDiff != "" {
-			replacements = append(replacements, [2]string{plainDiff, styledDiff})
+			ph := cellPlaceholder(ri, lipgloss.Width(styledDiff))
+			rows = append(rows, table.Row{
+				slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, ph,
+			})
+			replacements = append(replacements, [2]string{ph, styledDiff})
+			ri++
+		} else {
+			rows = append(rows, table.Row{
+				slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, "",
+			})
 		}
 	}
 
