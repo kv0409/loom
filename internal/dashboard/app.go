@@ -792,7 +792,7 @@ func (m Model) View() string {
 	}
 
 	// Full-screen background fill
-	lines := strings.Split(output, "\n")
+	lines := splitLines(output)
 	for len(lines) < m.height {
 		lines = append(lines, "")
 	}
