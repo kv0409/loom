@@ -180,7 +180,7 @@ func DefaultConfig() *Config {
 			Builder:      "opus",
 			Reviewer:     "opus",
 			Explorer:     "haiku",
-			Researcher:   "haiku",
+			Researcher:   "sonnet",
 		},
 		MCP: MCPConfig{
 			Enabled: true,
