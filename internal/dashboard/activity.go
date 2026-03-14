@@ -299,6 +299,9 @@ func (m Model) renderActivity() string {
 		t := newStyledTable(cols, rows, vRows)
 		t.SetCursor(m.cursor - start)
 		content = t.View() + "\n"
+		if len(entries) > vRows {
+			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
+		}
 	}
 
 	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(entries))
