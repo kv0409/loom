@@ -339,9 +339,9 @@ func (m Model) renderStatusBar(fullW int) string {
 // renderActivityOverview builds a compact live activity panel for the overview.
 // Shows only ToolSummary lines (human-readable tool use); mail excluded.
 func (m Model) renderActivityOverview(colW, budget int) string {
-	innerW := colW - 4 // table cell padding (1 each side × 2 cols)
+	innerW := colW - 2 // panel border (1 each side)
 	agentW := 13
-	lineW := max(8, innerW-agentW)
+	lineW := max(8, innerW-agentW-4) // 4 = cell padding (0,1) × 2 cols × 2 sides
 
 	projectRoot := filepath.Dir(m.loomRoot)
 
