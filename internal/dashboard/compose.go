@@ -1,0 +1,130 @@
+package dashboard
+
+import (
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+)
+
+// composeData holds the form field values bound to the huh form.
+type composeData struct {
+	To       string
+	Subject  string
+	Type     string
+	Priority string
+	Body     string
+	Confirm  bool
+}
+
+// mailTypes are the allowed message types for the compose form.
+var mailTypes = []huh.Option[string]{
+	huh.NewOption("status", "status"),
+	huh.NewOption("completion", "completion"),
+	huh.NewOption("blocker", "blocker"),
+	huh.NewOption("question", "question"),
+	huh.NewOption("task", "task"),
+	huh.NewOption("review-request", "review-request"),
+	huh.NewOption("review-result", "review-result"),
+	huh.NewOption("escalation", "escalation"),
+	huh.NewOption("nudge", "nudge"),
+}
+
+// mailPriorities are the allowed priority levels.
+var mailPriorities = []huh.Option[string]{
+	huh.NewOption("normal", "normal"),
+	huh.NewOption("critical", "critical"),
+	huh.NewOption("low", "low"),
+}
+
+// newComposeForm builds a huh.Form for composing a mail message.
+// agentIDs provides autocomplete suggestions for the To field.
+// replyTo pre-fills the To field when replying.
+func newComposeForm(cd *composeData, agentIDs []string, replyTo string) *huh.Form {
+	cd.To = replyTo
+	cd.Type = "status"
+	cd.Priority = "normal"
+
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("To").
+				Value(&cd.To).
+				Placeholder("agent-id").
+				Suggestions(agentIDs),
+			huh.NewInput().
+				Title("Subject").
+				Value(&cd.Subject).
+				Placeholder("subject line"),
+			huh.NewSelect[string]().
+				Title("Type").
+				Options(mailTypes...).
+				Value(&cd.Type),
+			huh.NewSelect[string]().
+				Title("Priority").
+				Options(mailPriorities...).
+				Value(&cd.Priority),
+			huh.NewText().
+				Title("Body").
+				Value(&cd.Body).
+				Placeholder("message body (optional)").
+				Lines(4),
+			huh.NewConfirm().
+				Title("Send?").
+				Affirmative("Send").
+				Negative("Cancel").
+				Value(&cd.Confirm),
+		),
+	).WithTheme(composeTheme())
+
+	return f
+}
+
+// composeTheme returns a huh theme styled to match the Tokyo Night palette.
+func composeTheme() *huh.Theme {
+	t := huh.ThemeBase()
+
+	t.Focused.Base = lipgloss.NewStyle().
+		PaddingLeft(1).
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderLeft(true).
+		BorderForeground(colBlue)
+	t.Focused.Title = lipgloss.NewStyle().Foreground(colBlue).Bold(true)
+	t.Focused.Description = lipgloss.NewStyle().Foreground(colGray)
+	t.Focused.ErrorIndicator = lipgloss.NewStyle().Foreground(colRed).SetString(" *")
+	t.Focused.ErrorMessage = lipgloss.NewStyle().Foreground(colRed)
+	t.Focused.SelectSelector = lipgloss.NewStyle().Foreground(colBlue).SetString("> ")
+	t.Focused.Option = lipgloss.NewStyle().Foreground(colFg)
+	t.Focused.NextIndicator = lipgloss.NewStyle().Foreground(colGray).MarginLeft(1).SetString("→")
+	t.Focused.PrevIndicator = lipgloss.NewStyle().Foreground(colGray).MarginRight(1).SetString("←")
+	t.Focused.TextInput.Cursor = lipgloss.NewStyle().Foreground(colBlue)
+	t.Focused.TextInput.Placeholder = lipgloss.NewStyle().Foreground(colGray)
+	t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(colFg)
+	t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(colBlue)
+	t.Focused.FocusedButton = lipgloss.NewStyle().
+		Foreground(colBg).Background(colBlue).Bold(true).Padding(0, 2).MarginRight(1)
+	t.Focused.BlurredButton = lipgloss.NewStyle().
+		Foreground(colFg).Background(colSubtle).Padding(0, 2).MarginRight(1)
+	t.Focused.Card = t.Focused.Base
+
+	t.Blurred = t.Focused
+	t.Blurred.Base = t.Blurred.Base.BorderStyle(lipgloss.HiddenBorder())
+	t.Blurred.Card = t.Blurred.Base
+	t.Blurred.Title = lipgloss.NewStyle().Foreground(colGray)
+	t.Blurred.TextInput.Text = lipgloss.NewStyle().Foreground(colGray)
+	t.Blurred.NextIndicator = lipgloss.NewStyle()
+	t.Blurred.PrevIndicator = lipgloss.NewStyle()
+
+	t.Help.ShortKey = lipgloss.NewStyle().Foreground(colGray)
+	t.Help.ShortDesc = lipgloss.NewStyle().Foreground(colSubtle)
+	t.Help.ShortSeparator = lipgloss.NewStyle().Foreground(colSubtle)
+
+	return t
+}
+
+// renderComposeOverlay renders the compose form as a centered overlay.
+func renderComposeOverlay(form *huh.Form, width, height int) string {
+	formW := min(60, width-4)
+	formView := form.View()
+
+	box := overlayStyle.Width(formW).Render(formView)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}

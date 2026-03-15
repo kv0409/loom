@@ -46,6 +46,7 @@ var (
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
 	flashErrStyle = lipgloss.NewStyle().Bold(true).Foreground(colRed)
 	borderStyle   = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colSubtle)
+	overlayStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(colBlue).Background(colBg).Padding(1, 2)
 )
 
 // Panel header style — inverted: blue background + dark foreground, like a mini title bar
