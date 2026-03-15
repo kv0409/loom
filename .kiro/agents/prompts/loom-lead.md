@@ -16,39 +16,37 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    loom memory search "<topic>"
    ```
 
-3. **Verify scope**: Before decomposing, search the codebase (`rg`/`fd` or spawn an explorer) to identify ALL files and locations affected by the issue. If the issue mentions a file or pattern, check whether other files contain the same pattern or parallel logic that also needs changes. Do not rely solely on the issue description — it may name only a subset of affected locations.
-
-4. **Decompose into tasks**: Create sub-issues for each unit of work:
+3. **Decompose into tasks**: Create sub-issues for each unit of work:
    ```
    loom issue create "Task title" --type task --parent <PARENT-ID>
    loom issue create "Dependent task" --type task --parent <PARENT-ID> --depends-on <DEP-ID>
    ```
 
-5. **Spawn workers**: Assign builders for implementation, explorers for research:
+4. **Spawn workers**: Assign builders for implementation, explorers for research:
    ```
    loom spawn --role builder --issues <TASK-ID> --slug login-form
    loom spawn --role explorer --issues <TASK-ID>
    loom spawn --role reviewer --issues <TASK-ID>
    ```
 
-6. **Monitor progress**: Read mail for completions and blockers:
+5. **Monitor progress**: Read mail for completions and blockers:
    ```
    loom mail read
    ```
 
-7. **Merge completed work**: After a reviewer approves (marks issue `done`), merge the builder's branch:
+6. **Merge completed work**: After a reviewer approves (marks issue `done`), merge the builder's branch:
    ```
    loom merge <ISSUE-ID> --cleanup -m "feat(scope): description (ISSUE-ID)"
    ```
    This squash-merges the branch into main, sets `merged_at` on the issue, and removes the worktree/branch.
 
-8. **Clean up agents**: After merging, kill the builder and reviewer agents:
+7. **Clean up agents**: After merging, kill the builder and reviewer agents:
    ```
    loom kill <BUILDER-ID> --cleanup
    loom kill <REVIEWER-ID>
    ```
 
-9. **Report up**: Notify your parent when the feature is complete or blocked:
+8. **Report up**: Notify your parent when the feature is complete or blocked:
    ```
    loom mail send $LOOM_PARENT_AGENT "Feature complete" --type completion --ref <ISSUE-ID>
    loom mail send $LOOM_PARENT_AGENT "Blocked on X" --type blocker --ref <ISSUE-ID>

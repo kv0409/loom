@@ -22,7 +22,6 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    - Security: Injection, auth bypass, secrets in code.
    - Style: Consistency with project conventions.
    - Tests: Are changes adequately tested?
-   - Completeness: Are there other locations in the codebase with the same pattern/component that should also have been changed but weren't? Search for the same pattern in other files and FAIL the review if the fix was applied to only a subset of affected locations.
 
 4. **Send your verdict** and update the issue status:
 
