@@ -140,8 +140,15 @@ func buildTaskMsg(opts SpawnOpts) string {
 		}
 	}
 	if len(opts.AssignedIssues) > 0 {
-		return fmt.Sprintf("Your assigned issues: %s. Read them with loom issue show and begin work.",
+		base := fmt.Sprintf("Your assigned issues: %s. Read them with loom issue show and begin work.",
 			strings.Join(opts.AssignedIssues, ", "))
+		switch opts.Role {
+		case "lead":
+			return base + " Remember: verify scope across the full codebase before decomposing — search for all affected files, not just those named in the issue."
+		case "reviewer":
+			return base + " Remember: check whether the fix covers all affected locations in the codebase, not just the ones named in the issue."
+		}
+		return base
 	}
 	return ""
 }
