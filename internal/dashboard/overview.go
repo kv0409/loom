@@ -366,16 +366,22 @@ func (m Model) renderStatusBar(fullW int) string {
 
 // renderActivityOverview builds a compact live activity panel for the overview.
 // Shows only ToolSummary lines (human-readable tool use); mail excluded.
+// Uses 4-column layout (AGENT, TIME, TOOL, DETAIL) matching renderActivity.
 func (m Model) renderActivityOverview(colW, budget int) string {
 	innerW := colW - 2 // panel border (1 each side)
-	agentW := 16 // "orchestrator" (12) + pill padding (2) + cell padding (2) = 16
-	lineW := max(8, innerW-agentW-4) // 4 = cell padding (0,1) × 2 cols × 2 sides
+	const numCols = 4
+	innerW -= numCols * 2 // table cell padding
 
-	projectRoot := filepath.Dir(m.loomRoot)
+	agentW := 16 // "orchestrator" (12) + pill padding (2) + cell padding (2) = 16
+	timeW := 7
+	toolW := 5
+	detailW := max(8, innerW-agentW-timeW-toolW)
 
 	cols := []table.Column{
 		{Title: "", Width: agentW},
-		{Title: "", Width: lineW},
+		{Title: "", Width: timeW},
+		{Title: "", Width: toolW},
+		{Title: "", Width: detailW},
 	}
 
 	toolLimit := min(budget, len(m.data.activity))
@@ -386,12 +392,21 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		e := m.data.activity[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
 		styledAgent := agentPillFor(truncAgent, e.AgentID)
-		styledLine := formatToolLine(e.Line, lineW, projectRoot)
+		styledTime := activityTimeStyle.Render(truncate(e.Time, timeW))
+		info := resolveToolInfo(e.Tool)
+		styledTool := activityLabelStyle.Foreground(info.labelColor).Render(truncate(e.Tool, toolW))
+		plainDetail := truncate(e.Detail, detailW)
+
 		phAgent := cellPlaceholder(ri, lipgloss.Width(agentPillPlain(truncAgent)))
-		phLine := cellPlaceholder(ri+1, lipgloss.Width(styledLine))
-		rows = append(rows, table.Row{phAgent, phLine})
-		replacements = append(replacements, [2]string{phAgent, styledAgent}, [2]string{phLine, styledLine})
-		ri += 2
+		phTime := cellPlaceholder(ri+1, lipgloss.Width(styledTime))
+		phTool := cellPlaceholder(ri+2, lipgloss.Width(styledTool))
+		rows = append(rows, table.Row{phAgent, phTime, phTool, plainDetail})
+		replacements = append(replacements,
+			[2]string{phAgent, styledAgent},
+			[2]string{phTime, styledTime},
+			[2]string{phTool, styledTool},
+		)
+		ri += 3
 	}
 
 	unique := map[string]struct{}{}
