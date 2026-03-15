@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/daemon"
@@ -107,6 +108,9 @@ type Model struct {
 	keys             keyMap
 	reloading        bool // set when quitting due to binary hot-reload
 	refreshed        bool // set after first data message received
+	composeMode      bool
+	composeForm      *huh.Form
+	composeData      *composeData
 }
 
 type tickMsg time.Time
@@ -247,6 +251,41 @@ func countUnread(loomRoot string) int {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Compose modal captures key/mouse input while active.
+	// Non-interactive messages (tick, resize, data) fall through to the normal switch.
+	if m.composeMode && m.composeForm != nil {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			form, cmd := m.composeForm.Update(msg)
+			if f, ok := form.(*huh.Form); ok {
+				m.composeForm = f
+			}
+			switch m.composeForm.State {
+			case huh.StateCompleted:
+				m.composeMode = false
+				if m.composeData.Confirm && m.composeData.To != "" && m.composeData.Subject != "" {
+					err := mail.Send(m.loomRoot, mail.SendOpts{
+						From:     "dashboard",
+						To:       m.composeData.To,
+						Subject:  m.composeData.Subject,
+						Body:     m.composeData.Body,
+						Type:     m.composeData.Type,
+						Priority: m.composeData.Priority,
+					})
+					if err != nil {
+						return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
+					}
+					return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
+				}
+				return m, m.setFlash("Cancelled", false)
+			case huh.StateAborted:
+				m.composeMode = false
+				return m, nil
+			}
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -256,6 +295,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
+		if m.composeForm != nil {
+			m.composeForm.WithWidth(min(56, msg.Width-8))
+		}
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tickCmd())
@@ -483,6 +525,18 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchTI.Focus()
 			return m, nil
 		}
+	case keyCompose:
+		return m.openCompose("")
+	case keyComposeReply:
+		if m.view == viewMailDetail {
+			msgs := m.filteredMessages()
+			if m.cursor < len(msgs) {
+				return m.openCompose(msgs[m.cursor].From)
+			}
+		}
+		if m.view == viewMail || m.view == viewMailDetail {
+			return m.openCompose("")
+		}
 	case keyTab:
 		m.switchView(nextView(m.view))
 		return m, nil
@@ -640,6 +694,18 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) openCompose(replyTo string) (tea.Model, tea.Cmd) {
+	var ids []string
+	for _, a := range m.data.agents {
+		ids = append(ids, a.ID)
+	}
+	cd := &composeData{}
+	m.composeData = cd
+	m.composeForm = newComposeForm(cd, ids, replyTo).WithWidth(min(56, m.width-8))
+	m.composeMode = true
+	return m, m.composeForm.Init()
+}
+
 func (m *Model) clampCursor() {
 	max := m.listLen() - 1
 	if max < 0 {
@@ -795,6 +861,11 @@ func (m Model) View() string {
 		output = fmt.Sprintf("%s\n%s\n%s", titleBar, content, help)
 	}
 
+	// Compose modal overlay replaces normal output.
+	if m.composeMode && m.composeForm != nil {
+		output = renderComposeOverlay(m.composeForm, m.width, m.height)
+	}
+
 	// Full-screen background fill
 	lines := splitLines(output)
 	for len(lines) < m.height {
@@ -833,7 +904,7 @@ func (m Model) helpBar() string {
 	case viewIssues:
 		ctx = "[Enter]detail"
 	case viewMail:
-		ctx = "[Enter]detail"
+		ctx = "[c]ompose [Enter]detail"
 	case viewWorktrees:
 		ctx = "[Enter]diff"
 	case viewMemory:
@@ -842,8 +913,10 @@ func (m Model) helpBar() string {
 		ctx = "[f]ilter [F]agent"
 	case viewActivity:
 		ctx = "[Enter]agent"
-	case viewIssueDetail, viewMailDetail, viewMemoryDetail:
+	case viewIssueDetail, viewMemoryDetail:
 		ctx = "[j/k]scroll"
+	case viewMailDetail:
+		ctx = "[r]eply [j/k]scroll"
 	case viewDiff:
 		ctx = "[j/k]scroll"
 	}

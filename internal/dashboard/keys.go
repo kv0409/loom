@@ -81,4 +81,8 @@ const (
 	// This resolves the l=logs vs l=kanban-right conflict.
 	keyKanbanLeft  = "h"     // also keyLeft (arrow)
 	keyKanbanRight = "right" // arrow only — "l" is NOT a kanban-right alias
+
+	// Compose modal.
+	keyCompose      = "c"
+	keyComposeReply = "r"
 )
