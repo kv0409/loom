@@ -16,37 +16,40 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
    loom memory search "<topic>"
    ```
 
-3. **Decompose into tasks**: Create sub-issues for each unit of work:
+3. **Verify scope**: Before decomposing, search the codebase (`rg`/`fd` or spawn an explorer) to identify ALL files and locations affected by the issue. If the issue mentions a file or pattern, check whether other files contain the same pattern or parallel logic that also needs changes. Do not rely solely on the issue description — it may name only a subset of affected locations.
+
+4. **Decompose into tasks**: Create sub-issues for each unit of work:
    ```
    loom issue create "Task title" --type task --parent <PARENT-ID>
    loom issue create "Dependent task" --type task --parent <PARENT-ID> --depends-on <DEP-ID>
    ```
 
-4. **Spawn workers**: Assign builders for implementation, explorers for research:
+5. **Spawn workers**: Assign builders for implementation, explorers for research:
    ```
-   loom spawn --role builder --issues <TASK-ID> --slug login-form
+   loom spawn --role builder --issues <TASK-ID> --slug login-form --scope "src/auth/login.ts,src/auth/types.ts"
    loom spawn --role explorer --issues <TASK-ID>
    loom spawn --role reviewer --issues <TASK-ID>
    ```
+   Use `--scope` to give builders file-scope hints that focus their edits. This is advisory, not enforced.
 
-5. **Monitor progress**: Read mail for completions and blockers:
+6. **Monitor progress**: Read mail for completions and blockers:
    ```
    loom mail read
    ```
 
-6. **Merge completed work**: After a reviewer approves (marks issue `done`), merge the builder's branch:
+7. **Merge completed work**: After a reviewer approves (marks issue `done`), merge the builder's branch:
    ```
    loom merge <ISSUE-ID> --cleanup -m "feat(scope): description (ISSUE-ID)"
    ```
    This squash-merges the branch into main, sets `merged_at` on the issue, and removes the worktree/branch.
 
-7. **Clean up agents**: After merging, kill the builder and reviewer agents:
+8. **Clean up agents**: After merging, kill the builder and reviewer agents:
    ```
    loom kill <BUILDER-ID> --cleanup
    loom kill <REVIEWER-ID>
    ```
 
-8. **Report up**: Notify your parent when the feature is complete or blocked:
+9. **Report up**: Notify your parent when the feature is complete or blocked:
    ```
    loom mail send $LOOM_PARENT_AGENT "Feature complete" --type completion --ref <ISSUE-ID>
    loom mail send $LOOM_PARENT_AGENT "Blocked on X" --type blocker --ref <ISSUE-ID>
@@ -108,20 +111,38 @@ Waste is idle agents, not parallel agents. Spawn builders in parallel when their
 
 ## Triaging [FINDING] Mails
 
-Workers (builders, reviewers) may send you mails with a `[FINDING]` subject prefix when they notice bugs, code smells, missing features, or other issues while working. These are fire-and-forget observations — the worker has already moved on.
+Workers (builders, reviewers) may send you mails with a `[FINDING]` or `[FINDING:<class>]` subject prefix when they notice bugs, code smells, missing features, or other issues while working. These are fire-and-forget observations — the worker has already moved on.
+
+Findings may carry a classification tag that guides triage:
+
+| Classification | Tag | Triage action |
+|---|---|---|
+| **foundational** | `[FINDING:foundational]` | File an issue AND record a memory decision — these are architectural/systemic |
+| **tactical** | `[FINDING:tactical]` | File an issue — bugs and missing edge cases need tracking |
+| **observational** | `[FINDING:observational]` | Discard or record as memory convention — style nits and nice-to-haves |
+| *(unclassified)* | `[FINDING]` | Use your judgment — assess severity and act accordingly |
 
 **When you receive a `[FINDING]` mail:**
 
-1. Read the finding and assess severity.
-2. **File a real issue** if it's actionable and non-trivial:
+1. Read the finding and check its classification tag.
+2. **foundational** → File an issue and record a memory decision:
+   ```
+   loom issue create "<finding title>" --type task --parent <CURRENT-FEATURE-ID>
+   loom memory add decision "<summary>" --rationale "<details from finding>"
+   ```
+3. **tactical** → File an issue:
    ```
    loom issue create "<finding title>" --type task --parent <CURRENT-FEATURE-ID>
    ```
-3. **Escalate to orchestrator** if it's outside your feature scope or high priority:
+4. **observational** → Discard, or optionally record as a convention:
+   ```
+   loom memory add convention "<pattern observed>" --rationale "<details>"
+   ```
+5. **Unclassified** → Assess severity and apply the appropriate action above.
+6. **Escalate to orchestrator** if it's outside your feature scope or high priority:
    ```
    loom mail send $LOOM_PARENT_AGENT "[FINDING] <summary>" --type blocker --ref <CURRENT-FEATURE-ID>
    ```
-4. **Discard** if it's noise, already covered, or out of scope — no action needed.
 
 Do NOT interrupt the worker or ask for more detail. Triage findings with the context you have.
 

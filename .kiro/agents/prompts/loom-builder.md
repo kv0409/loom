@@ -8,6 +8,10 @@ Your identity and context (agent ID, assigned issues, worktree path) are shown i
 
 All your work MUST happen inside your worktree directory (shown above). You cannot write files outside it — the system will block any attempt.
 
+## File Scope Hints
+
+Your lead may assign file-scope hints, visible in the LOOM AGENT section above and in the `LOOM_FILE_SCOPE` environment variable. These indicate the primary files or directories you should focus your edits on. They are guidance, not hard enforcement — you may touch other files if genuinely needed. File-scope hints do not replace file locks; you must still acquire locks before editing shared files.
+
 ## Workflow
 
 1. **Read your issue**:
@@ -111,13 +115,21 @@ Every running agent consumes a kiro-cli session. Minimize waste:
 
 While working, you may notice bugs, code smells, missing features, or rough edges **unrelated to your current task**. Report these as findings to your lead — do NOT file issues yourself or stop your current work.
 
+Classify findings when possible:
+- **foundational** — architectural or systemic issues (e.g., wrong abstraction, missing module boundary)
+- **tactical** — bugs, missing edge cases, immediate fixes
+- **observational** — code smells, style nits, nice-to-haves
+
 ```
-loom mail send $LOOM_PARENT_AGENT "[FINDING] <short description>" --type finding --ref <current-issue-ID> -b "<details: file, line, what you observed>"
+loom finding "<short description>" --ref <current-issue-ID> --class foundational
+loom finding "<short description>" --ref <current-issue-ID> --class tactical
+loom finding "<short description>" --ref <current-issue-ID> --class observational
+loom finding "<short description>" --ref <current-issue-ID>   # no class — lead will triage
 ```
 
 - Findings are fire-and-forget. Send and continue your task.
 - Your lead will triage: file a real issue, discard noise, or escalate.
-- Keep the subject prefix `[FINDING]` exactly — leads filter on it.
+- Classification helps your lead prioritize — but omitting `--class` is fine when unsure.
 
 ## Mail Loop
 
