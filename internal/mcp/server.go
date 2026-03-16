@@ -187,6 +187,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			Status:   str(args, "status"),
 			Priority: str(args, "priority"),
 			Assignee: str(args, "assignee"),
+			Dispatch: strMap(args, "dispatch"),
 		})
 		if err != nil {
 			return "", err
@@ -199,6 +200,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			Priority:    strOr(args, "priority", "normal"),
 			Parent:      str(args, "parent"),
 			Description: str(args, "description"),
+			Dispatch:    strMap(args, "dispatch"),
 		})
 		if err != nil {
 			return "", err
@@ -328,6 +330,20 @@ func boolVal(m map[string]interface{}, key string) bool {
 	return v
 }
 
+func strMap(m map[string]interface{}, key string) map[string]string {
+	v, ok := m[key].(map[string]interface{})
+	if !ok || len(v) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(v))
+	for k, val := range v {
+		if s, ok := val.(string); ok {
+			out[k] = s
+		}
+	}
+	return out
+}
+
 func toolDefs() []toolDef {
 	return []toolDef{
 		{Name: "loom_mail_send", Description: "Send a mail message to another agent", InputSchema: obj(
@@ -341,11 +357,13 @@ func toolDefs() []toolDef {
 		{Name: "loom_issue_show", Description: "Get issue details by ID", InputSchema: obj(
 			props{"id": propStr("Issue ID")}, "id")},
 		{Name: "loom_issue_update", Description: "Update issue status, priority, or assignee", InputSchema: obj(
-			props{"id": propStr("Issue ID"), "status": propStr("New status"), "priority": propStr("New priority"), "assignee": propStr("New assignee")},
+			props{"id": propStr("Issue ID"), "status": propStr("New status"), "priority": propStr("New priority"), "assignee": propStr("New assignee"),
+				"dispatch": propObj("Dispatch key-value pairs (e.g. SKIP_REVIEW, MAX_AGENTS)")},
 			"id")},
 		{Name: "loom_issue_create", Description: "Create a new issue", InputSchema: obj(
 			props{"title": propStr("Issue title"), "type": propEnum("Issue type", "epic", "task", "bug", "spike"),
-				"priority": propEnum("Priority", "critical", "high", "normal", "low"), "parent": propStr("Parent issue ID"), "description": propStr("Description")},
+				"priority": propEnum("Priority", "critical", "high", "normal", "low"), "parent": propStr("Parent issue ID"), "description": propStr("Description"),
+				"dispatch": propObj("Dispatch key-value pairs (e.g. SKIP_REVIEW, MAX_AGENTS)")},
 			"title")},
 		{Name: "loom_issue_list", Description: "List issues with optional filters", InputSchema: obj(
 			props{"status": propStr("Filter by status"), "assignee": propStr("Filter by assignee"), "type": propStr("Filter by type"), "all": propBool("Include closed/cancelled")})},
@@ -404,4 +422,8 @@ func propBool(desc string) map[string]interface{} {
 
 func propInt(desc string) map[string]interface{} {
 	return map[string]interface{}{"type": "integer", "description": desc}
+}
+
+func propObj(desc string) map[string]interface{} {
+	return map[string]interface{}{"type": "object", "description": desc, "additionalProperties": map[string]interface{}{"type": "string"}}
 }

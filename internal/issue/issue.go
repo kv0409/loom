@@ -36,8 +36,9 @@ type Issue struct {
 	ClosedAt    *time.Time     `yaml:"closed_at,omitempty"`
 	MergedAt    *time.Time     `yaml:"merged_at,omitempty"`
 	CloseReason string         `yaml:"close_reason,omitempty"`
-	Children    []string       `yaml:"children,omitempty"`
-	History     []HistoryEntry `yaml:"history"`
+	Children    []string          `yaml:"children,omitempty"`
+	Dispatch    map[string]string `yaml:"dispatch,omitempty"`
+	History     []HistoryEntry    `yaml:"history"`
 }
 
 type HistoryEntry struct {
@@ -53,6 +54,7 @@ type CreateOpts struct {
 	Parent      string
 	Description string
 	DependsOn   []string
+	Dispatch    map[string]string
 }
 
 type ListOpts struct {
@@ -67,6 +69,7 @@ type UpdateOpts struct {
 	Status   string
 	Priority string
 	Assignee string
+	Dispatch map[string]string
 }
 
 var validTransitions = map[string][]string{
@@ -127,6 +130,7 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 		Priority:    opts.Priority,
 		Parent:      opts.Parent,
 		DependsOn:   opts.DependsOn,
+		Dispatch:    opts.Dispatch,
 		CreatedBy:   actor(),
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -222,6 +226,14 @@ func Update(loomRoot string, id string, opts UpdateOpts) (*Issue, error) {
 			Detail: opts.Assignee,
 		})
 		issue.Assignee = opts.Assignee
+	}
+	if len(opts.Dispatch) > 0 {
+		if issue.Dispatch == nil {
+			issue.Dispatch = make(map[string]string)
+		}
+		for k, v := range opts.Dispatch {
+			issue.Dispatch[k] = v
+		}
 	}
 
 	if err := Save(loomRoot, issue); err != nil {

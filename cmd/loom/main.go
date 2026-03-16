@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -125,6 +126,7 @@ func main() {
 	issueCreateCmd.Flags().String("parent", "", "Parent issue ID")
 	issueCreateCmd.Flags().StringP("description", "d", "", "Description")
 	issueCreateCmd.Flags().String("depends-on", "", "Comma-separated dependency IDs")
+	issueCreateCmd.Flags().String("dispatch", "", "Comma-separated key=value dispatch pairs")
 
 	issueListCmd := &cobra.Command{
 		Use:   "list",
@@ -153,6 +155,7 @@ func main() {
 	issueUpdateCmd.Flags().String("status", "", "New status")
 	issueUpdateCmd.Flags().String("priority", "", "New priority")
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee")
+	issueUpdateCmd.Flags().String("dispatch", "", "Comma-separated key=value dispatch pairs")
 
 	issueCloseCmd := &cobra.Command{
 		Use:   "close <id>",
@@ -788,6 +791,7 @@ func runIssueCreate(cmd *cobra.Command, args []string) error {
 	parent, _ := cmd.Flags().GetString("parent")
 	desc, _ := cmd.Flags().GetString("description")
 	depsStr, _ := cmd.Flags().GetString("depends-on")
+	dispatchStr, _ := cmd.Flags().GetString("dispatch")
 
 	var deps []string
 	if depsStr != "" {
@@ -798,12 +802,15 @@ func runIssueCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	dispatch := parseDispatch(dispatchStr)
+
 	iss, err := issue.Create(root, args[0], issue.CreateOpts{
 		Type:        typ,
 		Priority:    priority,
 		Parent:      parent,
 		Description: desc,
 		DependsOn:   deps,
+		Dispatch:    dispatch,
 	})
 	if err != nil {
 		return err
@@ -955,6 +962,14 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 	if len(iss.Children) > 0 {
 		fmt.Printf("Children:    %s\n", strings.Join(iss.Children, ", "))
 	}
+	if len(iss.Dispatch) > 0 {
+		pairs := make([]string, 0, len(iss.Dispatch))
+		for k, v := range iss.Dispatch {
+			pairs = append(pairs, k+"="+v)
+		}
+		sort.Strings(pairs)
+		fmt.Printf("Dispatch:    %s\n", strings.Join(pairs, ", "))
+	}
 	if iss.Worktree != "" {
 		fmt.Printf("Worktree:    %s\n", iss.Worktree)
 	}
@@ -989,9 +1004,12 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	status, _ := cmd.Flags().GetString("status")
 	priority, _ := cmd.Flags().GetString("priority")
 	assignee, _ := cmd.Flags().GetString("assignee")
+	dispatchStr, _ := cmd.Flags().GetString("dispatch")
 
-	if status == "" && priority == "" && assignee == "" {
-		return fmt.Errorf("at least one of --status, --priority, or --assignee is required")
+	dispatch := parseDispatch(dispatchStr)
+
+	if status == "" && priority == "" && assignee == "" && len(dispatch) == 0 {
+		return fmt.Errorf("at least one of --status, --priority, --assignee, or --dispatch is required")
 	}
 
 	if status == "cancelled" {
@@ -1013,13 +1031,30 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	_, err = issue.Update(root, args[0], issue.UpdateOpts{
-		Status: status, Priority: priority, Assignee: assignee,
+		Status: status, Priority: priority, Assignee: assignee, Dispatch: dispatch,
 	})
 	if err != nil {
 		return err
 	}
 	cliout.PrintSuccess("Updated " + args[0])
 	return nil
+}
+
+func parseDispatch(s string) map[string]string {
+	if s == "" {
+		return nil
+	}
+	m := make(map[string]string)
+	for _, pair := range strings.Split(s, ",") {
+		kv := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+		if len(kv) == 2 {
+			m[kv[0]] = kv[1]
+		}
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func runIssueClose(cmd *cobra.Command, args []string) error {
