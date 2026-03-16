@@ -390,6 +390,7 @@ func main() {
 	spawnCmd.Flags().String("task", "", "Custom task message for the agent")
 	spawnCmd.Flags().String("mode", "", "Kiro mode override: chat|acp")
 	spawnCmd.Flags().String("model", "", "Model override: sonnet|opus|haiku (default: from config)")
+	spawnCmd.Flags().String("scope", "", "Comma-separated file/directory scope hints for builders")
 	spawnCmd.MarkFlagRequired("role")
 
 	gcCmd := &cobra.Command{
@@ -1610,6 +1611,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	task, _ := cmd.Flags().GetString("task")
 	mode, _ := cmd.Flags().GetString("mode")
 	model, _ := cmd.Flags().GetString("model")
+	scopeStr, _ := cmd.Flags().GetString("scope")
 
 	if spawnedBy == "" {
 		spawnedBy = os.Getenv("LOOM_AGENT_ID")
@@ -1629,6 +1631,15 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		extra = map[string]string{"task": task}
 	}
 
+	var fileScope []string
+	if scopeStr != "" {
+		for _, s := range strings.Split(scopeStr, ",") {
+			if t := strings.TrimSpace(s); t != "" {
+				fileScope = append(fileScope, t)
+			}
+		}
+	}
+
 	a, err := agent.Spawn(root, agent.SpawnOpts{
 		Role:           role,
 		SpawnedBy:      spawnedBy,
@@ -1637,6 +1648,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		ExtraContext:    extra,
 		Mode:           mode,
 		Model:          model,
+		FileScope:      fileScope,
 	})
 	if err != nil {
 		return err

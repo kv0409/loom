@@ -296,6 +296,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	if a.WorktreeName != "" {
 		env = append(env, "LOOM_WORKTREE="+filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName))
 	}
+	if len(a.FileScope) > 0 {
+		env = append(env, "LOOM_FILE_SCOPE="+strings.Join(a.FileScope, ","))
+	}
 
 	extraArgs := []string{"--agent", "loom-" + a.Role}
 

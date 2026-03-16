@@ -35,6 +35,7 @@ type Agent struct {
 	InitialTask    string      `yaml:"initial_task,omitempty"`
 	NudgeCount     int         `yaml:"nudge_count,omitempty"`
 	LastNudge      time.Time   `yaml:"last_nudge,omitempty"`
+	FileScope      []string    `yaml:"file_scope,omitempty"`
 	Config         AgentConfig `yaml:"config"`
 }
 
@@ -52,6 +53,7 @@ type SpawnOpts struct {
 	ExtraContext   map[string]string
 	Mode           string
 	Model          string
+	FileScope      []string
 }
 
 func agentsDir(loomRoot string) string  { return filepath.Join(loomRoot, "agents") }
@@ -136,6 +138,9 @@ func NextID(loomRoot, role string) string {
 func buildTaskMsg(opts SpawnOpts) string {
 	if opts.ExtraContext != nil {
 		if task, ok := opts.ExtraContext["task"]; ok {
+			if len(opts.FileScope) > 0 {
+				task += "\nFile scope hints (focus your edits here): " + strings.Join(opts.FileScope, ", ")
+			}
 			return task
 		}
 	}
@@ -144,9 +149,12 @@ func buildTaskMsg(opts SpawnOpts) string {
 			strings.Join(opts.AssignedIssues, ", "))
 		switch opts.Role {
 		case "lead":
-			return base + " Remember: verify scope across the full codebase before decomposing — search for all affected files, not just those named in the issue."
+			base += " Remember: verify scope across the full codebase before decomposing — search for all affected files, not just those named in the issue."
 		case "reviewer":
-			return base + " Remember: check whether the fix covers all affected locations in the codebase, not just the ones named in the issue."
+			base += " Remember: check whether the fix covers all affected locations in the codebase, not just the ones named in the issue."
+		}
+		if len(opts.FileScope) > 0 {
+			base += "\nFile scope hints (focus your edits here): " + strings.Join(opts.FileScope, ", ")
 		}
 		return base
 	}
@@ -183,6 +191,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		SpawnedAt:      now,
 		Heartbeat:      now,
 		AssignedIssues: opts.AssignedIssues,
+		FileScope:      opts.FileScope,
 		Config: AgentConfig{
 			KiroMode:   mode,
 			MCPEnabled: cfg.MCP.Enabled,
@@ -254,6 +263,9 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	}
 	if opts.SpawnedBy != "" {
 		envPrefix += fmt.Sprintf(" LOOM_PARENT_AGENT=%s", opts.SpawnedBy)
+	}
+	if len(opts.FileScope) > 0 {
+		envPrefix += fmt.Sprintf(" LOOM_FILE_SCOPE=%s", strings.Join(opts.FileScope, ","))
 	}
 
 	taskMsg := buildTaskMsg(opts)
@@ -486,6 +498,7 @@ func RenderPrompt(loomRoot string, agent *Agent, extraContext map[string]string)
 		"MCPEnabled":     agent.Config.MCPEnabled,
 		"ProjectRoot":    projectRoot,
 		"LoomRoot":       loomRoot,
+		"FileScope":      strings.Join(agent.FileScope, ", "),
 	}
 	for k, v := range extraContext {
 		vars[k] = v
