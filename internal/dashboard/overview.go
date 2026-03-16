@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/issue"
 )
 
@@ -45,104 +46,124 @@ func linesToContent(lines []string) string {
 
 func (m Model) renderOverview() string {
 	fullW := max(panelWidth(m.width), 20)
-	innerW := fullW - 2
+	usable := m.height - 1 - lipgloss.Height(m.helpBar())
+	attentionBudget := max(5, usable/3)
+	flightBudget := max(6, usable/3)
+	signalBudget := usable - attentionBudget - flightBudget - 3
+	if signalBudget < 4 {
+		signalBudget = 4
+	}
 
-	agentBudget := m.agentsBandBudget()
+	attention := m.renderAttentionOverview(fullW, attentionBudget)
+	flight := m.renderFlightOverview(fullW, flightBudget)
+	signal := m.renderActivityOverview(fullW, signalBudget)
 
-	// --- AGENTS band (full width, ~40% height, no task truncation) ---
-	aIdW := min(16, max(8, (innerW-12)*2/5))
-	aAgeW := max(4, 8)  // "⏱ " (2) + value (6)
-	aHbW := max(4, 8)   // "♥ " (2) + value (6)
-	// task column gets remaining space — no truncation cap
-	// table adds 2-char padding per cell (Padding(0,1) = 1 each side), 4 cols × 2 = 8
-	// +4 = glyph(1) + space(1) + agentPill Padding(0,1)(+2)
-	fixedCols := aIdW + aAgeW + aHbW + 4 + 8
-	aTaskW := max(8, innerW-fixedCols)
+	return lipgloss.JoinVertical(lipgloss.Left, attention, flight, signal)
+}
 
+func (m Model) renderAttentionOverview(fullW, budget int) string {
+	var blocked []*issue.Issue
+	var review []*issue.Issue
+	for _, iss := range m.data.issues {
+		switch iss.Status {
+		case "blocked":
+			blocked = append(blocked, iss)
+		case "review":
+			review = append(review, iss)
+		}
+	}
+
+	var dead []*agent.Agent
+	for _, a := range m.data.agents {
+		if a.Status == "dead" || a.Status == "error" {
+			dead = append(dead, a)
+		}
+	}
+
+	var lines []string
+	if len(blocked) > 0 {
+		lines = append(lines, blockedStyle.Render(fmt.Sprintf("  %d blocked issue%s need intervention", len(blocked), suffix(len(blocked)))))
+		for _, iss := range blocked[:min(3, len(blocked))] {
+			line := fmt.Sprintf("    %s %s", iss.ID, truncate(iss.Title, fullW-14))
+			if iss.Assignee != "" {
+				line += idleStyle.Render(" · " + iss.Assignee)
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(review) > 0 {
+		lines = append(lines, reviewStyle.Render(fmt.Sprintf("  %d issue%s waiting on review", len(review), suffix(len(review)))))
+		for _, iss := range review[:min(3, len(review))] {
+			lines = append(lines, fmt.Sprintf("    %s %s", iss.ID, truncate(iss.Title, fullW-14)))
+		}
+	}
+	if len(dead) > 0 {
+		lines = append(lines, deadStyle.Render(fmt.Sprintf("  %d agent%s offline or errored", len(dead), suffix(len(dead)))))
+		for _, a := range dead[:min(2, len(dead))] {
+			issues := "no assigned issue"
+			if len(a.AssignedIssues) > 0 {
+				issues = strings.Join(a.AssignedIssues, ", ")
+			}
+			lines = append(lines, fmt.Sprintf("    %s %s", a.ID, idleStyle.Render("· "+truncate(issues, fullW-18))))
+		}
+	}
+	if m.data.unread > 0 {
+		lines = append(lines, barLabel.Render(fmt.Sprintf("  %d unread message%s waiting in inboxes", m.data.unread, suffix(m.data.unread))))
+	}
+	if len(lines) == 0 {
+		return panel("NEEDS ATTENTION", renderEmpty("No active blockers, dead agents, or unread messages", fullW-2), fullW)
+	}
+	return panel("NEEDS ATTENTION", capContent(lines, budget), fullW)
+}
+
+func (m Model) renderFlightOverview(fullW, budget int) string {
 	projectRoot := filepath.Dir(m.loomRoot)
-
-	// Build a map of agent ID → last ACP activity line for quick lookup.
 	lastActivity := map[string]string{}
 	for _, e := range m.data.activity {
 		lastActivity[e.AgentID] = e.Line
 	}
 
-	agentCols := []table.Column{
-		{Title: "", Width: aIdW + 4},  // glyph + space + agentPill (with Padding(0,1))
-		{Title: "", Width: aAgeW},
-		{Title: "", Width: aHbW},
-		{Title: "", Width: aTaskW},
+	activeIssues := 0
+	for _, iss := range m.data.issues {
+		if iss.Status != "done" && iss.Status != "cancelled" {
+			activeIssues++
+		}
 	}
-	agentRows := make([]table.Row, 0, len(m.data.agents))
-	var agentReplacements [][2]string
-	ri := 0
+
+	lines := []string{
+		fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.agents), suffix(len(m.data.agents)), len(m.data.worktrees), suffix(len(m.data.worktrees))),
+	}
+
+	shown := 0
 	for _, a := range m.data.agents {
-		hb := fmtTime(a.Heartbeat, true)
-		age := fmtTime(a.SpawnedAt, true)
-		styledTask := idleStyle.Render("idle")
-		taskW := lipgloss.Width(styledTask)
+		if a.Status == "dead" || a.Status == "error" {
+			continue
+		}
+		label := statusIndicator(a.Status) + " " + agentPillFor(truncate(a.ID, 16), a.ID)
+		focus := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
-			styledTask = formatToolLine(line, aTaskW, projectRoot)
-			taskW = lipgloss.Width(styledTask)
+			focus = activeStyle.Render(truncate(formatToolLine(line, fullW-26, projectRoot), fullW-26))
 		} else if len(a.AssignedIssues) > 0 {
-			taskStr := truncate(strings.Join(a.AssignedIssues, ", "), aTaskW)
-			styledTask = activeStyle.Render(taskStr)
-			taskW = lipgloss.Width(styledTask)
+			focus = activeStyle.Render(strings.Join(a.AssignedIssues, ", "))
 		}
-		glyph := statusGlyphs[a.Status]
-		if glyph == "" {
-			glyph = "●"
-		}
-		truncID := truncate(a.ID, aIdW)
-		styledID := statusIndicator(a.Status) + " " + agentPillFor(truncID, a.ID)
-		styledAge := idleStyle.Render("⏱ " + age)
-		styledHb := heartbeatStyle(hb).Render("♥ " + hb)
-		phID := cellPlaceholder(ri, lipgloss.Width(glyph+" "+agentPillPlain(truncID)))
-		phAge := cellPlaceholder(ri+1, lipgloss.Width(styledAge))
-		phHb := cellPlaceholder(ri+2, lipgloss.Width(styledHb))
-		phTask := cellPlaceholder(ri+3, taskW)
-		agentRows = append(agentRows, table.Row{phID, phAge, phHb, phTask})
-		agentReplacements = append(agentReplacements,
-			[2]string{phID, styledID},
-			[2]string{phAge, styledAge},
-			[2]string{phHb, styledHb},
-			[2]string{phTask, styledTask},
-		)
-		ri += 4
-	}
-
-	var agentContent string
-	if len(agentRows) == 0 {
-		agentContent = renderEmpty("No agents running — loom spawn to start", innerW)
-	} else {
-		rows := agentRows
-		repl := agentReplacements
-		if agentBudget > 0 && len(rows) > agentBudget {
-			rows = rows[:agentBudget]
-			repl = repl[:agentBudget*4]
-		}
-		t := newStyledTableHeaderless(agentCols, rows, len(rows))
-		agentContent = "\n" + styledTableBodyView(t, repl) + "\n"
-		if len(agentRows) > agentBudget && agentBudget > 0 {
-			agentContent += fmt.Sprintf("  ... and %d more\n", len(agentRows)-agentBudget)
+		lines = append(lines, fmt.Sprintf("  %s  %s", label, focus))
+		shown++
+		if shown >= budget-2 {
+			break
 		}
 	}
-	agentPanel := panel(fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents)), agentContent, fullW)
-
-	// --- STATUS BAR band (full width, 1-4 lines) ---
-	statusBar := m.renderStatusBar(fullW)
-
-	// --- ACTIVITY band (remaining space) ---
-	usable := m.height - 3
-	agentPanelH := lipgloss.Height(agentPanel)
-	statusBarH := lipgloss.Height(statusBar)
-	actBudget := usable - agentPanelH - statusBarH - 3
-	if actBudget < 1 {
-		actBudget = 1
+	if shown == 0 {
+		lines = append(lines, "  No active agents yet.")
 	}
-	actPanel := m.renderActivityOverview(fullW, actBudget)
 
-	return lipgloss.JoinVertical(lipgloss.Left, agentPanel, statusBar, actPanel)
+	return panel("IN FLIGHT", capContent(lines, budget), fullW)
+}
+
+func suffix(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // renderStatusBar builds the full-width STATUS BAR band:
@@ -421,7 +442,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		t := newStyledTableHeaderless(cols, rows, len(rows))
 		content = "\n" + styledTableBodyView(t, replacements)
 	}
-	return panel(fmt.Sprintf("[t] ACTIVITY (%d agents)", len(unique)), content, colW)
+	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)
 }
 
 // wordWrap splits s into segments of at most width runes, breaking on spaces where possible.

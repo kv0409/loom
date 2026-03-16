@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/issue"
@@ -106,6 +107,79 @@ func TestSwitchView_ClearsSearch(t *testing.T) {
 	}
 	if m.searchMode {
 		t.Error("expected searchMode cleared")
+	}
+}
+
+func TestLogsView_EntersSearchMode(t *testing.T) {
+	m := testModel(viewLogs)
+	updated, _ := m.handleKey(keyMsg("/"))
+	got := updated.(Model)
+	if !got.searchMode {
+		t.Fatal("expected logs view to enter search mode on /")
+	}
+}
+
+func TestHelpBar_LogsShowsSearchAndFilters(t *testing.T) {
+	m := testModel(viewLogs)
+	bar := m.helpBar()
+	for _, expected := range []string{"[/]search", "[f]ilter", "[F]agent"} {
+		if !strings.Contains(bar, expected) {
+			t.Fatalf("helpBar for logs missing %q: %s", expected, bar)
+		}
+	}
+}
+
+func TestFilteredIssues_SearchesDescriptionsAndDependencies(t *testing.T) {
+	m := testModel(viewIssues)
+	m.data.issues = []*issue.Issue{
+		{ID: "LOOM-001", Title: "Auth", Description: "JWT middleware for admin routes", Status: "open", DependsOn: []string{"LOOM-099"}},
+		{ID: "LOOM-002", Title: "Billing", Description: "Invoice export", Status: "open"},
+	}
+
+	m.searchTI.SetValue("middleware")
+	if got := m.filteredIssues(); len(got) != 1 || got[0].ID != "LOOM-001" {
+		t.Fatalf("expected description search to return LOOM-001, got %+v", got)
+	}
+
+	m.searchTI.SetValue("LOOM-099")
+	if got := m.filteredIssues(); len(got) != 1 || got[0].ID != "LOOM-001" {
+		t.Fatalf("expected dependency search to return LOOM-001, got %+v", got)
+	}
+}
+
+func TestFilteredMessages_SearchesBodyAndRef(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.messages = []*mail.Message{
+		{From: "lead", To: "builder", Subject: "Status", Body: "Please inspect auth middleware failure", Ref: "LOOM-001"},
+		{From: "lead", To: "reviewer", Subject: "Review", Body: "Check billing output", Ref: "LOOM-002"},
+	}
+
+	m.searchTI.SetValue("middleware")
+	if got := m.filteredMessages(); len(got) != 1 || got[0].Ref != "LOOM-001" {
+		t.Fatalf("expected body search to return LOOM-001 mail, got %+v", got)
+	}
+
+	m.searchTI.SetValue("LOOM-002")
+	if got := m.filteredMessages(); len(got) != 1 || got[0].Ref != "LOOM-002" {
+		t.Fatalf("expected ref search to return LOOM-002 mail, got %+v", got)
+	}
+}
+
+func TestFilteredMemories_SearchesBodyFields(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.memories = []*memory.Entry{
+		{ID: "DEC-001", Type: "decision", Title: "Auth tokens", Decision: "Use JWT cookies", Affects: []string{"LOOM-001"}},
+		{ID: "DISC-001", Type: "discovery", Title: "Billing export", Finding: "CSV code lives in internal/exporter", Affects: []string{"LOOM-002"}},
+	}
+
+	m.searchTI.SetValue("JWT")
+	if got := m.filteredMemories(); len(got) != 1 || got[0].ID != "DEC-001" {
+		t.Fatalf("expected decision search to return DEC-001, got %+v", got)
+	}
+
+	m.searchTI.SetValue("LOOM-002")
+	if got := m.filteredMemories(); len(got) != 1 || got[0].ID != "DISC-001" {
+		t.Fatalf("expected affects search to return DISC-001, got %+v", got)
 	}
 }
 
@@ -213,4 +287,8 @@ func TestTitleBarWidth(t *testing.T) {
 			t.Errorf("width=%d: title bar width=%d, want %d", w, got, w)
 		}
 	}
+}
+
+func keyMsg(s string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s), Alt: false}
 }

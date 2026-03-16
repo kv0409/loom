@@ -2,53 +2,119 @@ package dashboard
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/table"
+	"github.com/karanagi/loom/internal/mail"
 )
 
 func (m Model) renderMail() string {
 	messages := m.filteredMessages()
-
-	avail := availableWidth(m.width)
-	const numColsMail = 4
-	avail -= numColsMail * 2
-	ws := colWidths(avail, []struct{ pct, min int }{{10, 5}, {18, 8}, {10, 5}})
-	timeW, routeW, typeW := ws[0], ws[1], ws[2]
-	subjW := max(10, avail-timeW-routeW-typeW)
-
-	cols := []table.Column{
-		{Title: "TIME", Width: timeW},
-		{Title: "FROM → TO", Width: routeW},
-		{Title: "TYPE", Width: typeW},
-		{Title: "SUBJECT", Width: subjW},
+	var unread, critical int
+	byType := map[string]int{}
+	for _, msg := range messages {
+		if !msg.Read {
+			unread++
+		}
+		if msg.Priority == "critical" {
+			critical++
+		}
+		byType[msg.Type]++
 	}
 
-	vRows := visibleRows(m.height, 9)
-	start, end := listViewport(m.cursor, len(messages), vRows)
+	sorted := append([]*mail.Message(nil), messages...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if mailPriorityWeight(sorted[i].Priority) != mailPriorityWeight(sorted[j].Priority) {
+			return mailPriorityWeight(sorted[i].Priority) > mailPriorityWeight(sorted[j].Priority)
+		}
+		if sorted[i].Read != sorted[j].Read {
+			return !sorted[i].Read
+		}
+		return sorted[i].Timestamp.After(sorted[j].Timestamp)
+	})
 
-	rows := make([]table.Row, 0, end-start)
-	for i := start; i < end; i++ {
-		msg := messages[i]
-		route := fmt.Sprintf("%s→%s", msg.From, msg.To)
-		rows = append(rows, table.Row{fmtTime(msg.Timestamp, false), route, msg.Type, msg.Subject})
+	var lines []string
+	lines = append(lines, fmt.Sprintf("  %d unread · %d critical · %d total", unread, critical, len(messages)))
+	if len(byType) > 0 {
+		var parts []string
+		for _, name := range []string{"blocker", "question", "review-request", "completion", "status", "task"} {
+			if count := byType[name]; count > 0 {
+				parts = append(parts, fmt.Sprintf("%d %s", count, name))
+			}
+		}
+		if len(parts) > 0 {
+			lines = append(lines, "  "+strings.Join(parts, idleStyle.Render(" · ")))
+		}
 	}
-
-	var content string
+	lines = append(lines, "", "  "+headerStyle.Render("INBOX PRESSURE"))
 	if len(messages) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No messages yet", avail)
+		lines = append(lines, "  No queued messages.")
+	} else if critical > 0 {
+		lines = append(lines, deadStyle.Render(fmt.Sprintf("  %d critical message%s should be handled first.", critical, suffix(critical))))
+	} else if unread > 0 {
+		lines = append(lines, reviewStyle.Render(fmt.Sprintf("  %d unread message%s waiting for a response or acknowledgement.", unread, suffix(unread))))
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = t.View() + "\n"
+		lines = append(lines, activeStyle.Render("  Inbox is under control."))
 	}
+	lines = append(lines, "", "  "+headerStyle.Render("NEXT UP"))
+	if len(sorted) == 0 {
+		lines = append(lines, "  No recent mail.")
+	} else {
+		for idx, msg := range sorted[:min(4, len(sorted))] {
+			prefix := "  "
+			if idx == m.cursor {
+				prefix = "▸ "
+			}
+			ref := ""
+			if msg.Ref != "" {
+				ref = idleStyle.Render(" · " + msg.Ref)
+			}
+			state := "read"
+			if !msg.Read {
+				state = "unread"
+			}
+			line := fmt.Sprintf("%s%s %s → %s · %s · %s%s", prefix, mailPriorityTag(msg.Priority), msg.From, msg.To, msg.Type, state, ref)
+			lines = append(lines, line)
+			lines = append(lines, fmt.Sprintf("    %s", truncate(msg.Subject, detailContentWidth(m.width)-4)))
+		}
+	}
+
+	content := strings.Join(lines, "\n") + "\n"
 
 	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchTI.Value())
 	}
 	return panel(title, content, panelWidth(m.width))
+}
+
+func mailPriorityWeight(priority string) int {
+	switch priority {
+	case "critical":
+		return 3
+	case "normal":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func mailPriorityTag(priority string) string {
+	label := priority
+	style := idleStyle
+	switch priority {
+	case "critical":
+		style = deadStyle
+	case "normal":
+		style = reviewStyle
+	case "low":
+		style = idleStyle
+	default:
+		label = "unknown"
+	}
+	return style.Render(label)
 }
 
 func (m Model) renderMailDetail() string {

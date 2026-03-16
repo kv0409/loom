@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/internal/worktree"
@@ -38,6 +39,22 @@ func TestRenderMail_WithData(t *testing.T) {
 	}
 }
 
+func TestRenderMail_ShowsInboxPressureAndNextUp(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.unread = 3
+	m.data.messages = []*mail.Message{
+		{From: "lead", To: "builder", Type: "blocker", Priority: "critical", Subject: "Auth blocked", Ref: "LOOM-001", Timestamp: time.Now(), Read: false},
+		{From: "reviewer", To: "lead", Type: "question", Priority: "normal", Subject: "Need clarification", Ref: "LOOM-002", Timestamp: time.Now().Add(-1 * time.Minute), Read: false},
+		{From: "builder", To: "lead", Type: "status", Priority: "low", Subject: "Working", Ref: "LOOM-003", Timestamp: time.Now().Add(-2 * time.Minute), Read: true},
+	}
+	out := m.renderMail()
+	for _, expected := range []string{"INBOX PRESSURE", "NEXT UP", "3 unread", "critical", "LOOM-001"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderMail missing %q in output:\n%s", expected, out)
+		}
+	}
+}
+
 // --- renderMemory ---
 
 func TestRenderMemory_Empty(t *testing.T) {
@@ -57,6 +74,20 @@ func TestRenderMemory_WithData(t *testing.T) {
 	out := m.renderMemory()
 	if !strings.Contains(out, "MEMORY") {
 		t.Error("renderMemory missing MEMORY title")
+	}
+}
+
+func TestRenderMemory_ShowsOperationalSummary(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.memories = []*memory.Entry{
+		{ID: "DEC-001", Type: "decision", Title: "Use JWT", Decision: "Use JWT cookies", Affects: []string{"LOOM-001"}},
+		{ID: "DISC-001", Type: "discovery", Title: "Exporter location", Finding: "CSV export lives in internal/exporter", Affects: []string{"LOOM-002"}},
+	}
+	out := m.renderMemory()
+	for _, expected := range []string{"MEMORY MAP", "RECENT DECISIONS", "DEC-001", "LOOM-001", "JWT cookies"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderMemory missing %q in output:\n%s", expected, out)
+		}
 	}
 }
 
@@ -104,6 +135,101 @@ func TestRenderActivity_WithData(t *testing.T) {
 	out := m.renderActivity()
 	if !strings.Contains(out, "ACTIVITY") {
 		t.Error("renderActivity missing ACTIVITY title")
+	}
+}
+
+func TestRenderLogs_ShowsInvestigationSummary(t *testing.T) {
+	m := testModel(viewLogs)
+	m.data.logs = []logLine{
+		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
+		{Category: "warn", Agent: "reviewer-001", Text: "warning about stale review"},
+		{Category: "lifecycle", Agent: "builder-001", Text: "activating agent builder-001"},
+	}
+	out := m.renderLogs()
+	for _, expected := range []string{"INVESTIGATION", "1 errors", "HOT AGENTS", "builder-001", "build failed on auth middleware"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderLogs missing %q in output:\n%s", expected, out)
+		}
+	}
+}
+
+func TestRenderLogs_SearchFiltersMessages(t *testing.T) {
+	m := testModel(viewLogs)
+	m.searchTI.SetValue("auth")
+	m.data.logs = []logLine{
+		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
+		{Category: "warn", Agent: "reviewer-001", Text: "billing warning"},
+	}
+	out := m.renderLogs()
+	if !strings.Contains(out, "auth middleware") {
+		t.Fatalf("expected filtered logs to contain auth line:\n%s", out)
+	}
+	if strings.Contains(out, "billing warning") {
+		t.Fatalf("expected filtered logs to exclude billing warning:\n%s", out)
+	}
+}
+
+func TestRenderOverview_ShowsAttentionSections(t *testing.T) {
+	m := testModel(viewOverview)
+	m.data.issues = []*issue.Issue{
+		{ID: "LOOM-001", Title: "Blocked auth work", Status: "blocked", UpdatedAt: time.Now()},
+		{ID: "LOOM-002", Title: "Waiting for review", Status: "review", UpdatedAt: time.Now()},
+		{ID: "LOOM-003", Title: "Active work", Status: "in-progress", UpdatedAt: time.Now()},
+	}
+	m.data.agents = []*agent.Agent{
+		{ID: "builder-001", Status: "dead", AssignedIssues: []string{"LOOM-001"}},
+		{ID: "reviewer-001", Status: "active", AssignedIssues: []string{"LOOM-002"}},
+	}
+	m.data.agentTree = []agentTreeNode{{}, {}}
+	m.data.messages = []*mail.Message{{From: "lead-001", To: "builder-001", Subject: "Need status", Timestamp: time.Now()}}
+	m.data.unread = 2
+	m.data.activity = []activityEntry{{AgentID: "reviewer-001", Tool: "READ", Detail: "reviewing auth middleware", Time: "1m ago"}}
+
+	out := m.renderOverview()
+	for _, expected := range []string{"NEEDS ATTENTION", "IN FLIGHT", "LATEST SIGNAL", "blocked", "review", "2 unread"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderOverview missing %q in output:\n%s", expected, out)
+		}
+	}
+}
+
+func TestRenderIssueDetail_ShowsRelatedContext(t *testing.T) {
+	m := testModel(viewIssueDetail)
+	m.data.issues = []*issue.Issue{{
+		ID:          "LOOM-001",
+		Title:       "Build auth system",
+		Status:      "blocked",
+		Priority:    "high",
+		Description: "Implement authentication",
+		UpdatedAt:   time.Now(),
+	}}
+	m.data.memories = []*memory.Entry{{
+		ID:        "DEC-001",
+		Type:      "decision",
+		Title:     "Use JWT tokens",
+		Decision:  "Use JWT for auth",
+		Affects:   []string{"LOOM-001"},
+		Timestamp: time.Now(),
+	}}
+	m.data.messages = []*mail.Message{{
+		From:      "lead-001",
+		To:        "builder-001",
+		Subject:   "Blocker on auth",
+		Ref:       "LOOM-001",
+		Timestamp: time.Now(),
+	}}
+	m.data.worktrees = []*worktree.Worktree{{
+		Name:   "LOOM-001-01-auth-ui",
+		Branch: "LOOM-001-auth-ui",
+		Issue:  "LOOM-001",
+		Agent:  "builder-001",
+	}}
+
+	out := m.renderIssueDetail()
+	for _, expected := range []string{"NEXT ACTION", "RELATED MEMORY", "RELATED MAIL", "WORKTREE", "DEC-001", "lead-001"} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderIssueDetail missing %q in output:\n%s", expected, out)
+		}
 	}
 }
 

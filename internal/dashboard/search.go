@@ -44,7 +44,7 @@ func (m Model) filteredIssues() []*issue.Issue {
 	}
 	var out []*issue.Issue
 	for _, iss := range display {
-		if searchMatch(m.searchTI.Value(), iss.ID, iss.Title, iss.Status, iss.Assignee, iss.Type) {
+		if searchMatch(m.searchTI.Value(), iss.ID, iss.Title, iss.Status, iss.Assignee, iss.Type, iss.Description, iss.Parent, iss.Worktree, strings.Join(iss.DependsOn, " "), strings.Join(iss.Children, " ")) {
 			out = append(out, iss)
 		}
 	}
@@ -57,7 +57,7 @@ func (m Model) filteredMessages() []*mail.Message {
 	}
 	var out []*mail.Message
 	for _, msg := range m.data.messages {
-		if searchMatch(m.searchTI.Value(), msg.From, msg.To, msg.Subject, msg.Type) {
+		if searchMatch(m.searchTI.Value(), msg.From, msg.To, msg.Subject, msg.Type, msg.Body, msg.Ref, msg.Priority) {
 			out = append(out, msg)
 		}
 	}
@@ -70,7 +70,7 @@ func (m Model) filteredMemories() []*memory.Entry {
 	}
 	var out []*memory.Entry
 	for _, e := range m.data.memories {
-		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, memory.ByField(e)) {
+		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, memory.ByField(e), e.Context, e.Decision, e.Rationale, e.Finding, e.Rule, e.Implications, e.Location, e.AppliesTo, strings.Join(e.Affects, " "), strings.Join(e.Tags, " "), memory.Snippet(e)) {
 			out = append(out, e)
 		}
 	}
@@ -98,6 +98,19 @@ func (m Model) filteredActivity() []activityEntry {
 	for _, e := range m.data.activity {
 		if searchMatch(m.searchTI.Value(), e.AgentID, e.Line) {
 			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func (m Model) filteredLogs() []logLine {
+	if m.searchTI.Value() == "" {
+		return m.data.logs
+	}
+	var out []logLine
+	for _, entry := range m.data.logs {
+		if searchMatch(m.searchTI.Value(), entry.Category, entry.Agent, entry.Text) {
+			out = append(out, entry)
 		}
 	}
 	return out
