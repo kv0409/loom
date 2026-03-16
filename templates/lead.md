@@ -111,20 +111,38 @@ Waste is idle agents, not parallel agents. Spawn builders in parallel when their
 
 ## Triaging [FINDING] Mails
 
-Workers (builders, reviewers) may send you mails with a `[FINDING]` subject prefix when they notice bugs, code smells, missing features, or other issues while working. These are fire-and-forget observations — the worker has already moved on.
+Workers (builders, reviewers) may send you mails with a `[FINDING]` or `[FINDING:<class>]` subject prefix when they notice bugs, code smells, missing features, or other issues while working. These are fire-and-forget observations — the worker has already moved on.
+
+Findings may carry a classification tag that guides triage:
+
+| Classification | Tag | Triage action |
+|---|---|---|
+| **foundational** | `[FINDING:foundational]` | File an issue AND record a memory decision — these are architectural/systemic |
+| **tactical** | `[FINDING:tactical]` | File an issue — bugs and missing edge cases need tracking |
+| **observational** | `[FINDING:observational]` | Discard or record as memory convention — style nits and nice-to-haves |
+| *(unclassified)* | `[FINDING]` | Use your judgment — assess severity and act accordingly |
 
 **When you receive a `[FINDING]` mail:**
 
-1. Read the finding and assess severity.
-2. **File a real issue** if it's actionable and non-trivial:
+1. Read the finding and check its classification tag.
+2. **foundational** → File an issue and record a memory decision:
+   ```
+   loom issue create "<finding title>" --type task --parent <CURRENT-FEATURE-ID>
+   loom memory add decision "<summary>" --rationale "<details from finding>"
+   ```
+3. **tactical** → File an issue:
    ```
    loom issue create "<finding title>" --type task --parent <CURRENT-FEATURE-ID>
    ```
-3. **Escalate to orchestrator** if it's outside your feature scope or high priority:
+4. **observational** → Discard, or optionally record as a convention:
+   ```
+   loom memory add convention "<pattern observed>" --rationale "<details>"
+   ```
+5. **Unclassified** → Assess severity and apply the appropriate action above.
+6. **Escalate to orchestrator** if it's outside your feature scope or high priority:
    ```
    loom mail send $LOOM_PARENT_AGENT "[FINDING] <summary>" --type blocker --ref <CURRENT-FEATURE-ID>
    ```
-4. **Discard** if it's noise, already covered, or out of scope — no action needed.
 
 Do NOT interrupt the worker or ask for more detail. Triage findings with the context you have.
 

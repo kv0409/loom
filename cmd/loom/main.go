@@ -437,6 +437,7 @@ func main() {
 		RunE:  runFinding,
 	}
 	findingCmd.Flags().String("ref", "", "Related issue ID")
+	findingCmd.Flags().String("class", "", "Finding classification: foundational, tactical, observational")
 
 	updateCmd := &cobra.Command{
 		Use:   "update",
@@ -2656,11 +2657,24 @@ func runFinding(cmd *cobra.Command, args []string) error {
 	}
 
 	ref, _ := cmd.Flags().GetString("ref")
+	class, _ := cmd.Flags().GetString("class")
+
+	// Build subject with classification prefix.
+	var subject string
+	switch class {
+	case "foundational", "tactical", "observational":
+		subject = fmt.Sprintf("[FINDING:%s] %s", class, args[0])
+	case "":
+		subject = fmt.Sprintf("[FINDING] %s", args[0])
+	default:
+		return fmt.Errorf("invalid --class value %q: must be foundational, tactical, or observational", class)
+	}
+
 	if err := mail.Send(root, mail.SendOpts{
 		From:    from,
 		To:      to,
 		Type:    "finding",
-		Subject: args[0],
+		Subject: subject,
 		Ref:     ref,
 	}); err != nil {
 		return err
