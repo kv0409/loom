@@ -134,3 +134,25 @@ After completing any action, always check for mail before stopping:
 loom mail read
 ```
 If there is mail, process it and check again. Only stop when there is no mail and no pending work.
+
+## Recovery / Resume Checklist
+
+Run this checklist on startup, after a restart, context compaction, or session interruption to rehydrate state before resuming normal operation.
+
+1. **Drain unread mail** — process anything that arrived while you were down:
+   ```
+   loom mail read
+   ```
+2. **Check worker statuses** — identify which workers are alive or dead:
+   ```
+   loom agents
+   ```
+3. **Review your assigned issues** — check sub-issue statuses for your feature:
+   ```
+   loom issue list --assignee $LOOM_AGENT_ID
+   ```
+4. **Check memory for recent decisions** — pick up context from prior sessions:
+   ```
+   loom memory search "recent"
+   ```
+5. **Resume normal monitoring/merge loop** — act on any pending reviews, dead workers, or blockers found above.
