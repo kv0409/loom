@@ -231,6 +231,15 @@ func Update(loomRoot string, id string, opts UpdateOpts) (*Issue, error) {
 		if issue.Dispatch == nil {
 			issue.Dispatch = make(map[string]string)
 		}
+		var parts []string
+		for k, v := range opts.Dispatch {
+			parts = append(parts, k+"="+v)
+		}
+		sort.Strings(parts)
+		issue.History = append(issue.History, HistoryEntry{
+			At: now, By: actor(), Action: "dispatch_change",
+			Detail: strings.Join(parts, ", "),
+		})
 		for k, v := range opts.Dispatch {
 			issue.Dispatch[k] = v
 		}
