@@ -251,39 +251,55 @@ func countUnread(loomRoot string) int {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Compose modal captures key/mouse input while active.
-	// Non-interactive messages (tick, resize, data) fall through to the normal switch.
+	// Compose modal captures all input while active.
+	// Resize, tick, and data messages are also handled for the dashboard.
 	if m.composeMode && m.composeForm != nil {
-		switch msg.(type) {
-		case tea.KeyMsg, tea.MouseMsg:
-			form, cmd := m.composeForm.Update(msg)
-			if f, ok := form.(*huh.Form); ok {
-				m.composeForm = f
-			}
-			switch m.composeForm.State {
-			case huh.StateCompleted:
-				m.composeMode = false
-				if m.composeData.Confirm && m.composeData.To != "" && m.composeData.Subject != "" {
-					err := mail.Send(m.loomRoot, mail.SendOpts{
-						From:     "dashboard",
-						To:       m.composeData.To,
-						Subject:  m.composeData.Subject,
-						Body:     m.composeData.Body,
-						Type:     m.composeData.Type,
-						Priority: m.composeData.Priority,
-					})
-					if err != nil {
-						return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
-					}
-					return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
-				}
-				return m, m.setFlash("Cancelled", false)
-			case huh.StateAborted:
-				m.composeMode = false
-				return m, nil
-			}
-			return m, cmd
+		form, cmd := m.composeForm.Update(msg)
+		if f, ok := form.(*huh.Form); ok {
+			m.composeForm = f
 		}
+		switch m.composeForm.State {
+		case huh.StateCompleted:
+			m.composeMode = false
+			if m.composeData.Confirm && m.composeData.To != "" && m.composeData.Subject != "" {
+				err := mail.Send(m.loomRoot, mail.SendOpts{
+					From:     "dashboard",
+					To:       m.composeData.To,
+					Subject:  m.composeData.Subject,
+					Body:     m.composeData.Body,
+					Type:     m.composeData.Type,
+					Priority: m.composeData.Priority,
+				})
+				if err != nil {
+					return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
+				}
+				return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
+			}
+			return m, m.setFlash("Cancelled", false)
+		case huh.StateAborted:
+			m.composeMode = false
+			return m, nil
+		}
+		// Also process dashboard-level messages alongside the form.
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.help.Width = msg.Width
+			m.composeForm.WithWidth(min(56, msg.Width-8))
+		case tickMsg:
+			return m, tea.Batch(cmd, m.refresh(), tickCmd())
+		case watchBinaryTickMsg:
+			return m, tea.Batch(cmd, watchBinaryFrom(msg.mtime))
+		case binaryReloadMsg:
+			m.reloading = true
+			return m, tea.Quit
+		case data:
+			m.data = msg
+			m.refreshed = true
+			m.clampCursor()
+		}
+		return m, cmd
 	}
 
 	switch msg := msg.(type) {
@@ -295,9 +311,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
-		if m.composeForm != nil {
-			m.composeForm.WithWidth(min(56, msg.Width-8))
-		}
 		return m, nil
 	case tickMsg:
 		return m, tea.Batch(m.refresh(), tickCmd())
@@ -916,7 +929,7 @@ func (m Model) helpBar() string {
 	case viewIssueDetail, viewMemoryDetail:
 		ctx = "[j/k]scroll"
 	case viewMailDetail:
-		ctx = "[r]eply [j/k]scroll"
+		ctx = "[c]ompose [r]eply [j/k]scroll"
 	case viewDiff:
 		ctx = "[j/k]scroll"
 	}
