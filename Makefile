@@ -2,7 +2,7 @@ BINARY=loom
 VERSION=0.1.16
 COMMIT=$(shell git rev-parse --short HEAD)
 
-.PHONY: build install clean vet tidy
+.PHONY: build install clean vet tidy test
 
 build:
 	go build -ldflags "-X main.version=$(VERSION) -X main.commitHash=$(COMMIT)" -o $(BINARY) ./cmd/loom
@@ -19,3 +19,6 @@ vet:
 
 tidy:
 	go mod tidy
+
+test:
+	go test ./...
