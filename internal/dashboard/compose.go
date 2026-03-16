@@ -126,5 +126,7 @@ func renderComposeOverlay(form *huh.Form, width, height int) string {
 	formView := form.View()
 
 	box := overlayStyle.Width(formW).Render(formView)
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+	hint := helpStyle.Render("esc to cancel")
+	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
