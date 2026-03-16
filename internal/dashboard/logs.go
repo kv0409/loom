@@ -200,7 +200,7 @@ func (m Model) renderLogs() string {
 	header += separator(m.width) + "\n"
 
 	var lines []logLine
-	for _, l := range m.data.logs {
+	for _, l := range m.filteredLogs() {
 		if filter != "" && l.Category != filter {
 			continue
 		}
@@ -212,8 +212,37 @@ func (m Model) renderLogs() string {
 
 	if len(lines) == 0 {
 		header += renderEmpty("No matching log entries", availableWidth(m.width))
-		return panel("[l] LOGS", header, panelWidth(m.width))
+		return panel("[l] INVESTIGATION", header, panelWidth(m.width))
 	}
+
+	errorsCount := 0
+	warnCount := 0
+	hotAgents := map[string]int{}
+	for _, line := range lines {
+		if line.Category == "error" || line.Category == "stderr" {
+			errorsCount++
+		}
+		if line.Category == "warn" {
+			warnCount++
+		}
+		if line.Agent != "" {
+			hotAgents[line.Agent]++
+		}
+	}
+	type agentCount struct {
+		agent string
+		count int
+	}
+	var ranked []agentCount
+	for agent, count := range hotAgents {
+		ranked = append(ranked, agentCount{agent: agent, count: count})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].count != ranked[j].count {
+			return ranked[i].count > ranked[j].count
+		}
+		return ranked[i].agent < ranked[j].agent
+	})
 
 	visible := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(lines), visible)
@@ -243,8 +272,20 @@ func (m Model) renderLogs() string {
 	}
 	t := newStyledTable(cols, rows, end-start)
 
-	content := header + styledTableView(t, replacements)
-	return panel(fmt.Sprintf("[l] LOGS (%d events)", len(lines)), content, panelWidth(m.width))
+	content := header
+	content += fmt.Sprintf("  %d errors · %d warnings · %d events\n", errorsCount, warnCount, len(lines))
+	content += "\n  " + headerStyle.Render("HOT AGENTS") + "\n"
+	if len(ranked) == 0 {
+		content += "  No agent attribution available.\n\n"
+	} else {
+		for _, item := range ranked[:min(3, len(ranked))] {
+			content += fmt.Sprintf("  %s · %d events\n", item.agent, item.count)
+		}
+		content += "\n"
+	}
+	content += "  " + headerStyle.Render("RECENT INCIDENTS") + "\n"
+	content += styledTableView(t, replacements)
+	return panel(fmt.Sprintf("[l] INVESTIGATION (%d events)", len(lines)), content, panelWidth(m.width))
 }
 
 func categoryTag(cat string) string {

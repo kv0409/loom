@@ -529,7 +529,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case keySearch:
-		if isListView(m.view) {
+		if isSearchableView(m.view) {
 			m.searchMode = true
 			m.searchTI.SetValue("")
 			m.searchTI.Focus()
@@ -944,7 +944,7 @@ func (m Model) helpBar() string {
 	case viewMemory:
 		ctx = "[Enter]detail"
 	case viewLogs:
-		ctx = "[f]ilter [F]agent"
+		ctx = "[/]search [f]ilter [F]agent"
 	case viewActivity:
 		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMemoryDetail:
@@ -1044,6 +1044,10 @@ func isListView(v view) bool {
 		return true
 	}
 	return false
+}
+
+func isSearchableView(v view) bool {
+	return isListView(v) || v == viewLogs
 }
 
 // mouseToListIndex converts a screen Y coordinate to a list item index,
