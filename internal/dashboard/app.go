@@ -254,31 +254,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Compose modal captures all input while active.
 	// Resize, tick, and data messages are also handled for the dashboard.
 	if m.composeMode && m.composeForm != nil {
+		// Intercept keys before huh sees them.
+		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+			switch keyMsg.String() {
+			case "ctrl+s":
+				return m.composeSend()
+			case "esc":
+				m.composeMode = false
+				return m, m.setFlash("Compose cancelled", false)
+			}
+		}
+
 		form, cmd := m.composeForm.Update(msg)
 		if f, ok := form.(*huh.Form); ok {
 			m.composeForm = f
 		}
 		switch m.composeForm.State {
 		case huh.StateCompleted:
-			m.composeMode = false
-			if m.composeData.Confirm && m.composeData.To != "" && m.composeData.Subject != "" {
-				err := mail.Send(m.loomRoot, mail.SendOpts{
-					From:     "dashboard",
-					To:       m.composeData.To,
-					Subject:  m.composeData.Subject,
-					Body:     m.composeData.Body,
-					Type:     m.composeData.Type,
-					Priority: m.composeData.Priority,
-				})
-				if err != nil {
-					return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
-				}
-				return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
-			}
-			return m, m.setFlash("Cancelled", false)
+			// Form completed (user tabbed past last field) — treat as send.
+			return m.composeSend()
 		case huh.StateAborted:
 			m.composeMode = false
-			return m, nil
+			return m, m.setFlash("Compose cancelled", false)
 		}
 		// Also process dashboard-level messages alongside the form.
 		switch msg := msg.(type) {
@@ -705,6 +702,30 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// composeSend validates the compose form fields and sends the message.
+// Called by Ctrl+S shortcut or when the form reaches StateCompleted.
+func (m Model) composeSend() (tea.Model, tea.Cmd) {
+	m.composeMode = false
+	if m.composeData.To == "" {
+		return m, m.setFlash("Send failed: 'To' is required", true)
+	}
+	if m.composeData.Subject == "" {
+		return m, m.setFlash("Send failed: 'Subject' is required", true)
+	}
+	err := mail.Send(m.loomRoot, mail.SendOpts{
+		From:     "dashboard",
+		To:       m.composeData.To,
+		Subject:  m.composeData.Subject,
+		Body:     m.composeData.Body,
+		Type:     m.composeData.Type,
+		Priority: m.composeData.Priority,
+	})
+	if err != nil {
+		return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
+	}
+	return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
 }
 
 func (m Model) openCompose(replyTo string) (tea.Model, tea.Cmd) {

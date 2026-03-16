@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
-# Usage: ./scripts/release.sh <major|minor|patch>
+# Usage: ./scripts/release.sh [--no-wait] <major|minor|patch>
 set -euo pipefail
+
+no_wait=false
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --no-wait) no_wait=true; shift ;;
+    *) echo "Unknown flag: $1" >&2; exit 1 ;;
+  esac
+done
 
 bump="${1:-}"
 if [[ "$bump" != "major" && "$bump" != "minor" && "$bump" != "patch" ]]; then
-  echo "Usage: $0 <major|minor|patch>" >&2
+  echo "Usage: $0 [--no-wait] <major|minor|patch>" >&2
   exit 1
 fi
 
@@ -31,7 +39,14 @@ git tag -a "$tag" -m "Release ${tag}"
 git push origin main
 git push origin "$tag"
 
-echo "Released ${tag} — waiting for goreleaser..."
+echo "Released ${tag}"
+
+if [[ "$no_wait" == true ]]; then
+  echo "Skipping build poll (--no-wait). Run 'loom update' later to fetch the binary."
+  exit 0
+fi
+
+echo "Waiting for goreleaser..."
 
 # Wait for the tag-triggered run to appear
 sleep 5

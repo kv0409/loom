@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -12,7 +13,6 @@ type composeData struct {
 	Type     string
 	Priority string
 	Body     string
-	Confirm  bool
 }
 
 // mailTypes are the allowed message types for the compose form.
@@ -67,15 +67,22 @@ func newComposeForm(cd *composeData, agentIDs []string, replyTo string) *huh.For
 				Value(&cd.Body).
 				Placeholder("message body (optional)").
 				Lines(4),
-			huh.NewConfirm().
-				Title("Send?").
-				Affirmative("Send").
-				Negative("Cancel").
-				Value(&cd.Confirm),
 		),
-	).WithTheme(composeTheme())
+	).WithTheme(composeTheme()).WithKeyMap(composeKeyMap())
 
 	return f
+}
+
+// composeKeyMap returns a custom huh KeyMap that rebinds AcceptSuggestion
+// from the default ctrl+e to tab, so pressing Tab on an Input with suggestions
+// both accepts the suggestion and advances to the next field.
+func composeKeyMap() *huh.KeyMap {
+	km := huh.NewDefaultKeyMap()
+	km.Input.AcceptSuggestion = key.NewBinding(
+		key.WithKeys("tab"),
+		key.WithHelp("tab", "complete"),
+	)
+	return km
 }
 
 // composeTheme returns a huh theme styled to match the Tokyo Night palette.
@@ -125,8 +132,23 @@ func renderComposeOverlay(form *huh.Form, width, height int) string {
 	formW := min(60, width-4)
 	formView := form.View()
 
-	box := overlayStyle.Width(formW).Render(formView)
-	hint := helpStyle.Render("esc to cancel")
+	composeTitle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(colBlue).
+		MarginBottom(1).
+		Render("✉ COMPOSE MESSAGE")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, composeTitle, formView)
+	box := overlayStyle.Width(formW).Render(content)
+
+	hintStyle := lipgloss.NewStyle().Foreground(colGray)
+	keyStyle := lipgloss.NewStyle().Foreground(colFg).Bold(true)
+	hint := hintStyle.Render("  ") +
+		keyStyle.Render("tab") + hintStyle.Render(" next/accept suggestion · ") +
+		keyStyle.Render("shift+tab") + hintStyle.Render(" prev · ") +
+		keyStyle.Render("ctrl+s") + hintStyle.Render(" send · ") +
+		keyStyle.Render("esc") + hintStyle.Render(" cancel")
+
 	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
