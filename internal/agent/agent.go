@@ -135,7 +135,28 @@ func NextID(loomRoot, role string) string {
 	return fmt.Sprintf("%s-%03d", role, max+1)
 }
 
-func buildTaskMsg(opts SpawnOpts) string {
+// loadDispatchDirectives collects dispatch key=value pairs from all assigned
+// issues and returns them as newline-separated "KEY=VALUE" lines.
+func loadDispatchDirectives(loomRoot string, issueIDs []string) string {
+	var lines []string
+	for _, id := range issueIDs {
+		iss, err := issue.Load(loomRoot, id)
+		if err != nil || len(iss.Dispatch) == 0 {
+			continue
+		}
+		keys := make([]string, 0, len(iss.Dispatch))
+		for k := range iss.Dispatch {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			lines = append(lines, k+"="+iss.Dispatch[k])
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func buildTaskMsg(loomRoot string, opts SpawnOpts) string {
 	if opts.ExtraContext != nil {
 		if task, ok := opts.ExtraContext["task"]; ok {
 			if len(opts.FileScope) > 0 {
@@ -155,6 +176,9 @@ func buildTaskMsg(opts SpawnOpts) string {
 		}
 		if len(opts.FileScope) > 0 {
 			base += "\nFile scope hints (focus your edits here): " + strings.Join(opts.FileScope, ", ")
+		}
+		if directives := loadDispatchDirectives(loomRoot, opts.AssignedIssues); directives != "" {
+			base += "\nDispatch directives:\n" + directives
 		}
 		return base
 	}
@@ -219,7 +243,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	// --- ACP mode: register as pending-acp, daemon activates later ---
 	if mode == "acp" {
 		a.Status = "pending-acp"
-		a.InitialTask = buildTaskMsg(opts)
+		a.InitialTask = buildTaskMsg(loomRoot, opts)
 		if err := createWorktree(); err != nil {
 			return nil, err
 		}
@@ -268,7 +292,7 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		envPrefix += fmt.Sprintf(" LOOM_FILE_SCOPE=%s", strings.Join(opts.FileScope, ","))
 	}
 
-	taskMsg := buildTaskMsg(opts)
+	taskMsg := buildTaskMsg(loomRoot, opts)
 	kiroBase := fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, mode, agentName)
 	if taskMsg != "" {
 		escaped := strings.ReplaceAll(taskMsg, "'", "'\\''")
@@ -489,16 +513,17 @@ func RenderPrompt(loomRoot string, agent *Agent, extraContext map[string]string)
 	}
 
 	vars := map[string]interface{}{
-		"AgentID":        agent.ID,
-		"Role":           agent.Role,
-		"SpawnedBy":      agent.SpawnedBy,
-		"AssignedIssues": strings.Join(agent.AssignedIssues, ", "),
-		"WorktreePath":   wtPath,
-		"WorktreeBranch": wtBranch,
-		"MCPEnabled":     agent.Config.MCPEnabled,
-		"ProjectRoot":    projectRoot,
-		"LoomRoot":       loomRoot,
-		"FileScope":      strings.Join(agent.FileScope, ", "),
+		"AgentID":            agent.ID,
+		"Role":               agent.Role,
+		"SpawnedBy":          agent.SpawnedBy,
+		"AssignedIssues":     strings.Join(agent.AssignedIssues, ", "),
+		"WorktreePath":       wtPath,
+		"WorktreeBranch":     wtBranch,
+		"MCPEnabled":         agent.Config.MCPEnabled,
+		"ProjectRoot":        projectRoot,
+		"LoomRoot":           loomRoot,
+		"FileScope":          strings.Join(agent.FileScope, ", "),
+		"DispatchDirectives": loadDispatchDirectives(loomRoot, agent.AssignedIssues),
 	}
 	for k, v := range extraContext {
 		vars[k] = v

@@ -163,6 +163,18 @@ func (m Model) renderIssueDetail() string {
 		lines = append(lines, fmt.Sprintf("  Depends: %s", strings.Join(iss.DependsOn, ", ")))
 	}
 
+	if len(iss.Dispatch) > 0 {
+		lines = append(lines, "", "  "+headerStyle.Render("DISPATCH"))
+		keys := make([]string, 0, len(iss.Dispatch))
+		for k := range iss.Dispatch {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			lines = append(lines, fmt.Sprintf("  %s=%s", k, iss.Dispatch[k]))
+		}
+	}
+
 	if len(iss.Children) > 0 {
 		issueMap := make(map[string]*issue.Issue, len(m.data.issues))
 		for _, ci := range m.data.issues {

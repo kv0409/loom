@@ -391,6 +391,7 @@ func main() {
 	spawnCmd.Flags().String("mode", "", "Kiro mode override: chat|acp")
 	spawnCmd.Flags().String("model", "", "Model override: sonnet|opus|haiku (default: from config)")
 	spawnCmd.Flags().String("scope", "", "Comma-separated file/directory scope hints for builders")
+	spawnCmd.Flags().String("dispatch", "", "Comma-separated key=value dispatch directives for assigned issues")
 	spawnCmd.MarkFlagRequired("role")
 
 	gcCmd := &cobra.Command{
@@ -1612,6 +1613,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	mode, _ := cmd.Flags().GetString("mode")
 	model, _ := cmd.Flags().GetString("model")
 	scopeStr, _ := cmd.Flags().GetString("scope")
+	dispatchStr, _ := cmd.Flags().GetString("dispatch")
 
 	if spawnedBy == "" {
 		spawnedBy = os.Getenv("LOOM_AGENT_ID")
@@ -1636,6 +1638,15 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		for _, s := range strings.Split(scopeStr, ",") {
 			if t := strings.TrimSpace(s); t != "" {
 				fileScope = append(fileScope, t)
+			}
+		}
+	}
+
+	// Apply dispatch directives to assigned issues before spawning.
+	if dispatch := parseDispatch(dispatchStr); len(dispatch) > 0 {
+		for _, issID := range issues {
+			if _, err := issue.Update(root, issID, issue.UpdateOpts{Dispatch: dispatch}); err != nil {
+				return fmt.Errorf("setting dispatch on %s: %w", issID, err)
 			}
 		}
 	}
