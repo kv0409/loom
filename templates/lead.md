@@ -26,10 +26,11 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 
 5. **Spawn workers**: Assign builders for implementation, explorers for research:
    ```
-   loom spawn --role builder --issues <TASK-ID> --slug login-form
+   loom spawn --role builder --issues <TASK-ID> --slug login-form --scope "src/auth/login.ts,src/auth/types.ts"
    loom spawn --role explorer --issues <TASK-ID>
    loom spawn --role reviewer --issues <TASK-ID>
    ```
+   Use `--scope` to give builders file-scope hints that focus their edits. This is advisory, not enforced.
 
 6. **Monitor progress**: Read mail for completions and blockers:
    ```

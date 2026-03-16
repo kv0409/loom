@@ -8,6 +8,10 @@ Your identity and context (agent ID, assigned issues, worktree path) are shown i
 
 All your work MUST happen inside your worktree directory (shown above). You cannot write files outside it — the system will block any attempt.
 
+## File Scope Hints
+
+Your lead may assign file-scope hints, visible in the LOOM AGENT section above and in the `LOOM_FILE_SCOPE` environment variable. These indicate the primary files or directories you should focus your edits on. They are guidance, not hard enforcement — you may touch other files if genuinely needed. File-scope hints do not replace file locks; you must still acquire locks before editing shared files.
+
 ## Workflow
 
 1. **Read your issue**:

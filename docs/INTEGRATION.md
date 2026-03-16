@@ -185,6 +185,7 @@ Templates in `.loom/templates/` use Go template syntax:
 {{.WorktreeBranch}}   — branch name
 {{.RelevantMemory}}   — recent decisions/conventions that affect assigned issues
 {{.RelevantPlan}}     — blueprint/task breakdown from lead
+{{.FileScope}}        — comma-separated file-scope hints (string, if provided via --scope)
 {{.MCPEnabled}}       — whether MCP tools are available
 {{.ProjectRoot}}      — absolute path to project root
 {{.LoomRoot}}         — absolute path to .loom/
@@ -208,6 +209,12 @@ Description: {{.Description}}
 - Path: {{.WorktreePath}}
 - Branch: {{.WorktreeBranch}}
 - All your work MUST happen in this directory. Do NOT modify files outside it.
+
+{{if .FileScope}}
+## File Scope Hints
+Your lead assigned these file-scope hints — focus your edits here, but you may touch other files if genuinely needed:
+{{.FileScope}}
+{{end}}
 
 ## Relevant Context
 {{if .RelevantMemory}}
@@ -269,6 +276,7 @@ LOOM_ROOT=/path/to/project/.loom
 LOOM_PROJECT_ROOT=/path/to/project
 LOOM_PARENT_AGENT=lead-auth
 LOOM_WORKTREE=/path/to/project/.loom/worktrees/loom-LOOM-001-01-login-form
+LOOM_FILE_SCOPE=src/auth/login.ts,src/auth/types.ts  # if --scope provided
 LOOM_MCP_PORT=9876          # if MCP enabled
 ```
 

@@ -119,6 +119,9 @@ heartbeat: 2026-03-09T18:52:30-04:00
 assigned_issues:
   - LOOM-001-01
 worktree: loom-LOOM-001-01-login-form
+file_scope:
+  - src/auth/login.ts
+  - src/auth/types.ts
 config:
   kiro_mode: chat                # chat | acp
   mcp_enabled: true
@@ -134,18 +137,19 @@ When the daemon spawns an agent:
 2. Write agent YAML to `.loom/agents/{id}.yaml`
 3. Create mailbox directory `.loom/mail/inbox/{id}/`
 4. If builder: create worktree (see [Worktrees](WORKTREES.md))
-5. Create tmux pane:
+5. If builder and `--scope` was provided: store file-scope hints in agent YAML (`file_scope` field) and set `LOOM_FILE_SCOPE` in the agent's environment
+6. Create tmux pane:
    ```bash
    tmux new-window -t loom -n {id}
    # or
    tmux split-window -t loom:{lead-window}
    ```
-6. Start kiro-cli in the pane:
+7. Start kiro-cli in the pane:
    ```bash
    tmux send-keys -t loom:{target} "kiro-cli chat" Enter
    ```
-7. Wait for kiro-cli to initialize
-8. Send the agent's prompt via tmux send-keys:
+8. Wait for kiro-cli to initialize
+9. Send the agent's prompt via tmux send-keys:
    ```bash
    tmux send-keys -t loom:{target} "{rendered prompt template}" Enter
    ```
@@ -160,6 +164,7 @@ The initial prompt sent to each agent includes:
 - How to record decisions in memory
 - How to update issue status
 - Constraints and conventions from the project
+- File-scope hints (if provided via `--scope` at spawn time)
 
 Templates live in `.loom/templates/` and are rendered with Go's `text/template` using agent-specific variables.
 
