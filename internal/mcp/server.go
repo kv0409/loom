@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"os"
 
 	"github.com/karanagi/loom/internal/agent"
@@ -121,6 +122,14 @@ func str(m map[string]interface{}, key string) string {
 	return v
 }
 
+func required(args map[string]interface{}, key string) (string, error) {
+	v := str(args, key)
+	if v == "" {
+		return "", fmt.Errorf("%s is required", key)
+	}
+	return v, nil
+}
+
 func num(m map[string]interface{}, key string) int {
 	switch v := m[key].(type) {
 	case float64:
@@ -137,10 +146,18 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 	}
 	switch name {
 	case "loom_mail_send":
+		to, err := required(args, "to")
+		if err != nil {
+			return "", err
+		}
+		subject, err := required(args, "subject")
+		if err != nil {
+			return "", err
+		}
 		if err := mail.Send(s.LoomRoot, mail.SendOpts{
 			From:     s.AgentID,
-			To:       str(args, "to"),
-			Subject:  str(args, "subject"),
+			To:       to,
+			Subject:  subject,
 			Body:     str(args, "body"),
 			Type:     strOr(args, "type", "status"),
 			Priority: strOr(args, "priority", "normal"),
@@ -148,7 +165,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		}); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Sent to %s: %s", str(args, "to"), str(args, "subject")), nil
+		return fmt.Sprintf("Sent to %s: %s", to, subject), nil
 
 	case "loom_mail_read":
 		unread, _ := args["unread_only"].(bool)
@@ -175,7 +192,11 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return fmt.Sprintf("%d unread messages", len(msgs)), nil
 
 	case "loom_issue_show":
-		iss, err := issue.Load(s.LoomRoot, str(args, "id"))
+		id, err := required(args, "id")
+		if err != nil {
+			return "", err
+		}
+		iss, err := issue.Load(s.LoomRoot, id)
 		if err != nil {
 			return "", err
 		}
@@ -183,7 +204,11 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_issue_update":
-		_, err := issue.Update(s.LoomRoot, str(args, "id"), issue.UpdateOpts{
+		id, err := required(args, "id")
+		if err != nil {
+			return "", err
+		}
+		_, err = issue.Update(s.LoomRoot, id, issue.UpdateOpts{
 			Status:   str(args, "status"),
 			Priority: str(args, "priority"),
 			Assignee: str(args, "assignee"),
@@ -192,10 +217,14 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Updated %s", str(args, "id")), nil
+		return fmt.Sprintf("Updated %s", id), nil
 
 	case "loom_issue_create":
-		iss, err := issue.Create(s.LoomRoot, str(args, "title"), issue.CreateOpts{
+		title, err := required(args, "title")
+		if err != nil {
+			return "", err
+		}
+		iss, err := issue.Create(s.LoomRoot, title, issue.CreateOpts{
 			Type:        strOr(args, "type", "task"),
 			Priority:    strOr(args, "priority", "normal"),
 			Parent:      str(args, "parent"),
@@ -261,24 +290,36 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_lock_acquire":
-		if err := lock.Acquire(s.LoomRoot, lock.AcquireOpts{File: str(args, "file"), Agent: s.AgentID, Issue: str(args, "issue")}); err != nil {
+		file, err := required(args, "file")
+		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Locked %s", str(args, "file")), nil
+		if err := lock.Acquire(s.LoomRoot, lock.AcquireOpts{File: file, Agent: s.AgentID, Issue: str(args, "issue")}); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Locked %s", file), nil
 
 	case "loom_lock_release":
-		if err := lock.Release(s.LoomRoot, str(args, "file")); err != nil {
+		file, err := required(args, "file")
+		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("Released %s", str(args, "file")), nil
+		if err := lock.Release(s.LoomRoot, file); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Released %s", file), nil
 
 	case "loom_lock_check":
-		l, err := lock.Check(s.LoomRoot, str(args, "file"))
+		file, err := required(args, "file")
+		if err != nil {
+			return "", err
+		}
+		l, err := lock.Check(s.LoomRoot, file)
 		if err != nil {
 			return "", err
 		}
 		if l == nil {
-			return fmt.Sprintf("%s is not locked", str(args, "file")), nil
+			return fmt.Sprintf("%s is not locked", file), nil
 		}
 		out, _ := json.MarshalIndent(l, "", "  ")
 		return string(out), nil
@@ -298,7 +339,13 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_agent_kill":
-		id := str(args, "id")
+		id, err := required(args, "id")
+		if err != nil {
+			return "", err
+		}
+		if id == s.AgentID {
+			return "", fmt.Errorf("cannot kill self")
+		}
 		cleanup := boolVal(args, "cleanup")
 		if err := agent.Kill(s.LoomRoot, id, cleanup); err != nil {
 			return "", err
@@ -306,7 +353,13 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return fmt.Sprintf("Killed %s (cleanup=%v)", id, cleanup), nil
 
 	case "loom_worktree_remove":
-		name := str(args, "name")
+		name, err := required(args, "name")
+		if err != nil {
+			return "", err
+		}
+		if strings.Contains(name, "/") || strings.Contains(name, "..") {
+			return "", fmt.Errorf("invalid worktree name: %s", name)
+		}
 		force := boolVal(args, "force")
 		if err := worktree.Remove(s.LoomRoot, name, force); err != nil {
 			return "", err

@@ -203,7 +203,9 @@ func (d *Daemon) watchPendingAgents() {
 				if a.Status == "pending-acp" {
 					d.touchActivity()
 					a.Status = "activating"
-					agent.Save(d.LoomRoot, a)
+					if err := agent.Save(d.LoomRoot, a); err != nil {
+						log.Printf("[daemon] save agent %s: %v", a.ID, err)
+					}
 					go d.activateACPAgent(a)
 				}
 			}
@@ -312,7 +314,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	if err != nil {
 		log.Printf("[acp] %s: NewClient failed: %v", a.ID, err)
 		a.Status = "dead"
-		agent.Save(d.LoomRoot, a)
+		if err := agent.Save(d.LoomRoot, a); err != nil {
+			log.Printf("[daemon] save agent %s: %v", a.ID, err)
+		}
 		return
 	}
 
@@ -327,7 +331,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		log.Printf("[acp] %s: Initialize failed: %v", a.ID, err)
 		c.Close()
 		a.Status = "dead"
-		agent.Save(d.LoomRoot, a)
+		if err := agent.Save(d.LoomRoot, a); err != nil {
+			log.Printf("[daemon] save agent %s: %v", a.ID, err)
+		}
 		return
 	}
 
@@ -337,7 +343,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		log.Printf("[acp] %s: NewSession failed: %v", a.ID, err)
 		c.Close()
 		a.Status = "dead"
-		agent.Save(d.LoomRoot, a)
+		if err := agent.Save(d.LoomRoot, a); err != nil {
+			log.Printf("[daemon] save agent %s: %v", a.ID, err)
+		}
 		return
 	}
 	log.Printf("[acp] %s: session=%s, sending initial task", a.ID, sessionID)
@@ -347,7 +355,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 			log.Printf("[acp] %s: SendPrompt failed: %v", a.ID, err)
 			c.Close()
 			a.Status = "dead"
-			agent.Save(d.LoomRoot, a)
+			if err := agent.Save(d.LoomRoot, a); err != nil {
+				log.Printf("[daemon] save agent %s: %v", a.ID, err)
+			}
 			return
 		}
 	}
@@ -363,7 +373,9 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	a.PID = c.PID()
 	a.ACPSessionID = sessionID
 	a.Status = "active"
-	agent.Save(d.LoomRoot, a)
+	if err := agent.Save(d.LoomRoot, a); err != nil {
+		log.Printf("[daemon] save agent %s: %v", a.ID, err)
+	}
 
 	// Set the model after the agent is fully active so a timeout
 	// doesn't block activation or kill the process during startup.
@@ -417,6 +429,14 @@ func (d *Daemon) watchIssues() {
 // allDescendantsResolved recursively checks that all children (and their
 // children, etc.) of the given issue are done or cancelled.
 func allDescendantsResolved(loomRoot, issueID string) bool {
+	return allDescendantsResolvedVisited(loomRoot, issueID, make(map[string]bool))
+}
+
+func allDescendantsResolvedVisited(loomRoot, issueID string, visited map[string]bool) bool {
+	if visited[issueID] {
+		return false // cycle detected — treat as unresolved
+	}
+	visited[issueID] = true
 	iss, err := issue.Load(loomRoot, issueID)
 	if err != nil {
 		return false
@@ -429,7 +449,7 @@ func allDescendantsResolved(loomRoot, issueID string) bool {
 		if child.Status != "done" && child.Status != "cancelled" {
 			return false
 		}
-		if len(child.Children) > 0 && !allDescendantsResolved(loomRoot, childID) {
+		if len(child.Children) > 0 && !allDescendantsResolvedVisited(loomRoot, childID, visited) {
 			return false
 		}
 	}
@@ -471,7 +491,10 @@ func (d *Daemon) watchDoneIssues() {
 					continue
 				}
 				d.touchActivity()
-				issue.Close(d.LoomRoot, iss.ID, "all children resolved")
+				if _, err := issue.Close(d.LoomRoot, iss.ID, "all children resolved"); err != nil {
+					d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
+					continue
+				}
 				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
 				target := iss.Assignee
@@ -630,7 +653,9 @@ func (d *Daemon) watchHeartbeats() {
 					}
 					a.Status = "dead"
 					a.NudgeCount = 0
-					agent.Save(d.LoomRoot, a)
+					if err := agent.Save(d.LoomRoot, a); err != nil {
+						log.Printf("[daemon] save agent %s: %v", a.ID, err)
+					}
 					agent.UnassignIssues(d.LoomRoot, a)
 					delete(d.lastSeen, a.ID)
 					delete(d.idleSince, a.ID)
@@ -659,7 +684,9 @@ func (d *Daemon) watchHeartbeats() {
 					d.touchActivity()
 					if a.NudgeCount > 0 {
 						a.NudgeCount = 0
-						agent.Save(d.LoomRoot, a)
+						if err := agent.Save(d.LoomRoot, a); err != nil {
+							log.Printf("[daemon] save agent %s: %v", a.ID, err)
+						}
 					}
 					continue
 				}
@@ -678,7 +705,9 @@ func (d *Daemon) watchHeartbeats() {
 					d.notify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
 					a.NudgeCount++
 					a.LastNudge = time.Now()
-					agent.Save(d.LoomRoot, a)
+					if err := agent.Save(d.LoomRoot, a); err != nil {
+						log.Printf("[daemon] save agent %s: %v", a.ID, err)
+					}
 					if a.NudgeCount == 2 {
 						if parentID := a.SpawnedBy; parentID != "" {
 							parent, err := agent.Load(d.LoomRoot, parentID)

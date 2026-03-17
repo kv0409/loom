@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/karanagi/loom/internal/store"
+	"gopkg.in/yaml.v3"
 )
 
 type Lock struct {
@@ -38,12 +40,8 @@ func lockPath(loomRoot, file string) string {
 
 func Acquire(loomRoot string, opts AcquireOpts) error {
 	path := lockPath(loomRoot, opts.File)
-	existing, err := Check(loomRoot, opts.File)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
-	}
-	if existing != nil {
-		return fmt.Errorf("LOCKED by %s (%s) since %s", existing.Agent, existing.Issue, existing.AcquiredAt.Format("15:04:05"))
 	}
 	l := &Lock{
 		File:       opts.File,
@@ -51,7 +49,26 @@ func Acquire(loomRoot string, opts AcquireOpts) error {
 		AcquiredAt: time.Now(),
 		Issue:      opts.Issue,
 	}
-	return store.WriteYAML(path, l)
+	data, err := yaml.Marshal(l)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			existing, readErr := Check(loomRoot, opts.File)
+			if readErr != nil {
+				return readErr
+			}
+			if existing != nil {
+				return fmt.Errorf("LOCKED by %s (%s) since %s", existing.Agent, existing.Issue, existing.AcquiredAt.Format("15:04:05"))
+			}
+		}
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	return err
 }
 
 func Release(loomRoot string, file string) error {

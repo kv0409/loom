@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -16,15 +17,28 @@ func lockPath(loomRoot string) string {
 }
 
 func AcquireLock(loomRoot string) error {
+	return tryCreateLock(loomRoot, true)
+}
+
+func tryCreateLock(loomRoot string, canRetry bool) error {
+	f, err := os.OpenFile(lockPath(loomRoot), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err == nil {
+		_, werr := f.WriteString(strconv.Itoa(os.Getpid()))
+		f.Close()
+		return werr
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return err
+	}
 	pid, alive := CheckLock(loomRoot)
 	if alive {
 		return fmt.Errorf("loom already running (pid %d)", pid)
 	}
-	// Stale lock — remove it
-	if pid != 0 {
-		os.Remove(lockPath(loomRoot))
+	if !canRetry {
+		return err
 	}
-	return os.WriteFile(lockPath(loomRoot), []byte(strconv.Itoa(os.Getpid())), 0644)
+	os.Remove(lockPath(loomRoot))
+	return tryCreateLock(loomRoot, false)
 }
 
 func ReleaseLock(loomRoot string) error {

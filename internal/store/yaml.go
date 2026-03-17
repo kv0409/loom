@@ -2,10 +2,12 @@ package store
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -56,22 +58,37 @@ func ListYAMLFiles(dir string) ([]string, error) {
 }
 
 func NextCounter(counterFile string) (int, error) {
-	data, err := os.ReadFile(counterFile)
+	f, err := os.OpenFile(counterFile, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := os.WriteFile(counterFile, []byte("1"), 0644); err != nil {
-				return 0, err
-			}
-			return 1, nil
-		}
 		return 0, err
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	defer f.Close()
+
+	fd := int(f.Fd())
+	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
+		return 0, err
+	}
+	defer syscall.Flock(fd, syscall.LOCK_UN)
+
+	data, err := io.ReadAll(f)
 	if err != nil {
-		return 0, fmt.Errorf("invalid counter value in %s: %w", counterFile, err)
+		return 0, err
+	}
+	n := 0
+	if s := strings.TrimSpace(string(data)); s != "" {
+		n, err = strconv.Atoi(s)
+		if err != nil {
+			return 0, fmt.Errorf("invalid counter value in %s: %w", counterFile, err)
+		}
 	}
 	n++
-	if err := os.WriteFile(counterFile, []byte(strconv.Itoa(n)), 0644); err != nil {
+	if err := f.Truncate(0); err != nil {
+		return 0, err
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return 0, err
+	}
+	if _, err := f.WriteString(strconv.Itoa(n)); err != nil {
 		return 0, err
 	}
 	return n, nil

@@ -32,6 +32,7 @@ type Client struct {
 	// Background reader delivers responses to waiting callers.
 	pending   map[int64]chan jsonRPCResponse
 	pendingMu sync.Mutex
+	done      chan struct{} // closed when process exits, before pending channels
 
 	// Output buffer for dashboard.
 	outMu         sync.Mutex
@@ -142,6 +143,7 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 		cmd:     cmd,
 		stdin:   stdin,
 		pending: make(map[int64]chan jsonRPCResponse),
+		done:    make(chan struct{}),
 	}
 
 	// Background reader: dispatches responses and captures notifications.
@@ -157,6 +159,7 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 		c.waitOnce.Do(func() { c.waitErr = cmd.Wait() })
 		log.Printf("[acp] process exited: pid=%d err=%v", cmd.Process.Pid, c.waitErr)
 		c.exited.Store(true)
+		close(c.done)
 		c.pendingMu.Lock()
 		for id, ch := range c.pending {
 			close(ch)
@@ -211,7 +214,11 @@ func (c *Client) readLoop(r *bufio.Reader) {
 			ch, ok := c.pending[resp.ID]
 			c.pendingMu.Unlock()
 			if ok {
-				ch <- resp
+				select {
+				case <-c.done:
+				default:
+					ch <- resp
+				}
 			}
 			continue
 		}
@@ -379,6 +386,8 @@ func (c *Client) call(method string, params interface{}, result interface{}) err
 	var ok bool
 	select {
 	case resp, ok = <-ch:
+	case <-c.done:
+		return fmt.Errorf("acp: %s: process exited", method)
 	case <-time.After(30 * time.Second):
 		return fmt.Errorf("acp: %s: timed out after 30s", method)
 	}

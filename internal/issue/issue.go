@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,7 +106,13 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 		if err != nil {
 			return nil, fmt.Errorf("loading parent %s: %w", opts.Parent, err)
 		}
-		subNum := len(parent.Children) + 1
+		subNum := 0
+		for _, childID := range parent.Children {
+			if n, err := strconv.Atoi(strings.TrimPrefix(childID, opts.Parent+"-")); err == nil && n > subNum {
+				subNum = n
+			}
+		}
+		subNum++
 		id = fmt.Sprintf("%s-%02d", opts.Parent, subNum)
 
 		parent.Children = append(parent.Children, id)
