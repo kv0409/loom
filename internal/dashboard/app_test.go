@@ -504,3 +504,61 @@ func TestSendMailResultMsg_SetsFlash(t *testing.T) {
 		t.Fatal("expected non-nil cmd (clearFlashAfter)")
 	}
 }
+
+func TestClampCursor_EnsuresNonNegativeScroll(t *testing.T) {
+	m := testModel(viewAgentDetail)
+	m.detailScroll = -5
+	m.diffScroll = -3
+	m.clampCursor()
+	if m.detailScroll != 0 {
+		t.Errorf("expected detailScroll clamped to 0, got %d", m.detailScroll)
+	}
+	if m.diffScroll != 0 {
+		t.Errorf("expected diffScroll clamped to 0, got %d", m.diffScroll)
+	}
+}
+
+func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
+	tests := []struct {
+		name             string
+		view             view
+		wantDetailReset  bool
+		wantDiffReset    bool
+	}{
+		{"agents list resets both", viewAgents, true, true},
+		{"overview resets both", viewOverview, true, true},
+		{"agent detail keeps detailScroll", viewAgentDetail, false, true},
+		{"issue detail keeps detailScroll", viewIssueDetail, false, true},
+		{"memory detail keeps detailScroll", viewMemoryDetail, false, true},
+		{"mail detail keeps detailScroll", viewMailDetail, false, true},
+		{"diff view keeps diffScroll", viewDiff, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := testModel(tt.view)
+			m.detailScroll = 50
+			m.diffScroll = 50
+			m.data.Agents = []*backend.Agent{{ID: "a1"}}
+			m.data.AgentTree = []backend.AgentTreeNode{{}}
+
+			result, _ := m.Update(backend.Snapshot{
+				Agents:    []*backend.Agent{{ID: "a1"}},
+				AgentTree: []backend.AgentTreeNode{{}},
+			})
+			got := result.(Model)
+
+			if tt.wantDetailReset && got.detailScroll != 0 {
+				t.Errorf("expected detailScroll reset to 0, got %d", got.detailScroll)
+			}
+			if !tt.wantDetailReset && got.detailScroll != 50 {
+				t.Errorf("expected detailScroll preserved at 50, got %d", got.detailScroll)
+			}
+			if tt.wantDiffReset && got.diffScroll != 0 {
+				t.Errorf("expected diffScroll reset to 0, got %d", got.diffScroll)
+			}
+			if !tt.wantDiffReset && got.diffScroll != 50 {
+				t.Errorf("expected diffScroll preserved at 50, got %d", got.diffScroll)
+			}
+		})
+	}
+}

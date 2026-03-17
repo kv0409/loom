@@ -6,34 +6,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
-
-// extractTimestamp returns the timestamp prefix and remaining text from a .tools line.
-// Supports ISO "2006-01-02T15:04:05" (19 chars) and legacy "HH:MM:SS" (8 chars).
-func extractTimestamp(line string) (ts, rest string) {
-	if len(line) >= 19 && line[4] == '-' && line[10] == 'T' && line[13] == ':' && line[16] == ':' {
-		return line[:19], strings.TrimSpace(line[19:])
-	}
-	if len(line) >= 8 && line[2] == ':' && line[5] == ':' {
-		return line[:8], strings.TrimSpace(line[8:])
-	}
-	return "", line
-}
-
-// cleanArgs strips project root paths, cd prefixes, and redirects from args.
-func cleanArgs(args, projectRoot string) string {
-	if projectRoot != "" {
-		args = strings.ReplaceAll(args, projectRoot+"/", "")
-		args = strings.ReplaceAll(args, projectRoot, ".")
-	}
-	if idx := strings.Index(args, " && "); idx != -1 {
-		if strings.HasPrefix(strings.TrimSpace(args[:idx]), "cd ") {
-			args = strings.TrimSpace(args[idx+4:])
-		}
-	}
-	args = strings.TrimSuffix(strings.TrimSpace(args), "2>&1")
-	return strings.TrimSpace(args)
-}
 
 // toolInfo maps a raw tool name to a display icon, icon color, compact label, and label color.
 type toolInfo struct {
@@ -61,7 +35,7 @@ var toolMap = map[string]toolInfo{
 // styled string suitable for display in the activity table.
 // Kept for overview compact rendering where a single styled string is needed.
 func formatToolLine(line string, width int, projectRoot string) string {
-	timeStr, rest := extractTimestamp(line)
+	timeStr, rest := backend.ExtractTimestamp(line)
 	toolName := rest
 	args := ""
 	if idx := strings.Index(rest, ": "); idx != -1 {
@@ -80,9 +54,9 @@ func formatToolLine(line string, width int, projectRoot string) string {
 		}
 	}
 
-	args = cleanArgs(args, projectRoot)
+	args = backend.CleanArgs(args, projectRoot)
 
-	timePart := activityTimeStyle.Render(relativeTime(timeStr))
+	timePart := activityTimeStyle.Render(backend.RelativeTime(timeStr))
 	label := activityLabelStyle.Foreground(info.labelColor).Render(info.label)
 	badge := activityBadgeStyle.Foreground(info.color).Render("[" + info.icon + "] " + toolName)
 

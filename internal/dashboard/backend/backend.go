@@ -36,6 +36,7 @@ type Snapshot struct {
 	Activity  []ActivityEntry
 	Logs      []LogLine
 	DaemonOK  bool
+	Errors    []string
 }
 
 // Backend loads a complete dashboard snapshot.

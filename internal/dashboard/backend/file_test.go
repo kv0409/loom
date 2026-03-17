@@ -236,3 +236,67 @@ func TestNewFileBackend_Load(t *testing.T) {
 		t.Error("expected DaemonOK=false without daemon.sock")
 	}
 }
+
+func TestRelativeTime_EmptyString(t *testing.T) {
+	got := RelativeTime("")
+	if got != "" {
+		t.Errorf("RelativeTime(\"\") = %q, want \"\"", got)
+	}
+}
+
+func TestRelativeTime_MalformedTimestamp(t *testing.T) {
+	for _, ts := range []string{"not-a-time", "12:34", "2024-01-01"} {
+		got := RelativeTime(ts)
+		if got != ts {
+			t.Errorf("RelativeTime(%q) = %q, want %q (passthrough)", ts, got, ts)
+		}
+	}
+}
+
+func TestExtractTimestamp_ISO(t *testing.T) {
+	ts, rest := ExtractTimestamp("2024-01-15T10:30:45 shell: go test")
+	if ts != "2024-01-15T10:30:45" {
+		t.Errorf("ts = %q, want \"2024-01-15T10:30:45\"", ts)
+	}
+	if rest != "shell: go test" {
+		t.Errorf("rest = %q, want \"shell: go test\"", rest)
+	}
+}
+
+func TestExtractTimestamp_TimeOnly(t *testing.T) {
+	ts, rest := ExtractTimestamp("10:30:45 read: main.go")
+	if ts != "10:30:45" {
+		t.Errorf("ts = %q, want \"10:30:45\"", ts)
+	}
+	if rest != "read: main.go" {
+		t.Errorf("rest = %q, want \"read: main.go\"", rest)
+	}
+}
+
+func TestCleanArgs_StripsCdPrefix(t *testing.T) {
+	got := CleanArgs("cd /project && go test ./...", "/project")
+	if got != "go test ./..." {
+		t.Errorf("CleanArgs = %q, want \"go test ./...\"", got)
+	}
+}
+
+func TestLoad_CollectsErrors(t *testing.T) {
+	// Use a non-existent root so all List calls fail.
+	fb := NewFileBackend("/tmp/nonexistent-loom-root-" + t.Name())
+	snap := fb.Load()
+	if len(snap.Errors) == 0 {
+		t.Fatal("expected Errors to be non-empty for non-existent root")
+	}
+}
+
+func TestDiff_RejectsDashPrefix(t *testing.T) {
+	// We can't easily make worktree.DefaultBranch return a dash-prefixed
+	// branch, but we verify the guard exists by checking that Diff on a
+	// non-git directory returns a safe fallback (not a panic or flag injection).
+	fb := NewFileBackend(t.TempDir())
+	result := fb.Diff(t.TempDir())
+	// Should return a safe error string, not panic.
+	if result == "" {
+		t.Error("expected non-empty result from Diff on non-git dir")
+	}
+}

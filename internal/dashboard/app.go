@@ -88,6 +88,7 @@ type Model struct {
 	agentOutputCache []backend.ACPEvent // cached events for current agent detail
 	agentOutputID    string             // agent ID the cache belongs to
 	diffLoading      bool               // true while diff is being fetched
+	errorShown       bool               // set after first error flash to avoid repeating
 }
 
 type tickMsg time.Time
@@ -286,6 +287,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.data = msg
 			m.refreshed = true
 			m.clampCursor()
+			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
+				m.detailScroll = 0
+			}
+			if m.view != viewDiff {
+				m.diffScroll = 0
+			}
+			if len(msg.Errors) > 0 && !m.errorShown {
+				m.errorShown = true
+			}
 		case daemonResultMsg:
 			return m, m.setFlash(msg.flash, msg.isErr)
 		case diffResultMsg:
@@ -332,6 +342,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.data = msg
 		m.refreshed = true
 		m.clampCursor()
+		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
+			m.detailScroll = 0
+		}
+		if m.view != viewDiff {
+			m.diffScroll = 0
+		}
+		if len(msg.Errors) > 0 && !m.errorShown {
+			m.errorShown = true
+			return m, m.setFlash(fmt.Sprintf("%d data error(s): %s", len(msg.Errors), msg.Errors[0]), true)
+		}
 		return m, nil
 	case clearFlashMsg:
 		m.flashMsg = ""
@@ -674,7 +694,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			a := agents[m.cursor]
 			// ACP agents have no tmux pane — Enter is a no-op in detail view
 			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-				c := exec.Command("loom", "attach", a.ID)
+				c := exec.Command("loom", "attach", "--", a.ID)
 				c.Stdin = os.Stdin
 				c.Stdout = os.Stdout
 				c.Stderr = os.Stderr
@@ -779,6 +799,12 @@ func (m *Model) clampCursor() {
 	}
 	if m.cursor > max {
 		m.cursor = max
+	}
+	if m.detailScroll < 0 {
+		m.detailScroll = 0
+	}
+	if m.diffScroll < 0 {
+		m.diffScroll = 0
 	}
 }
 

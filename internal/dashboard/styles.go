@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -256,30 +255,8 @@ var (
 	barLabel = lipgloss.NewStyle().Foreground(colBlue).Bold(true)
 )
 
-// Stacked status bar segment styles (one per lifecycle stage)
-var (
-	barSegDone      = lipgloss.NewStyle().Foreground(colGreen)
-	barSegActive    = lipgloss.NewStyle().Foreground(colTeal)
-	barSegBlocked   = lipgloss.NewStyle().Foreground(colRed)
-	barSegRemaining = lipgloss.NewStyle().Foreground(colSubtle)
-)
-
 // searchBoxStyle is used for the inline search input in the help bar.
 var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
-
-// heartbeatStyle returns a color style based on heartbeat freshness string.
-func heartbeatStyle(ago string) lipgloss.Style {
-	if ago == "never" {
-		return lipgloss.NewStyle().Foreground(colRed)
-	}
-	if strings.HasSuffix(ago, "s") {
-		return lipgloss.NewStyle().Foreground(colGreen)
-	}
-	if strings.HasSuffix(ago, "m") {
-		return lipgloss.NewStyle().Foreground(colYellow)
-	}
-	return lipgloss.NewStyle().Foreground(colRed)
-}
 
 // selectedRow renders line with selectedStyle, replacing the leading two-space
 // indent with a "▸ " prefix so the cursor is visible across all list views.
@@ -335,11 +312,6 @@ func agentColor(id string) lipgloss.Color {
 	}
 }
 
-// agentPill renders a background-filled badge for an agent ID (dark text on role color).
-func agentPill(id string) string {
-	return agentPillFor(id, id)
-}
-
 // agentPillFor renders a pill displaying displayText but using colorID for the
 // role-based background color. Use this when the display text has been truncated
 // and would no longer match a role in agentColor.
@@ -356,58 +328,6 @@ func agentPillFor(displayText, colorID string) string {
 // The pill's Padding(0,1) adds 1 space each side, so we mirror that here.
 func agentPillPlain(id string) string {
 	return " " + id + " "
-}
-
-// statusColPlain returns a plain-text string with the same visual width as
-// statusIndicator(status) + " " + statusPill(status).
-func statusColPlain(status string) string {
-	glyph := "●"
-	if g, ok := statusGlyphs[status]; ok {
-		glyph = g
-	}
-	return fmt.Sprintf("%s %-*s", glyph, statusPillWidth, status)
-}
-
-// relativeTime converts an "HH:MM:SS" timestamp (today, local time) to a
-// human-friendly relative string: "5s ago", "3m ago", "2h ago", "1d ago",
-// or the date for older entries. Accepts ISO "2006-01-02T15:04:05" (preferred)
-// and legacy "HH:MM:SS" (anchored to today). Returns the original string on
-// parse failure.
-func relativeTime(ts string) string {
-	now := time.Now()
-	var t time.Time
-	switch {
-	case len(ts) == 19 && ts[4] == '-' && ts[10] == 'T':
-		var err error
-		t, err = time.ParseInLocation("2006-01-02T15:04:05", ts, now.Location())
-		if err != nil {
-			return ts
-		}
-	case len(ts) == 8 && ts[2] == ':' && ts[5] == ':':
-		parsed, err := time.ParseInLocation("15:04:05", ts, now.Location())
-		if err != nil {
-			return ts
-		}
-		t = time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, now.Location())
-	default:
-		return ts
-	}
-	d := now.Sub(t)
-	if d < 0 {
-		return ts
-	}
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	case d < 7*24*time.Hour:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	default:
-		return t.Format("Jan 02")
-	}
 }
 
 func renderEmpty(msg string, width int) string {

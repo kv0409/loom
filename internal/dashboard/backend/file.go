@@ -34,23 +34,41 @@ func NewFileBackend(loomRoot string) *FileBackend {
 // Load reads all dashboard data from the filesystem and returns a Snapshot.
 func (fb *FileBackend) Load() Snapshot {
 	var s Snapshot
-	s.Agents, _ = agent.List(fb.root)
-	s.Issues, _ = issue.List(fb.root, issue.ListOpts{All: true})
-	s.Worktrees, _ = worktree.List(fb.root)
+	var errs []string
+	var err error
+	s.Agents, err = agent.List(fb.root)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("agents: %s", err))
+	}
+	s.Issues, err = issue.List(fb.root, issue.ListOpts{All: true})
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("issues: %s", err))
+	}
+	s.Worktrees, err = worktree.List(fb.root)
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("worktrees: %s", err))
+	}
 	s.DiffStats = make(map[string]*worktree.DiffStats)
 	for _, wt := range s.Worktrees {
 		if ds, err := worktree.DiffStatsFor(wt.Path); err == nil {
 			s.DiffStats[wt.Name] = ds
 		}
 	}
-	s.Messages, _ = mail.Log(fb.root, mail.LogOpts{})
-	s.Memories, _ = memory.List(fb.root, memory.ListOpts{})
+	s.Messages, err = mail.Log(fb.root, mail.LogOpts{})
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("messages: %s", err))
+	}
+	s.Memories, err = memory.List(fb.root, memory.ListOpts{})
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("memories: %s", err))
+	}
 	s.Unread = countUnread(fb.root)
 	s.Agents, s.AgentTree = sortAgentTree(s.Agents)
 	s.Activity = fetchActivity(fb.root, s.Agents)
 	s.Logs = fb.lr.read()
-	_, err := os.Stat(daemon.SockPath(fb.root))
-	s.DaemonOK = err == nil
+	_, sockErr := os.Stat(daemon.SockPath(fb.root))
+	s.DaemonOK = sockErr == nil
+	s.Errors = errs
 	return s
 }
 
@@ -69,8 +87,8 @@ type timedEntry struct {
 	entry ActivityEntry
 }
 
-// extractTimestamp returns the timestamp prefix and remaining text from a .tools line.
-func extractTimestamp(line string) (ts, rest string) {
+// ExtractTimestamp returns the timestamp prefix and remaining text from a .tools line.
+func ExtractTimestamp(line string) (ts, rest string) {
 	if len(line) >= 19 && line[4] == '-' && line[10] == 'T' && line[13] == ':' && line[16] == ':' {
 		return line[:19], strings.TrimSpace(line[19:])
 	}
@@ -101,12 +119,12 @@ func parseToolFields(rest, projectRoot string) (toolLabel string, detail string)
 		}
 	}
 
-	detail = cleanArgs(args, projectRoot)
+	detail = CleanArgs(args, projectRoot)
 	return label, detail
 }
 
-// cleanArgs strips project root paths, cd prefixes, and redirects from args.
-func cleanArgs(args, projectRoot string) string {
+// CleanArgs strips project root paths, cd prefixes, and redirects from args.
+func CleanArgs(args, projectRoot string) string {
 	if projectRoot != "" {
 		args = strings.ReplaceAll(args, projectRoot+"/", "")
 		args = strings.ReplaceAll(args, projectRoot, ".")
@@ -205,12 +223,12 @@ func summarizeJSONParams(params map[string]interface{}) (string, string) {
 
 // buildEntry constructs an ActivityEntry from a raw .tools line.
 func buildEntry(agentID, line, projectRoot string) ActivityEntry {
-	ts, rest := extractTimestamp(line)
+	ts, rest := ExtractTimestamp(line)
 	tool, detail := parseToolFields(rest, projectRoot)
 	return ActivityEntry{
 		AgentID: agentID,
 		Line:    line,
-		Time:    relativeTime(ts),
+		Time:    RelativeTime(ts),
 		Tool:    tool,
 		Detail:  detail,
 	}
@@ -237,7 +255,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 			if raw, err := os.ReadFile(p); err == nil {
 				for _, line := range strings.Split(string(raw), "\n") {
 					if t := strings.TrimSpace(line); t != "" {
-						ts, _ := extractTimestamp(t)
+						ts, _ := ExtractTimestamp(t)
 						timed = append(timed, timedEntry{ts: ts, entry: buildEntry(id, t, projectRoot)})
 					}
 				}
@@ -251,7 +269,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 			added := false
 			for _, line := range strings.Split(string(toolsRaw), "\n") {
 				if t := strings.TrimSpace(line); t != "" {
-					ts, _ := extractTimestamp(t)
+					ts, _ := ExtractTimestamp(t)
 					timed = append(timed, timedEntry{ts: ts, entry: buildEntry(a.ID, t, projectRoot)})
 					added = true
 				}
@@ -302,7 +320,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 				timed = append(timed, timedEntry{ts: ts, entry: ActivityEntry{
 					AgentID: a.ID,
 					Line:    text,
-					Time:    relativeTime(ts),
+					Time:    RelativeTime(ts),
 					Tool:    tool,
 					Detail:  detail,
 				}})
@@ -444,38 +462,44 @@ func sortAgentTree(agents []*agent.Agent) ([]*agent.Agent, []AgentTreeNode) {
 	return sorted, tree
 }
 
-// relativeTime converts a timestamp to a human-friendly relative string.
-func relativeTime(ts string) string {
+// RelativeTime converts a timestamp to a human-friendly relative string.
+func RelativeTime(ts string) string {
 	if ts == "" {
 		return ""
 	}
-	layouts := []string{"2006-01-02T15:04:05", "15:04:05"}
+	now := time.Now()
 	var t time.Time
-	var err error
-	for _, layout := range layouts {
-		t, err = time.Parse(layout, ts)
-		if err == nil {
-			break
+	switch {
+	case len(ts) == 19 && ts[4] == '-' && ts[10] == 'T':
+		var err error
+		t, err = time.ParseInLocation("2006-01-02T15:04:05", ts, now.Location())
+		if err != nil {
+			return ts
 		}
-	}
-	if err != nil {
+	case len(ts) == 8 && ts[2] == ':' && ts[5] == ':':
+		parsed, err := time.ParseInLocation("15:04:05", ts, now.Location())
+		if err != nil {
+			return ts
+		}
+		t = time.Date(now.Year(), now.Month(), now.Day(), parsed.Hour(), parsed.Minute(), parsed.Second(), 0, now.Location())
+	default:
 		return ts
 	}
-	// For time-only formats, assume today.
-	if t.Year() == 0 {
-		now := time.Now()
-		t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.Local)
+	d := now.Sub(t)
+	if d < 0 {
+		return ts
 	}
-	d := time.Since(t)
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
+		return fmt.Sprintf("%ds ago", int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh", int(d.Hours()))
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	default:
-		return fmt.Sprintf("%dd", int(d.Hours()/24))
+		return t.Format("Jan 02")
 	}
 }
 
@@ -490,6 +514,9 @@ func (fb *FileBackend) AgentOutput(loomRoot, agentID string) ([]ACPEvent, error)
 
 func (fb *FileBackend) Diff(wtPath string) string {
 	base := worktree.DefaultBranch(wtPath)
+	if strings.HasPrefix(base, "-") {
+		return "(invalid branch name)"
+	}
 	cmd := exec.Command("git", "diff", base+"...HEAD")
 	cmd.Dir = wtPath
 	out, err := cmd.Output()
