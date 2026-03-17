@@ -132,22 +132,16 @@ func renderComposeOverlay(form *huh.Form, width, height int) string {
 	formW := min(60, width-4)
 	formView := form.View()
 
-	composeTitle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(colBlue).
-		MarginBottom(1).
-		Render("✉ COMPOSE MESSAGE")
+	composeTitle := composeTitleStyle.Render("✉ COMPOSE MESSAGE")
 
 	content := lipgloss.JoinVertical(lipgloss.Left, composeTitle, formView)
 	box := overlayStyle.Width(formW).Render(content)
 
-	hintStyle := lipgloss.NewStyle().Foreground(colGray)
-	keyStyle := lipgloss.NewStyle().Foreground(colFg).Bold(true)
-	hint := hintStyle.Render("  ") +
-		keyStyle.Render("tab") + hintStyle.Render(" next/accept suggestion · ") +
-		keyStyle.Render("shift+tab") + hintStyle.Render(" prev · ") +
-		keyStyle.Render("ctrl+s") + hintStyle.Render(" send · ") +
-		keyStyle.Render("esc") + hintStyle.Render(" cancel")
+	hint := composeHintStyle.Render("  ") +
+		composeKeyStyle.Render("tab") + composeHintStyle.Render(" next/accept suggestion · ") +
+		composeKeyStyle.Render("shift+tab") + composeHintStyle.Render(" prev · ") +
+		composeKeyStyle.Render("ctrl+s") + composeHintStyle.Render(" send · ") +
+		composeKeyStyle.Render("esc") + composeHintStyle.Render(" cancel")
 
 	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)

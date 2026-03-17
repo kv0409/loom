@@ -138,10 +138,7 @@ func (m Model) renderMailDetail() string {
 	lines = append(lines, "")
 	lines = append(lines, "  "+headerStyle.Render("BODY"))
 	if msg.Body != "" {
-		maxW := m.width - 8
-		if maxW < 40 {
-			maxW = 40
-		}
+		maxW := detailContentWidth(m.width)
 		for _, bl := range strings.Split(msg.Body, "\n") {
 			for _, seg := range wordWrap(bl, maxW) {
 				lines = append(lines, "  "+seg)

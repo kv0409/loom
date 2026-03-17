@@ -36,9 +36,9 @@ func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int)
 		table.WithFocused(false),
 	)
 	t.SetStyles(table.Styles{
-		Header:   lipgloss.NewStyle(),                          // zero-height: no padding, no bold
-		Cell:     tableCellStyle,                               // Padding(0,1) per cell
-		Selected: lipgloss.NewStyle().Foreground(colFg).Padding(0, 1),
+		Header:   tableHeaderlessHeaderStyle,
+		Cell:     tableCellStyle,
+		Selected: tableHeaderlessSelectedStyle,
 	})
 	return t
 }
@@ -90,7 +90,7 @@ func fmtTimeFull(t time.Time) string {
 // each placeholder with the corresponding styled string.
 func cellPlaceholder(index, width int) string {
 	tag := fmt.Sprintf("\x00%d\x00", index)
-	pad := width - len(tag)
+	pad := width - lipgloss.Width(tag)
 	if pad < 0 {
 		pad = 0
 	}
@@ -128,6 +128,14 @@ func colWidths(avail int, cols []struct{ pct, min int }) []int {
 			w = c.min
 		}
 		out[i] = w
+	}
+	// Shrink last column if total exceeds budget
+	total := 0
+	for _, w := range out {
+		total += w
+	}
+	if total > avail && len(out) > 0 {
+		out[len(out)-1] = max(cols[len(cols)-1].min, out[len(out)-1]-(total-avail))
 	}
 	return out
 }

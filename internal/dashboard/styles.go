@@ -279,9 +279,18 @@ var (
 
 // Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
 var (
-	tableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
-	tableCellStyle     = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
-	tableSelectedStyle = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
+	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+)
+
+// Compose overlay styles
+var (
+	composeTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colBlue).MarginBottom(1)
+	composeHintStyle  = lipgloss.NewStyle().Foreground(colGray)
+	composeKeyStyle   = lipgloss.NewStyle().Foreground(colFg).Bold(true)
 )
 
 // agentColor returns the role-based color for an agent ID.

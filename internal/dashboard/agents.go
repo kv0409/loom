@@ -162,10 +162,7 @@ func (m Model) renderAgentDetail() string {
 		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
 		events := m.agentOutputCache
 		if len(events) > 0 {
-			maxW := m.width - 8
-			if maxW < 40 {
-				maxW = 40
-			}
+			maxW := detailContentWidth(m.width)
 			// Group contiguous token_chunk events into single blocks.
 			type group struct {
 				kind      backend.ACPKind

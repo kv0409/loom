@@ -117,7 +117,7 @@ func (m Model) renderIssues() string {
 				dt.Focus()
 				dt.SetCursor(doneCursor)
 				dt.SetStyles(table.Styles{
-					Header:   lipgloss.NewStyle(),
+					Header:   tableHeaderlessHeaderStyle,
 					Cell:     tableCellStyle,
 					Selected: tableSelectedStyle,
 				})
