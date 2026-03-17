@@ -3,12 +3,7 @@ package dashboard
 import (
 	"strings"
 
-	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/dashboard/backend"
-	"github.com/karanagi/loom/internal/issue"
-	"github.com/karanagi/loom/internal/mail"
-	"github.com/karanagi/loom/internal/memory"
-	"github.com/karanagi/loom/internal/worktree"
 )
 
 // searchMatch returns true if query (case-insensitive) appears in any of the fields.
@@ -25,11 +20,11 @@ func searchMatch(query string, fields ...string) bool {
 	return false
 }
 
-func (m Model) filteredAgents() []*agent.Agent {
+func (m Model) filteredAgents() []*backend.Agent {
 	if m.searchTI.Value() == "" {
 		return m.data.Agents
 	}
-	var out []*agent.Agent
+	var out []*backend.Agent
 	for _, a := range m.data.Agents {
 		if searchMatch(m.searchTI.Value(), a.ID, a.Role, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
 			out = append(out, a)
@@ -38,12 +33,12 @@ func (m Model) filteredAgents() []*agent.Agent {
 	return out
 }
 
-func (m Model) filteredIssues() []*issue.Issue {
+func (m Model) filteredIssues() []*backend.Issue {
 	display := m.displayIssues()
 	if m.searchTI.Value() == "" {
 		return display
 	}
-	var out []*issue.Issue
+	var out []*backend.Issue
 	for _, iss := range display {
 		if searchMatch(m.searchTI.Value(), iss.ID, iss.Title, iss.Status, iss.Assignee, iss.Type, iss.Description, iss.Parent, iss.Worktree, strings.Join(iss.DependsOn, " "), strings.Join(iss.Children, " ")) {
 			out = append(out, iss)
@@ -52,11 +47,11 @@ func (m Model) filteredIssues() []*issue.Issue {
 	return out
 }
 
-func (m Model) filteredMessages() []*mail.Message {
+func (m Model) filteredMessages() []*backend.Message {
 	if m.searchTI.Value() == "" {
 		return m.data.Messages
 	}
-	var out []*mail.Message
+	var out []*backend.Message
 	for _, msg := range m.data.Messages {
 		if searchMatch(m.searchTI.Value(), msg.From, msg.To, msg.Subject, msg.Type, msg.Body, msg.Ref, msg.Priority) {
 			out = append(out, msg)
@@ -65,24 +60,24 @@ func (m Model) filteredMessages() []*mail.Message {
 	return out
 }
 
-func (m Model) filteredMemories() []*memory.Entry {
+func (m Model) filteredMemories() []*backend.MemoryEntry {
 	if m.searchTI.Value() == "" {
 		return m.data.Memories
 	}
-	var out []*memory.Entry
+	var out []*backend.MemoryEntry
 	for _, e := range m.data.Memories {
-		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, memory.ByField(e), e.Context, e.Decision, e.Rationale, e.Finding, e.Rule, e.Implications, e.Location, e.AppliesTo, strings.Join(e.Affects, " "), strings.Join(e.Tags, " "), memory.Snippet(e)) {
+		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, m.backend.MemoryByField(e), e.Context, e.Decision, e.Rationale, e.Finding, e.Rule, e.Implications, e.Location, e.AppliesTo, strings.Join(e.Affects, " "), strings.Join(e.Tags, " "), m.backend.MemorySnippet(e)) {
 			out = append(out, e)
 		}
 	}
 	return out
 }
 
-func (m Model) filteredWorktrees() []*worktree.Worktree {
+func (m Model) filteredWorktrees() []*backend.Worktree {
 	if m.searchTI.Value() == "" {
 		return m.data.Worktrees
 	}
-	var out []*worktree.Worktree
+	var out []*backend.Worktree
 	for _, wt := range m.data.Worktrees {
 		if searchMatch(m.searchTI.Value(), wt.Name, wt.Branch, wt.Agent, wt.Issue) {
 			out = append(out, wt)

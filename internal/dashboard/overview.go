@@ -7,8 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/agent"
-	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 // agentsBandBudget returns the row budget for the full-width AGENTS band (~40% of usable height).
@@ -62,8 +61,8 @@ func (m Model) renderOverview() string {
 }
 
 func (m Model) renderAttentionOverview(fullW, budget int) string {
-	var blocked []*issue.Issue
-	var review []*issue.Issue
+	var blocked []*backend.Issue
+	var review []*backend.Issue
 	for _, iss := range m.data.Issues {
 		switch iss.Status {
 		case "blocked":
@@ -73,7 +72,7 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 		}
 	}
 
-	var dead []*agent.Agent
+	var dead []*backend.Agent
 	for _, a := range m.data.Agents {
 		if a.Status == "dead" || a.Status == "error" {
 			dead = append(dead, a)
@@ -236,7 +235,7 @@ func (m Model) renderStatusBar(fullW int) string {
 	}
 
 	// Build a map of issue ID → issue for quick lookup
-	issueMap := map[string]*issue.Issue{}
+	issueMap := map[string]*backend.Issue{}
 	for _, iss := range m.data.Issues {
 		issueMap[iss.ID] = iss
 	}

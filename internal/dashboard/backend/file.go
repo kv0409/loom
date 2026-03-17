@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -476,4 +477,47 @@ func relativeTime(ts string) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
+}
+
+func (fb *FileBackend) AgentOutput(loomRoot, agentID string) ([]ACPEvent, error) {
+	outPath := filepath.Join(loomRoot, "agents", agentID+".output")
+	raw, err := os.ReadFile(outPath)
+	if err != nil {
+		return nil, err
+	}
+	return acp.ReadOutputFile(raw), nil
+}
+
+func (fb *FileBackend) Diff(wtPath string) string {
+	base := worktree.DefaultBranch(wtPath)
+	cmd := exec.Command("git", "diff", base+"...HEAD")
+	cmd.Dir = wtPath
+	out, err := cmd.Output()
+	if err != nil {
+		return "(no diff available)"
+	}
+	if len(out) == 0 {
+		return "(no changes)"
+	}
+	return string(out)
+}
+
+func (fb *FileBackend) SendMail(loomRoot string, from, to, subject, body, typ, priority, ref string) error {
+	return mail.Send(loomRoot, mail.SendOpts{
+		From:     from,
+		To:       to,
+		Subject:  subject,
+		Body:     body,
+		Type:     typ,
+		Priority: priority,
+		Ref:      ref,
+	})
+}
+
+func (fb *FileBackend) MemorySnippet(e *MemoryEntry) string {
+	return memory.Snippet(e)
+}
+
+func (fb *FileBackend) MemoryByField(e *MemoryEntry) string {
+	return memory.ByField(e)
 }

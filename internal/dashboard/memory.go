@@ -5,7 +5,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
-	"github.com/karanagi/loom/internal/memory"
+
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 func (m Model) renderMemory() string {
@@ -15,7 +16,7 @@ func (m Model) renderMemory() string {
 		counts[e.Type]++
 	}
 
-	recentDecisions := make([]*memory.Entry, 0)
+	recentDecisions := make([]*backend.MemoryEntry, 0)
 	for _, e := range memories {
 		if e.Type == "decision" {
 			recentDecisions = append(recentDecisions, e)
@@ -32,7 +33,7 @@ func (m Model) renderMemory() string {
 		lines = append(lines, "  No memory entries yet.")
 	} else {
 		for _, e := range memories[:min(3, len(memories))] {
-			snippet := memory.Snippet(e)
+			snippet := m.backend.MemorySnippet(e)
 			if snippet == "" {
 				snippet = e.Title
 			}
@@ -74,7 +75,7 @@ func (m Model) renderMemoryDetail() string {
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(e.Title)))
-	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, memory.ByField(e)))
+	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, m.backend.MemoryByField(e)))
 	lines = append(lines, fmt.Sprintf("  Time: %s", fmtTimeFull(e.Timestamp)))
 
 	switch e.Type {

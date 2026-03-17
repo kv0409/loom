@@ -14,7 +14,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/dashboard/backend"
-	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/nudge"
 )
 
@@ -601,7 +600,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor < len(worktrees) {
 			m.cursors[m.view] = m.cursor
 			m.selectedWorktree = m.cursor
-			m.diffContent = fetchDiff(worktrees[m.cursor].Path)
+			m.diffContent = fetchDiff(m.backend, worktrees[m.cursor].Path)
 			m.view = viewDiff
 			m.diffScroll = 0
 			m.cursor = 0
@@ -654,14 +653,7 @@ func (m Model) composeSend() (tea.Model, tea.Cmd) {
 	if m.composeData.Subject == "" {
 		return m, m.setFlash("Send failed: 'Subject' is required", true)
 	}
-	err := mail.Send(m.loomRoot, mail.SendOpts{
-		From:     "dashboard",
-		To:       m.composeData.To,
-		Subject:  m.composeData.Subject,
-		Body:     m.composeData.Body,
-		Type:     m.composeData.Type,
-		Priority: m.composeData.Priority,
-	})
+	err := m.backend.SendMail(m.loomRoot, "dashboard", m.composeData.To, m.composeData.Subject, m.composeData.Body, m.composeData.Type, m.composeData.Priority, "")
 	if err != nil {
 		return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
 	}

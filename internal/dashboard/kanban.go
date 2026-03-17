@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 var kanbanColumns = []string{"open", "assigned", "in-progress", "blocked", "review", "done", "cancelled"}
 
 // kanbanBuckets returns issues grouped by status column.
-func (m Model) kanbanBuckets() map[string][]*issue.Issue {
-	buckets := map[string][]*issue.Issue{}
+func (m Model) kanbanBuckets() map[string][]*backend.Issue {
+	buckets := map[string][]*backend.Issue{}
 	for _, iss := range m.data.Issues {
 		buckets[iss.Status] = append(buckets[iss.Status], iss)
 	}
@@ -29,7 +29,7 @@ func (m *Model) clampKanbanRow() {
 	}
 }
 
-func (m Model) kanbanSelectedIssue() *issue.Issue {
+func (m Model) kanbanSelectedIssue() *backend.Issue {
 	buckets := m.kanbanBuckets()
 	col := kanbanColumns[m.kanbanCol]
 	items := buckets[col]

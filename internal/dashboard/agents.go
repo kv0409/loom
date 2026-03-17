@@ -2,13 +2,11 @@ package dashboard
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/acp"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 func (m Model) renderAgents() string {
@@ -162,22 +160,21 @@ func (m Model) renderAgentDetail() string {
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
 		lines = append(lines, "")
 		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
-		outPath := filepath.Join(m.loomRoot, "agents", a.ID+".output")
-		if raw, err := os.ReadFile(outPath); err == nil && strings.TrimSpace(string(raw)) != "" {
+		events, err := m.backend.AgentOutput(m.loomRoot, a.ID)
+		if err == nil && len(events) > 0 {
 			maxW := m.width - 8
 			if maxW < 40 {
 				maxW = 40
 			}
-			events := acp.ReadOutputFile(raw)
 			// Group contiguous token_chunk events into single blocks.
 			type group struct {
-				kind      acp.Kind
+				kind      backend.ACPKind
 				timestamp string
 				content   string
 			}
 			var groups []group
 			for _, ev := range events {
-				if ev.Kind == acp.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == acp.TokenChunk {
+				if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
 					groups[len(groups)-1].content += ev.Content
 				} else {
 					groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content})
@@ -188,11 +185,11 @@ func (m Model) renderAgentDetail() string {
 					lines = append(lines, "")
 				}
 				switch g.kind {
-				case acp.ToolSummary:
+				case backend.ToolSummary:
 					line := g.content
 					line = truncate(line, maxW)
 					lines = append(lines, idleStyle.Render("  ⚙ "+line))
-				case acp.TokenChunk:
+				case backend.TokenChunk:
 					if g.timestamp != "" {
 						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
 					}

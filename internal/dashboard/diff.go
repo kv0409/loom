@@ -2,26 +2,15 @@ package dashboard
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/worktree"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
-func fetchDiff(wtPath string) string {
-	base := worktree.DefaultBranch(wtPath)
-	cmd := exec.Command("git", "diff", base+"...HEAD")
-	cmd.Dir = wtPath
-	out, err := cmd.Output()
-	if err != nil {
-		return "(no diff available)"
-	}
-	if len(out) == 0 {
-		return "(no changes)"
-	}
-	return string(out)
+func fetchDiff(b backend.Backend, wtPath string) string {
+	return b.Diff(wtPath)
 }
 
 func (m Model) renderWorktrees() string {

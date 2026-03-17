@@ -7,18 +7,15 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/issue"
-	"github.com/karanagi/loom/internal/mail"
-	"github.com/karanagi/loom/internal/memory"
-	"github.com/karanagi/loom/internal/worktree"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 const maxRecentDone = 5
 
 // displayIssues returns active issues followed by up to maxRecentDone done
 // issues sorted by most recently updated.
-func (m Model) displayIssues() []*issue.Issue {
-	var active, done []*issue.Issue
+func (m Model) displayIssues() []*backend.Issue {
+	var active, done []*backend.Issue
 	for _, iss := range m.data.Issues {
 		if iss.Status == "done" || iss.Status == "cancelled" {
 			done = append(done, iss)
@@ -184,7 +181,7 @@ func (m Model) renderIssueDetail() string {
 	}
 
 	if len(iss.Children) > 0 {
-		issueMap := make(map[string]*issue.Issue, len(m.data.Issues))
+		issueMap := make(map[string]*backend.Issue, len(m.data.Issues))
 		for _, ci := range m.data.Issues {
 			issueMap[ci.ID] = ci
 		}
@@ -214,7 +211,7 @@ func (m Model) renderIssueDetail() string {
 	if len(relatedMemories) > 0 {
 		lines = append(lines, "", "  "+headerStyle.Render("RELATED MEMORY"))
 		for _, entry := range relatedMemories[:min(3, len(relatedMemories))] {
-			snippet := memory.Snippet(entry)
+			snippet := m.backend.MemorySnippet(entry)
 			if snippet == "" {
 				snippet = entry.Title
 			}
@@ -249,8 +246,8 @@ func (m Model) renderIssueDetail() string {
 	return panel("Issue: "+iss.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }
 
-func (m Model) relatedMemories(issueID string) []*memory.Entry {
-	var related []*memory.Entry
+func (m Model) relatedMemories(issueID string) []*backend.MemoryEntry {
+	var related []*backend.MemoryEntry
 	for _, entry := range m.data.Memories {
 		for _, affect := range entry.Affects {
 			if affect == issueID {
@@ -262,8 +259,8 @@ func (m Model) relatedMemories(issueID string) []*memory.Entry {
 	return related
 }
 
-func (m Model) relatedMessages(issueID string) []*mail.Message {
-	var related []*mail.Message
+func (m Model) relatedMessages(issueID string) []*backend.Message {
+	var related []*backend.Message
 	for _, msg := range m.data.Messages {
 		if msg.Ref == issueID || strings.Contains(msg.Subject, issueID) || strings.Contains(msg.Body, issueID) {
 			related = append(related, msg)
@@ -272,7 +269,7 @@ func (m Model) relatedMessages(issueID string) []*mail.Message {
 	return related
 }
 
-func (m Model) relatedWorktree(iss *issue.Issue) *worktree.Worktree {
+func (m Model) relatedWorktree(iss *backend.Issue) *backend.Worktree {
 	for _, wt := range m.data.Worktrees {
 		if wt.Issue == iss.ID || wt.Name == iss.Worktree || wt.Branch == iss.Worktree {
 			return wt
@@ -281,7 +278,7 @@ func (m Model) relatedWorktree(iss *issue.Issue) *worktree.Worktree {
 	return nil
 }
 
-func (m Model) issueNextAction(iss *issue.Issue, wt *worktree.Worktree, relatedMailCount int) string {
+func (m Model) issueNextAction(iss *backend.Issue, wt *backend.Worktree, relatedMailCount int) string {
 	switch iss.Status {
 	case "blocked":
 		if relatedMailCount > 0 {
