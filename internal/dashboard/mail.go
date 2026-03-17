@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/karanagi/loom/internal/mail"
 )
 
 func (m Model) renderMail() string {
@@ -22,15 +20,16 @@ func (m Model) renderMail() string {
 		byType[msg.Type]++
 	}
 
-	sorted := append([]*mail.Message(nil), messages...)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		if mailPriorityWeight(sorted[i].Priority) != mailPriorityWeight(sorted[j].Priority) {
-			return mailPriorityWeight(sorted[i].Priority) > mailPriorityWeight(sorted[j].Priority)
+	// Sort messages by priority (critical first), then unread first, then newest.
+	// Use the same slice for display and cursor navigation so they stay in sync.
+	sort.SliceStable(messages, func(i, j int) bool {
+		if mailPriorityWeight(messages[i].Priority) != mailPriorityWeight(messages[j].Priority) {
+			return mailPriorityWeight(messages[i].Priority) > mailPriorityWeight(messages[j].Priority)
 		}
-		if sorted[i].Read != sorted[j].Read {
-			return !sorted[i].Read
+		if messages[i].Read != messages[j].Read {
+			return !messages[i].Read
 		}
-		return sorted[i].Timestamp.After(sorted[j].Timestamp)
+		return messages[i].Timestamp.After(messages[j].Timestamp)
 	})
 
 	var lines []string
@@ -57,10 +56,10 @@ func (m Model) renderMail() string {
 		lines = append(lines, activeStyle.Render("  Inbox is under control."))
 	}
 	lines = append(lines, "", "  "+headerStyle.Render("NEXT UP"))
-	if len(sorted) == 0 {
+	if len(messages) == 0 {
 		lines = append(lines, "  No recent mail.")
 	} else {
-		for idx, msg := range sorted[:min(4, len(sorted))] {
+		for idx, msg := range messages[:min(4, len(messages))] {
 			prefix := "  "
 			if idx == m.cursor {
 				prefix = "▸ "

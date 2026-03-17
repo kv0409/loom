@@ -48,12 +48,8 @@ func (m Model) renderMemory() string {
 	if len(recentDecisions) == 0 {
 		lines = append(lines, "  No recorded decisions yet.")
 	} else {
-		for idx, e := range recentDecisions[:min(4, len(recentDecisions))] {
-			prefix := "  "
-			if idx == m.cursor && len(memories) > 0 {
-				prefix = "▸ "
-			}
-			lines = append(lines, fmt.Sprintf("%s%s %s", prefix, e.ID, truncate(e.Title, 42)))
+		for _, e := range recentDecisions[:min(4, len(recentDecisions))] {
+			lines = append(lines, fmt.Sprintf("  %s %s", e.ID, truncate(e.Title, 42)))
 			if e.Decision != "" {
 				lines = append(lines, fmt.Sprintf("    %s", truncate(e.Decision, detailContentWidth(m.width)-4)))
 			}

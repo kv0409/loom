@@ -355,6 +355,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.nudgeMode = false
 		case "esc":
 			m.nudgeMode = false
+			return m, m.setFlash("Nudge cancelled", false)
 		case "j", "down":
 			if m.nudgeCursor < len(nudge.Types)-1 {
 				m.nudgeCursor++
@@ -502,14 +503,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyLogsFilter:
 		if m.view == viewLogs {
 			m.logFilter = (m.logFilter + 1) % 5 // all, lifecycle, error, stderr, warn
-			return m, nil
 		}
+		return m, nil
 	case keyLogsAgentFilter:
 		if m.view == viewLogs {
 			n := m.countLogAgents()
 			m.logAgentFilter = (m.logAgentFilter + 1) % (n + 1) // 0=all, 1..n=agent
-			return m, nil
 		}
+		return m, nil
 	case keyAgentNudge:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
@@ -536,15 +537,17 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	case keyCompose:
-		return m.openCompose("")
+		if m.view == viewMail || m.view == viewMailDetail {
+			return m.openCompose("")
+		}
+		return m, nil
 	case keyComposeReply:
 		if m.view == viewMailDetail {
 			msgs := m.filteredMessages()
 			if m.cursor < len(msgs) {
 				return m.openCompose(msgs[m.cursor].From)
 			}
-		}
-		if m.view == viewMail || m.view == viewMailDetail {
+		} else if m.view == viewMail {
 			return m.openCompose("")
 		}
 	case keyTab:
@@ -604,8 +607,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.kanbanCol = 0
 			}
 			m.clampKanbanRow()
-			return m, nil
 		}
+		return m, nil
 	case keyKanbanRight: // right-arrow only: kanban column right ("l" alias removed)
 		if m.view == viewKanban {
 			m.kanbanCol++
@@ -613,8 +616,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.kanbanCol = len(kanbanColumns) - 1
 			}
 			m.clampKanbanRow()
-			return m, nil
 		}
+		return m, nil
 	case keyEnter:
 		return m.handleEnter()
 	}
@@ -923,7 +926,7 @@ func (m Model) helpBar() string {
 	var ctx string
 	switch m.view {
 	case viewAgentDetail:
-		ctx = "[n]udge [j/k]scroll"
+		ctx = "[n]udge [m]essage [j/k]scroll"
 		agents := m.filteredAgents()
 		if m.cursor < len(agents) {
 			a := agents[m.cursor]
@@ -932,7 +935,7 @@ func (m Model) helpBar() string {
 			}
 		}
 	case viewAgents:
-		ctx = "[n]udge [o]utput [x]kill [Enter]detail"
+		ctx = "[n]udge [m]essage [o]utput [x]kill [Enter]detail"
 	case viewKanban:
 		ctx = "[h/←/→]column [j/k]row [Enter]detail"
 	case viewIssues:
