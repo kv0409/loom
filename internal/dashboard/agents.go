@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/acp"
-	"github.com/karanagi/loom/internal/agent"
 )
 
 func (m Model) renderAgents() string {
@@ -19,9 +18,9 @@ func (m Model) renderAgents() string {
 	idWidth := 16
 	for _, a := range agents {
 		w := len(a.ID)
-		for oi, oa := range m.data.agents {
-			if oa == a && oi < len(m.data.agentTree) {
-				w += m.data.agentTree[oi].depth * 2
+		for oi, oa := range m.data.Agents {
+			if oa == a && oi < len(m.data.AgentTree) {
+				w += m.data.AgentTree[oi].Depth * 2
 				break
 			}
 		}
@@ -71,18 +70,18 @@ func (m Model) renderAgents() string {
 			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
 		prefix := ""
-		for oi, oa := range m.data.agents {
-			if oa == a && oi < len(m.data.agentTree) {
-				node := m.data.agentTree[oi]
-				for d := 0; d < node.depth-1; d++ {
-					if d < len(node.ancestors) && node.ancestors[d] {
+		for oi, oa := range m.data.Agents {
+			if oa == a && oi < len(m.data.AgentTree) {
+				node := m.data.AgentTree[oi]
+				for d := 0; d < node.Depth-1; d++ {
+					if d < len(node.Ancestors) && node.Ancestors[d] {
 						prefix += "  "
 					} else {
 						prefix += "│ "
 					}
 				}
-				if node.depth > 0 {
-					if node.isLast {
+				if node.Depth > 0 {
+					if node.IsLast {
 						prefix += "└ "
 					} else {
 						prefix += "├ "
@@ -112,9 +111,9 @@ func (m Model) renderAgents() string {
 		content = styledTableView(t, replacements) + "\n"
 	}
 
-	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.agents))
+	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.Agents))
 	if m.searchTI.Value() != "" {
-		title = fmt.Sprintf("[a] AGENTS (%d/%d) filter: %s", len(agents), len(m.data.agents), m.searchTI.Value())
+		title = fmt.Sprintf("[a] AGENTS (%d/%d) filter: %s", len(agents), len(m.data.Agents), m.searchTI.Value())
 	}
 	return panel(title, content, panelWidth(m.width))
 }
@@ -214,7 +213,7 @@ func (m Model) renderAgentDetail() string {
 	lines = append(lines, "")
 	lines = append(lines, "  "+headerStyle.Render("RECENT MAIL"))
 	count := 0
-	for _, msg := range m.data.messages {
+	for _, msg := range m.data.Messages {
 		if msg.From == a.ID || msg.To == a.ID {
 			dir := "←"
 			if msg.From == a.ID {
@@ -282,62 +281,4 @@ func wrapEventContent(content string, maxW int) string {
 	return sb.String()
 }
 
-func sortAgentTree(agents []*agent.Agent) ([]*agent.Agent, []agentTreeNode) {
-	if len(agents) == 0 {
-		return agents, nil
-	}
 
-	// Build children map: parent ID → list of indices
-	idSet := map[string]bool{}
-	for _, a := range agents {
-		idSet[a.ID] = true
-	}
-	children := map[string][]int{}
-	var roots []int
-	for i, a := range agents {
-		if a.SpawnedBy == "" || !idSet[a.SpawnedBy] {
-			roots = append(roots, i)
-		} else {
-			children[a.SpawnedBy] = append(children[a.SpawnedBy], i)
-		}
-	}
-
-	sorted := make([]*agent.Agent, 0, len(agents))
-	tree := make([]agentTreeNode, 0, len(agents))
-
-	var walk func(idx, depth int, isLast bool, ancestors []bool)
-	walk = func(idx, depth int, isLast bool, ancestors []bool) {
-		anc := make([]bool, len(ancestors))
-		copy(anc, ancestors)
-		sorted = append(sorted, agents[idx])
-		tree = append(tree, agentTreeNode{depth: depth, isLast: isLast, ancestors: anc})
-		kids := children[agents[idx].ID]
-		nextAnc := append(anc, isLast)
-		for j, kid := range kids {
-			walk(kid, depth+1, j == len(kids)-1, nextAnc)
-		}
-	}
-
-	for i, r := range roots {
-		walk(r, 0, i == len(roots)-1, nil)
-	}
-
-	// Append any agents not reached (shouldn't happen, but be safe)
-	visited := map[int]bool{}
-	for _, a := range sorted {
-		for i, orig := range agents {
-			if orig == a {
-				visited[i] = true
-				break
-			}
-		}
-	}
-	for i, a := range agents {
-		if !visited[i] {
-			sorted = append(sorted, a)
-			tree = append(tree, agentTreeNode{})
-		}
-	}
-
-	return sorted, tree
-}

@@ -12,7 +12,7 @@ var kanbanColumns = []string{"open", "assigned", "in-progress", "blocked", "revi
 // kanbanBuckets returns issues grouped by status column.
 func (m Model) kanbanBuckets() map[string][]*issue.Issue {
 	buckets := map[string][]*issue.Issue{}
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		buckets[iss.Status] = append(buckets[iss.Status], iss)
 	}
 	return buckets

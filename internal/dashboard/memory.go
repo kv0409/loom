@@ -58,9 +58,9 @@ func (m Model) renderMemory() string {
 
 	content := strings.Join(lines, "\n") + "\n"
 
-	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.memories))
+	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.Memories))
 	if m.searchTI.Value() != "" {
-		title = fmt.Sprintf("[d] MEMORY (%d/%d) filter: %s", len(memories), len(m.data.memories), m.searchTI.Value())
+		title = fmt.Sprintf("[d] MEMORY (%d/%d) filter: %s", len(memories), len(m.data.Memories), m.searchTI.Value())
 	}
 	return panel(title, content, panelWidth(m.width))
 }

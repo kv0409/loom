@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
@@ -22,7 +23,7 @@ func testModel(v view) Model {
 
 func TestListLen_FilteredMailDetail(t *testing.T) {
 	m := testModel(viewMailDetail)
-	m.data.messages = []*mail.Message{
+	m.data.Messages = []*mail.Message{
 		{From: "a", To: "b", Subject: "hello"},
 		{From: "c", To: "d", Subject: "world"},
 		{From: "e", To: "f", Subject: "test"},
@@ -38,20 +39,20 @@ func TestListLen_FilteredMailDetail(t *testing.T) {
 
 func TestListLen_AllViews(t *testing.T) {
 	m := testModel(viewAgents)
-	m.data.agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}}
-	m.data.agentTree = []agentTreeNode{{}, {}}
+	m.data.Agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}, {}}
 	if m.listLen() != 2 {
 		t.Errorf("viewAgents: expected 2, got %d", m.listLen())
 	}
 
 	m.view = viewIssues
-	m.data.issues = []*issue.Issue{{ID: "I1", Status: "open"}}
+	m.data.Issues = []*issue.Issue{{ID: "I1", Status: "open"}}
 	if m.listLen() != 1 {
 		t.Errorf("viewIssues: expected 1, got %d", m.listLen())
 	}
 
 	m.view = viewMemory
-	m.data.memories = []*memory.Entry{{ID: "M1"}}
+	m.data.Memories = []*memory.Entry{{ID: "M1"}}
 	if m.listLen() != 1 {
 		t.Errorf("viewMemory: expected 1, got %d", m.listLen())
 	}
@@ -68,8 +69,8 @@ func TestClampCursor_EmptyList(t *testing.T) {
 
 func TestClampCursor_WithData(t *testing.T) {
 	m := testModel(viewAgents)
-	m.data.agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}}
-	m.data.agentTree = []agentTreeNode{{}, {}, {}}
+	m.data.Agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}, {}, {}}
 	m.cursor = 10
 	m.clampCursor()
 	if m.cursor != 2 {
@@ -79,8 +80,8 @@ func TestClampCursor_WithData(t *testing.T) {
 
 func TestSwitchView_SavesAndRestoresCursor(t *testing.T) {
 	m := testModel(viewAgents)
-	m.data.agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}}
-	m.data.agentTree = []agentTreeNode{{}, {}, {}}
+	m.data.Agents = []*agent.Agent{{ID: "a1"}, {ID: "a2"}, {ID: "a3"}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}, {}, {}}
 	m.cursor = 2
 
 	m.switchView(viewIssues)
@@ -88,7 +89,7 @@ func TestSwitchView_SavesAndRestoresCursor(t *testing.T) {
 		t.Errorf("expected cursor 0 for fresh view, got %d", m.cursor)
 	}
 
-	m.data.issues = []*issue.Issue{{ID: "I1", Status: "open"}, {ID: "I2", Status: "open"}}
+	m.data.Issues = []*issue.Issue{{ID: "I1", Status: "open"}, {ID: "I2", Status: "open"}}
 	m.cursor = 1
 
 	m.switchView(viewAgents)
@@ -131,7 +132,7 @@ func TestHelpBar_LogsShowsSearchAndFilters(t *testing.T) {
 
 func TestFilteredIssues_SearchesDescriptionsAndDependencies(t *testing.T) {
 	m := testModel(viewIssues)
-	m.data.issues = []*issue.Issue{
+	m.data.Issues = []*issue.Issue{
 		{ID: "LOOM-001", Title: "Auth", Description: "JWT middleware for admin routes", Status: "open", DependsOn: []string{"LOOM-099"}},
 		{ID: "LOOM-002", Title: "Billing", Description: "Invoice export", Status: "open"},
 	}
@@ -149,7 +150,7 @@ func TestFilteredIssues_SearchesDescriptionsAndDependencies(t *testing.T) {
 
 func TestFilteredMessages_SearchesBodyAndRef(t *testing.T) {
 	m := testModel(viewMail)
-	m.data.messages = []*mail.Message{
+	m.data.Messages = []*mail.Message{
 		{From: "lead", To: "builder", Subject: "Status", Body: "Please inspect auth middleware failure", Ref: "LOOM-001"},
 		{From: "lead", To: "reviewer", Subject: "Review", Body: "Check billing output", Ref: "LOOM-002"},
 	}
@@ -167,7 +168,7 @@ func TestFilteredMessages_SearchesBodyAndRef(t *testing.T) {
 
 func TestFilteredMemories_SearchesBodyFields(t *testing.T) {
 	m := testModel(viewMemory)
-	m.data.memories = []*memory.Entry{
+	m.data.Memories = []*memory.Entry{
 		{ID: "DEC-001", Type: "decision", Title: "Auth tokens", Decision: "Use JWT cookies", Affects: []string{"LOOM-001"}},
 		{ID: "DISC-001", Type: "discovery", Title: "Billing export", Finding: "CSV code lives in internal/exporter", Affects: []string{"LOOM-002"}},
 	}
@@ -185,7 +186,7 @@ func TestFilteredMemories_SearchesBodyFields(t *testing.T) {
 
 func TestAdjustIssuesIndex_BeforeSeparator(t *testing.T) {
 	m := testModel(viewIssues)
-	m.data.issues = []*issue.Issue{
+	m.data.Issues = []*issue.Issue{
 		{ID: "I1", Status: "open"},
 		{ID: "I2", Status: "open"},
 		{ID: "I3", Status: "done"},
@@ -205,7 +206,7 @@ func TestAdjustIssuesIndex_BeforeSeparator(t *testing.T) {
 
 func TestAdjustIssuesIndex_OnSeparator(t *testing.T) {
 	m := testModel(viewIssues)
-	m.data.issues = []*issue.Issue{
+	m.data.Issues = []*issue.Issue{
 		{ID: "I1", Status: "open"},
 		{ID: "I2", Status: "open"},
 		{ID: "I3", Status: "done"},
@@ -222,7 +223,7 @@ func TestAdjustIssuesIndex_OnSeparator(t *testing.T) {
 
 func TestAdjustIssuesIndex_AfterSeparator(t *testing.T) {
 	m := testModel(viewIssues)
-	m.data.issues = []*issue.Issue{
+	m.data.Issues = []*issue.Issue{
 		{ID: "I1", Status: "open"},
 		{ID: "I2", Status: "open"},
 		{ID: "I3", Status: "done"},
@@ -275,8 +276,8 @@ func TestKeyMap_ShortHelp(t *testing.T) {
 
 func TestTitleBarWidth(t *testing.T) {
 	m := testModel(viewOverview)
-	m.data.agents = nil
-	m.data.unread = 0
+	m.data.Agents = nil
+	m.data.Unread = 0
 	for _, w := range []int{80, 120, 200} {
 		m.width = w
 		// Extract title bar (first line of View output)

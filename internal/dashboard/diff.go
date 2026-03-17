@@ -50,7 +50,7 @@ func (m Model) renderWorktrees() string {
 	ri := 0
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
-		ds := m.data.diffStats[wt.Name]
+		ds := m.data.DiffStats[wt.Name]
 		if ds != nil && ds.FilesChanged > 0 {
 			styledDiff := fmt.Sprintf("%df ", ds.FilesChanged) +
 				diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions)) +
@@ -78,17 +78,17 @@ func (m Model) renderWorktrees() string {
 		content = styledTableView(t, replacements) + "\n"
 	}
 
-	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.worktrees))
+	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.Worktrees))
 	if m.searchTI.Value() != "" {
-		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.worktrees), m.searchTI.Value())
+		title = fmt.Sprintf("[w] WORKTREES (%d/%d) filter: %s", len(worktrees), len(m.data.Worktrees), m.searchTI.Value())
 	}
 	return panel(title, content, panelWidth(m.width))
 }
 
 func (m Model) renderDiff() string {
 	title := "DIFF"
-	if m.selectedWorktree < len(m.data.worktrees) {
-		title = "DIFF: " + slugFromWorktree(m.data.worktrees[m.selectedWorktree].Name)
+	if m.selectedWorktree < len(m.data.Worktrees) {
+		title = "DIFF: " + slugFromWorktree(m.data.Worktrees[m.selectedWorktree].Name)
 	}
 
 	if m.diffContent == "" || m.diffContent == "(no diff available)" || m.diffContent == "(no changes)" {

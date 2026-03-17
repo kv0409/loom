@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
@@ -26,10 +27,10 @@ func searchMatch(query string, fields ...string) bool {
 
 func (m Model) filteredAgents() []*agent.Agent {
 	if m.searchTI.Value() == "" {
-		return m.data.agents
+		return m.data.Agents
 	}
 	var out []*agent.Agent
-	for _, a := range m.data.agents {
+	for _, a := range m.data.Agents {
 		if searchMatch(m.searchTI.Value(), a.ID, a.Role, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
 			out = append(out, a)
 		}
@@ -53,10 +54,10 @@ func (m Model) filteredIssues() []*issue.Issue {
 
 func (m Model) filteredMessages() []*mail.Message {
 	if m.searchTI.Value() == "" {
-		return m.data.messages
+		return m.data.Messages
 	}
 	var out []*mail.Message
-	for _, msg := range m.data.messages {
+	for _, msg := range m.data.Messages {
 		if searchMatch(m.searchTI.Value(), msg.From, msg.To, msg.Subject, msg.Type, msg.Body, msg.Ref, msg.Priority) {
 			out = append(out, msg)
 		}
@@ -66,10 +67,10 @@ func (m Model) filteredMessages() []*mail.Message {
 
 func (m Model) filteredMemories() []*memory.Entry {
 	if m.searchTI.Value() == "" {
-		return m.data.memories
+		return m.data.Memories
 	}
 	var out []*memory.Entry
-	for _, e := range m.data.memories {
+	for _, e := range m.data.Memories {
 		if searchMatch(m.searchTI.Value(), e.ID, e.Title, e.Type, memory.ByField(e), e.Context, e.Decision, e.Rationale, e.Finding, e.Rule, e.Implications, e.Location, e.AppliesTo, strings.Join(e.Affects, " "), strings.Join(e.Tags, " "), memory.Snippet(e)) {
 			out = append(out, e)
 		}
@@ -79,10 +80,10 @@ func (m Model) filteredMemories() []*memory.Entry {
 
 func (m Model) filteredWorktrees() []*worktree.Worktree {
 	if m.searchTI.Value() == "" {
-		return m.data.worktrees
+		return m.data.Worktrees
 	}
 	var out []*worktree.Worktree
-	for _, wt := range m.data.worktrees {
+	for _, wt := range m.data.Worktrees {
 		if searchMatch(m.searchTI.Value(), wt.Name, wt.Branch, wt.Agent, wt.Issue) {
 			out = append(out, wt)
 		}
@@ -90,12 +91,12 @@ func (m Model) filteredWorktrees() []*worktree.Worktree {
 	return out
 }
 
-func (m Model) filteredActivity() []activityEntry {
+func (m Model) filteredActivity() []backend.ActivityEntry {
 	if m.searchTI.Value() == "" {
-		return m.data.activity
+		return m.data.Activity
 	}
-	var out []activityEntry
-	for _, e := range m.data.activity {
+	var out []backend.ActivityEntry
+	for _, e := range m.data.Activity {
 		if searchMatch(m.searchTI.Value(), e.AgentID, e.Line) {
 			out = append(out, e)
 		}
@@ -103,12 +104,12 @@ func (m Model) filteredActivity() []activityEntry {
 	return out
 }
 
-func (m Model) filteredLogs() []logLine {
+func (m Model) filteredLogs() []backend.LogLine {
 	if m.searchTI.Value() == "" {
-		return m.data.logs
+		return m.data.Logs
 	}
-	var out []logLine
-	for _, entry := range m.data.logs {
+	var out []backend.LogLine
+	for _, entry := range m.data.Logs {
 		if searchMatch(m.searchTI.Value(), entry.Category, entry.Agent, entry.Text) {
 			out = append(out, entry)
 		}

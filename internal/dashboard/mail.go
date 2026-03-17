@@ -80,9 +80,9 @@ func (m Model) renderMail() string {
 
 	content := strings.Join(lines, "\n") + "\n"
 
-	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.messages), m.data.unread)
+	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.Messages), m.data.Unread)
 	if m.searchTI.Value() != "" {
-		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.messages), m.searchTI.Value())
+		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.Messages), m.searchTI.Value())
 	}
 	return panel(title, content, panelWidth(m.width))
 }

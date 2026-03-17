@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,13 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/daemon"
-	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/mail"
-	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/internal/nudge"
-	"github.com/karanagi/loom/internal/worktree"
 )
 
 type view int
@@ -55,31 +51,10 @@ const (
 	minTermHeight = 15
 )
 
-type agentTreeNode struct {
-	depth  int
-	isLast bool
-	// ancestors[i] is true if the ancestor at depth i is the last child of its parent
-	ancestors []bool
-}
-
-type data struct {
-	agents    []*agent.Agent
-	agentTree []agentTreeNode
-	issues    []*issue.Issue
-	worktrees []*worktree.Worktree
-	diffStats map[string]*worktree.DiffStats
-	messages  []*mail.Message
-	memories  []*memory.Entry
-	unread    int
-	activity  []activityEntry
-	logs      []logLine
-	daemonOK  bool
-}
-
 type Model struct {
 	loomRoot         string
 	view             view
-	data             data
+	data             backend.Snapshot
 	cursor           int
 	cursors          map[view]int // per-view cursor positions
 	width            int
@@ -95,7 +70,7 @@ type Model struct {
 	diffContent      string
 	kanbanCol        int // selected column in kanban view
 	kanbanRow        int // selected row within column
-	lr               *logReader
+	backend          backend.Backend
 	lastClickTime    time.Time
 	lastClickRow     int
 	detailScroll     int // scroll offset for agent detail output
@@ -133,7 +108,7 @@ func New(loomRoot string) Model {
 	searchTI := textinput.New()
 	searchTI.Prompt = ""
 
-	return Model{loomRoot: loomRoot, width: 80, height: 24, lr: newLogReader(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI}
 }
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
@@ -146,8 +121,8 @@ func (m *Model) switchView(target view) {
 	m.view = target
 	m.cursor = m.cursors[target]
 	// Activity view: auto-scroll to bottom (latest entries) on first open.
-	if target == viewActivity && m.cursor == 0 && len(m.data.activity) > 0 {
-		m.cursor = len(m.data.activity) - 1
+	if target == viewActivity && m.cursor == 0 && len(m.data.Activity) > 0 {
+		m.cursor = len(m.data.Activity) - 1
 	}
 	m.searchTI.SetValue("")
 	m.searchMode = false
@@ -206,48 +181,10 @@ func tickCmd() tea.Cmd {
 }
 
 func (m Model) refresh() tea.Cmd {
-	root := m.loomRoot
-	lr := m.lr
+	b := m.backend
 	return func() tea.Msg {
-		var d data
-		d.agents, _ = agent.List(root)
-		d.issues, _ = issue.List(root, issue.ListOpts{All: true})
-		d.worktrees, _ = worktree.List(root)
-		d.diffStats = make(map[string]*worktree.DiffStats)
-		for _, wt := range d.worktrees {
-			if ds, err := worktree.DiffStatsFor(wt.Path); err == nil {
-				d.diffStats[wt.Name] = ds
-			}
-		}
-		d.messages, _ = mail.Log(root, mail.LogOpts{})
-		d.memories, _ = memory.List(root, memory.ListOpts{})
-		d.unread = countUnread(root)
-		d.agents, d.agentTree = sortAgentTree(d.agents)
-		d.activity = fetchActivity(root, d.agents)
-		d.logs = lr.read()
-		_, err := os.Stat(daemon.SockPath(root))
-		d.daemonOK = err == nil
-		return d
+		return b.Load()
 	}
-}
-
-func countUnread(loomRoot string) int {
-	var count int
-	inboxRoot := filepath.Join(loomRoot, "mail", "inbox")
-	entries, err := os.ReadDir(inboxRoot)
-	if err != nil {
-		return 0
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		msgs, err := mail.Read(loomRoot, mail.ReadOpts{Agent: e.Name(), UnreadOnly: true})
-		if err == nil {
-			count += len(msgs)
-		}
-	}
-	return count
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -291,7 +228,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case binaryReloadMsg:
 			m.reloading = true
 			return m, tea.Quit
-		case data:
+		case backend.Snapshot:
 			m.data = msg
 			m.refreshed = true
 			m.clampCursor()
@@ -316,7 +253,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case binaryReloadMsg:
 		m.reloading = true
 		return m, tea.Quit
-	case data:
+	case backend.Snapshot:
 		m.data = msg
 		m.refreshed = true
 		m.clampCursor()
@@ -480,7 +417,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.switchView(viewIssues)
 		return m, nil
 	case keyViewMail: // "m": message-compose in agents/agent-detail; mail view elsewhere
-		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.agents) > 0 {
+		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.Agents) > 0 {
 			m.messageMode = true
 			m.messageTI.SetValue("")
 			m.messageTI.Focus()
@@ -680,7 +617,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor < len(activity) {
 			aid := activity[m.cursor].AgentID
 			m.searchTI.SetValue("")
-			for i, a := range m.data.agents {
+			for i, a := range m.data.Agents {
 				if a.ID == aid {
 					m.cursors[viewAgents] = i
 					m.cursor = i
@@ -693,7 +630,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case viewKanban:
 		iss := m.kanbanSelectedIssue()
 		if iss != nil {
-			for i, is := range m.data.issues {
+			for i, is := range m.data.Issues {
 				if is.ID == iss.ID {
 					m.cursors[viewIssues] = i
 					m.cursor = i
@@ -733,7 +670,7 @@ func (m Model) composeSend() (tea.Model, tea.Cmd) {
 
 func (m Model) openCompose(replyTo string) (tea.Model, tea.Cmd) {
 	var ids []string
-	for _, a := range m.data.agents {
+	for _, a := range m.data.Agents {
 		ids = append(ids, a.ID)
 	}
 	cd := &composeData{}
@@ -824,7 +761,7 @@ func (m Model) View() string {
 	// Full-width title bar. titleStyle has Padding(0,2) adding 4 horizontal
 	// chars, so content area is m.width-4 to fill the terminal exactly.
 	left := " ◈ LOOM DASHBOARD"
-	right := fmt.Sprintf("%d agents  %d unread ", len(m.data.agents), m.data.unread)
+	right := fmt.Sprintf("%d agents  %d unread ", len(m.data.Agents), m.data.Unread)
 	contentW := m.width - 4
 	padding := contentW - lipgloss.Width(left) - lipgloss.Width(right)
 	if padding < 1 {
@@ -882,7 +819,7 @@ func (m Model) View() string {
 
 	// Daemon unavailability banner (shown after first refresh, between title and content)
 	daemonBanner := ""
-	if m.refreshed && !m.data.daemonOK {
+	if m.refreshed && !m.data.DaemonOK {
 		daemonBanner = flashErrStyle.Render(" ⚠ daemon restarting — reconnecting...")
 	}
 

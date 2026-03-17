@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
@@ -29,7 +30,7 @@ func TestRenderMail_Empty(t *testing.T) {
 
 func TestRenderMail_WithData(t *testing.T) {
 	m := testModel(viewMail)
-	m.data.messages = []*mail.Message{
+	m.data.Messages = []*mail.Message{
 		{From: "alice", To: "bob", Type: "task", Subject: "fix bug", Timestamp: time.Now()},
 		{From: "bob", To: "alice", Type: "reply", Subject: "done", Timestamp: time.Now()},
 	}
@@ -41,8 +42,8 @@ func TestRenderMail_WithData(t *testing.T) {
 
 func TestRenderMail_ShowsInboxPressureAndNextUp(t *testing.T) {
 	m := testModel(viewMail)
-	m.data.unread = 3
-	m.data.messages = []*mail.Message{
+	m.data.Unread = 3
+	m.data.Messages = []*mail.Message{
 		{From: "lead", To: "builder", Type: "blocker", Priority: "critical", Subject: "Auth blocked", Ref: "LOOM-001", Timestamp: time.Now(), Read: false},
 		{From: "reviewer", To: "lead", Type: "question", Priority: "normal", Subject: "Need clarification", Ref: "LOOM-002", Timestamp: time.Now().Add(-1 * time.Minute), Read: false},
 		{From: "builder", To: "lead", Type: "status", Priority: "low", Subject: "Working", Ref: "LOOM-003", Timestamp: time.Now().Add(-2 * time.Minute), Read: true},
@@ -67,7 +68,7 @@ func TestRenderMemory_Empty(t *testing.T) {
 
 func TestRenderMemory_WithData(t *testing.T) {
 	m := testModel(viewMemory)
-	m.data.memories = []*memory.Entry{
+	m.data.Memories = []*memory.Entry{
 		{ID: "M1", Type: "decision", Title: "Use Go"},
 		{ID: "M2", Type: "discovery", Title: "Found bug"},
 	}
@@ -79,7 +80,7 @@ func TestRenderMemory_WithData(t *testing.T) {
 
 func TestRenderMemory_ShowsOperationalSummary(t *testing.T) {
 	m := testModel(viewMemory)
-	m.data.memories = []*memory.Entry{
+	m.data.Memories = []*memory.Entry{
 		{ID: "DEC-001", Type: "decision", Title: "Use JWT", Decision: "Use JWT cookies", Affects: []string{"LOOM-001"}},
 		{ID: "DISC-001", Type: "discovery", Title: "Exporter location", Finding: "CSV export lives in internal/exporter", Affects: []string{"LOOM-002"}},
 	}
@@ -103,11 +104,11 @@ func TestRenderWorktrees_Empty(t *testing.T) {
 
 func TestRenderWorktrees_WithData(t *testing.T) {
 	m := testModel(viewWorktrees)
-	m.data.worktrees = []*worktree.Worktree{
+	m.data.Worktrees = []*worktree.Worktree{
 		{Name: "LOOM-1-1-fix", Branch: "fix-branch", Agent: "builder-1", Issue: "I1"},
 		{Name: "LOOM-2-1-feat", Branch: "feat-branch", Agent: "builder-2", Issue: "I2"},
 	}
-	m.data.diffStats = map[string]*worktree.DiffStats{
+	m.data.DiffStats = map[string]*worktree.DiffStats{
 		"LOOM-1-1-fix": {FilesChanged: 3, Insertions: 10, Deletions: 5},
 	}
 	out := m.renderWorktrees()
@@ -128,7 +129,7 @@ func TestRenderActivity_Empty(t *testing.T) {
 
 func TestRenderActivity_WithData(t *testing.T) {
 	m := testModel(viewActivity)
-	m.data.activity = []activityEntry{
+	m.data.Activity = []backend.ActivityEntry{
 		{AgentID: "builder-1", Line: "Called execute_bash: go build"},
 		{AgentID: "builder-2", Line: "Called fs_read: main.go"},
 	}
@@ -140,7 +141,7 @@ func TestRenderActivity_WithData(t *testing.T) {
 
 func TestRenderLogs_ShowsInvestigationSummary(t *testing.T) {
 	m := testModel(viewLogs)
-	m.data.logs = []logLine{
+	m.data.Logs = []backend.LogLine{
 		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
 		{Category: "warn", Agent: "reviewer-001", Text: "warning about stale review"},
 		{Category: "lifecycle", Agent: "builder-001", Text: "activating agent builder-001"},
@@ -156,7 +157,7 @@ func TestRenderLogs_ShowsInvestigationSummary(t *testing.T) {
 func TestRenderLogs_SearchFiltersMessages(t *testing.T) {
 	m := testModel(viewLogs)
 	m.searchTI.SetValue("auth")
-	m.data.logs = []logLine{
+	m.data.Logs = []backend.LogLine{
 		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
 		{Category: "warn", Agent: "reviewer-001", Text: "billing warning"},
 	}
@@ -171,19 +172,19 @@ func TestRenderLogs_SearchFiltersMessages(t *testing.T) {
 
 func TestRenderOverview_ShowsAttentionSections(t *testing.T) {
 	m := testModel(viewOverview)
-	m.data.issues = []*issue.Issue{
+	m.data.Issues = []*issue.Issue{
 		{ID: "LOOM-001", Title: "Blocked auth work", Status: "blocked", UpdatedAt: time.Now()},
 		{ID: "LOOM-002", Title: "Waiting for review", Status: "review", UpdatedAt: time.Now()},
 		{ID: "LOOM-003", Title: "Active work", Status: "in-progress", UpdatedAt: time.Now()},
 	}
-	m.data.agents = []*agent.Agent{
+	m.data.Agents = []*agent.Agent{
 		{ID: "builder-001", Status: "dead", AssignedIssues: []string{"LOOM-001"}},
 		{ID: "reviewer-001", Status: "active", AssignedIssues: []string{"LOOM-002"}},
 	}
-	m.data.agentTree = []agentTreeNode{{}, {}}
-	m.data.messages = []*mail.Message{{From: "lead-001", To: "builder-001", Subject: "Need status", Timestamp: time.Now()}}
-	m.data.unread = 2
-	m.data.activity = []activityEntry{{AgentID: "reviewer-001", Tool: "READ", Detail: "reviewing auth middleware", Time: "1m ago"}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}, {}}
+	m.data.Messages = []*mail.Message{{From: "lead-001", To: "builder-001", Subject: "Need status", Timestamp: time.Now()}}
+	m.data.Unread = 2
+	m.data.Activity = []backend.ActivityEntry{{AgentID: "reviewer-001", Tool: "READ", Detail: "reviewing auth middleware", Time: "1m ago"}}
 
 	out := m.renderOverview()
 	for _, expected := range []string{"NEEDS ATTENTION", "IN FLIGHT", "LATEST SIGNAL", "blocked", "review", "2 unread"} {
@@ -195,7 +196,7 @@ func TestRenderOverview_ShowsAttentionSections(t *testing.T) {
 
 func TestRenderIssueDetail_ShowsRelatedContext(t *testing.T) {
 	m := testModel(viewIssueDetail)
-	m.data.issues = []*issue.Issue{{
+	m.data.Issues = []*issue.Issue{{
 		ID:          "LOOM-001",
 		Title:       "Build auth system",
 		Status:      "blocked",
@@ -203,7 +204,7 @@ func TestRenderIssueDetail_ShowsRelatedContext(t *testing.T) {
 		Description: "Implement authentication",
 		UpdatedAt:   time.Now(),
 	}}
-	m.data.memories = []*memory.Entry{{
+	m.data.Memories = []*memory.Entry{{
 		ID:        "DEC-001",
 		Type:      "decision",
 		Title:     "Use JWT tokens",
@@ -211,14 +212,14 @@ func TestRenderIssueDetail_ShowsRelatedContext(t *testing.T) {
 		Affects:   []string{"LOOM-001"},
 		Timestamp: time.Now(),
 	}}
-	m.data.messages = []*mail.Message{{
+	m.data.Messages = []*mail.Message{{
 		From:      "lead-001",
 		To:        "builder-001",
 		Subject:   "Blocker on auth",
 		Ref:       "LOOM-001",
 		Timestamp: time.Now(),
 	}}
-	m.data.worktrees = []*worktree.Worktree{{
+	m.data.Worktrees = []*worktree.Worktree{{
 		Name:   "LOOM-001-01-auth-ui",
 		Branch: "LOOM-001-auth-ui",
 		Issue:  "LOOM-001",
@@ -243,13 +244,13 @@ func TestRenderAgents_NarrowTerminalNoColumnOverflow(t *testing.T) {
 	for _, width := range []int{60, 70, 80, 90, 100} {
 		m := testModel(viewAgents)
 		m.width = width
-		m.data.agents = []*agent.Agent{
+		m.data.Agents = []*agent.Agent{
 			{ID: "orchestrator", Role: "orchestrator", Status: "active"},
 			{ID: "builder-001", Role: "builder", Status: "in-progress",
 				AssignedIssues: []string{"LOOM-001"}, WorktreeName: "LOOM-001-1-fix-crash"},
 			{ID: "reviewer-001", Role: "reviewer", Status: "review"},
 		}
-		m.data.agentTree = []agentTreeNode{{}, {depth: 1, isLast: false}, {depth: 1, isLast: true}}
+		m.data.AgentTree = []backend.AgentTreeNode{{}, {Depth: 1, IsLast: false}, {Depth: 1, IsLast: true}}
 
 		out := m.renderAgents()
 		for _, line := range strings.Split(out, "\n") {
@@ -292,11 +293,11 @@ func TestRenderAgentDetail_ToolSummaryUTF8(t *testing.T) {
 	m.width = 80
 	m.height = 40
 	m.view = viewAgentDetail
-	m.data.agents = []*agent.Agent{
+	m.data.Agents = []*agent.Agent{
 		{ID: "builder-001", Role: "builder", Status: "active",
 			Config: agent.AgentConfig{KiroMode: "acp"}},
 	}
-	m.data.agentTree = []agentTreeNode{{}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}}
 
 	out := m.renderAgentDetail()
 	for i, r := range out {

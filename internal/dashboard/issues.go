@@ -19,7 +19,7 @@ const maxRecentDone = 5
 // issues sorted by most recently updated.
 func (m Model) displayIssues() []*issue.Issue {
 	var active, done []*issue.Issue
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status == "done" || iss.Status == "cancelled" {
 			done = append(done, iss)
 		} else {
@@ -184,8 +184,8 @@ func (m Model) renderIssueDetail() string {
 	}
 
 	if len(iss.Children) > 0 {
-		issueMap := make(map[string]*issue.Issue, len(m.data.issues))
-		for _, ci := range m.data.issues {
+		issueMap := make(map[string]*issue.Issue, len(m.data.Issues))
+		for _, ci := range m.data.Issues {
 			issueMap[ci.ID] = ci
 		}
 		lines = append(lines, "", "  "+headerStyle.Render("CHILDREN"))
@@ -251,7 +251,7 @@ func (m Model) renderIssueDetail() string {
 
 func (m Model) relatedMemories(issueID string) []*memory.Entry {
 	var related []*memory.Entry
-	for _, entry := range m.data.memories {
+	for _, entry := range m.data.Memories {
 		for _, affect := range entry.Affects {
 			if affect == issueID {
 				related = append(related, entry)
@@ -264,7 +264,7 @@ func (m Model) relatedMemories(issueID string) []*memory.Entry {
 
 func (m Model) relatedMessages(issueID string) []*mail.Message {
 	var related []*mail.Message
-	for _, msg := range m.data.messages {
+	for _, msg := range m.data.Messages {
 		if msg.Ref == issueID || strings.Contains(msg.Subject, issueID) || strings.Contains(msg.Body, issueID) {
 			related = append(related, msg)
 		}
@@ -273,7 +273,7 @@ func (m Model) relatedMessages(issueID string) []*mail.Message {
 }
 
 func (m Model) relatedWorktree(iss *issue.Issue) *worktree.Worktree {
-	for _, wt := range m.data.worktrees {
+	for _, wt := range m.data.Worktrees {
 		if wt.Issue == iss.ID || wt.Name == iss.Worktree || wt.Branch == iss.Worktree {
 			return wt
 		}

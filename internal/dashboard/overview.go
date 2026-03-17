@@ -64,7 +64,7 @@ func (m Model) renderOverview() string {
 func (m Model) renderAttentionOverview(fullW, budget int) string {
 	var blocked []*issue.Issue
 	var review []*issue.Issue
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		switch iss.Status {
 		case "blocked":
 			blocked = append(blocked, iss)
@@ -74,7 +74,7 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 	}
 
 	var dead []*agent.Agent
-	for _, a := range m.data.agents {
+	for _, a := range m.data.Agents {
 		if a.Status == "dead" || a.Status == "error" {
 			dead = append(dead, a)
 		}
@@ -107,8 +107,8 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 			lines = append(lines, fmt.Sprintf("    %s %s", a.ID, idleStyle.Render("· "+truncate(issues, fullW-18))))
 		}
 	}
-	if m.data.unread > 0 {
-		lines = append(lines, barLabel.Render(fmt.Sprintf("  %d unread message%s waiting in inboxes", m.data.unread, suffix(m.data.unread))))
+	if m.data.Unread > 0 {
+		lines = append(lines, barLabel.Render(fmt.Sprintf("  %d unread message%s waiting in inboxes", m.data.Unread, suffix(m.data.Unread))))
 	}
 	if len(lines) == 0 {
 		return panel("NEEDS ATTENTION", renderEmpty("No active blockers, dead agents, or unread messages", fullW-2), fullW)
@@ -119,23 +119,23 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 func (m Model) renderFlightOverview(fullW, budget int) string {
 	projectRoot := filepath.Dir(m.loomRoot)
 	lastActivity := map[string]string{}
-	for _, e := range m.data.activity {
+	for _, e := range m.data.Activity {
 		lastActivity[e.AgentID] = e.Line
 	}
 
 	activeIssues := 0
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status != "done" && iss.Status != "cancelled" {
 			activeIssues++
 		}
 	}
 
 	lines := []string{
-		fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.agents), suffix(len(m.data.agents)), len(m.data.worktrees), suffix(len(m.data.worktrees))),
+		fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.Agents), suffix(len(m.data.Agents)), len(m.data.Worktrees), suffix(len(m.data.Worktrees))),
 	}
 
 	shown := 0
-	for _, a := range m.data.agents {
+	for _, a := range m.data.Agents {
 		if a.Status == "dead" || a.Status == "error" {
 			continue
 		}
@@ -174,20 +174,20 @@ func (m Model) renderStatusBar(fullW int) string {
 
 	// --- Line 1: counts summary ---
 	statusCounts := map[string]int{}
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status != "done" && iss.Status != "cancelled" && iss.Parent == "" {
 			statusCounts[iss.Status]++
 		}
 	}
 	// Also count all non-done/cancelled issues (including sub-issues) for display
 	allStatusCounts := map[string]int{}
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status != "done" && iss.Status != "cancelled" {
 			allStatusCounts[iss.Status]++
 		}
 	}
 	doneCount := 0
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status == "done" {
 			doneCount++
 		}
@@ -204,7 +204,7 @@ func (m Model) renderStatusBar(fullW int) string {
 	}
 
 	memCounts := map[string]int{}
-	for _, e := range m.data.memories {
+	for _, e := range m.data.Memories {
 		memCounts[e.Type]++
 	}
 	var memParts []string
@@ -215,8 +215,8 @@ func (m Model) renderStatusBar(fullW int) string {
 	}
 
 	summaryParts := countParts
-	if len(m.data.worktrees) > 0 {
-		n := len(m.data.worktrees)
+	if len(m.data.Worktrees) > 0 {
+		n := len(m.data.Worktrees)
 		summaryParts = append(summaryParts, idleStyle.Render(fmt.Sprintf("%d %s", n, plural(n, "worktree"))))
 	}
 	if len(memParts) > 0 {
@@ -237,12 +237,12 @@ func (m Model) renderStatusBar(fullW int) string {
 
 	// Build a map of issue ID → issue for quick lookup
 	issueMap := map[string]*issue.Issue{}
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		issueMap[iss.ID] = iss
 	}
 
 	var parents []parentProgress
-	for _, iss := range m.data.issues {
+	for _, iss := range m.data.Issues {
 		if iss.Status == "done" || iss.Status == "cancelled" {
 			continue
 		}
@@ -405,12 +405,12 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		{Title: "", Width: detailW},
 	}
 
-	toolLimit := min(budget, len(m.data.activity))
+	toolLimit := min(budget, len(m.data.Activity))
 	rows := make([]table.Row, 0, toolLimit)
 	var replacements [][2]string
 	ri := 0
-	for i := len(m.data.activity) - toolLimit; i < len(m.data.activity); i++ {
-		e := m.data.activity[i]
+	for i := len(m.data.Activity) - toolLimit; i < len(m.data.Activity); i++ {
+		e := m.data.Activity[i]
 		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
 		styledAgent := agentPillFor(truncAgent, e.AgentID)
 		styledTime := activityTimeStyle.Render(truncate(e.Time, timeW))
@@ -431,7 +431,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	}
 
 	unique := map[string]struct{}{}
-	for _, e := range m.data.activity {
+	for _, e := range m.data.Activity {
 		unique[e.AgentID] = struct{}{}
 	}
 
