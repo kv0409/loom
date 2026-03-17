@@ -85,11 +85,34 @@ type Model struct {
 	composeMode      bool
 	composeForm      *huh.Form
 	composeData      *composeData
+	agentOutputCache []backend.ACPEvent // cached events for current agent detail
+	agentOutputID    string             // agent ID the cache belongs to
+	diffLoading      bool               // true while diff is being fetched
 }
 
 type tickMsg time.Time
 type clearFlashMsg struct{}
 type binaryReloadMsg struct{}
+
+type daemonResultMsg struct {
+	flash string
+	isErr bool
+}
+
+type diffResultMsg struct {
+	content string
+}
+
+type agentOutputMsg struct {
+	agentID string
+	events  []backend.ACPEvent
+	err     error
+}
+
+type sendMailResultMsg struct {
+	flash string
+	isErr bool
+}
 
 func clearFlashAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return clearFlashMsg{} })
@@ -186,6 +209,38 @@ func (m Model) refresh() tea.Cmd {
 	}
 }
 
+func daemonCmd(loomRoot string, fn func() error, successFlash string) tea.Cmd {
+	return func() tea.Msg {
+		if err := fn(); err != nil {
+			return daemonResultMsg{flash: err.Error(), isErr: true}
+		}
+		return daemonResultMsg{flash: successFlash, isErr: false}
+	}
+}
+
+func diffCmd(b backend.Backend, wtPath string) tea.Cmd {
+	return func() tea.Msg {
+		return diffResultMsg{content: b.Diff(wtPath)}
+	}
+}
+
+func agentOutputCmd(b backend.Backend, loomRoot, agentID string) tea.Cmd {
+	return func() tea.Msg {
+		events, err := b.AgentOutput(loomRoot, agentID)
+		return agentOutputMsg{agentID: agentID, events: events, err: err}
+	}
+}
+
+func sendMailCmd(b backend.Backend, loomRoot, from, to, subject, body, typ, priority, ref string) tea.Cmd {
+	return func() tea.Msg {
+		err := b.SendMail(loomRoot, from, to, subject, body, typ, priority, ref)
+		if err != nil {
+			return sendMailResultMsg{flash: fmt.Sprintf("Send failed: %s", err), isErr: true}
+		}
+		return sendMailResultMsg{flash: fmt.Sprintf("Sent to %s", to), isErr: false}
+	}
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Compose modal captures all input while active.
 	// Resize, tick, and data messages are also handled for the dashboard.
@@ -231,6 +286,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.data = msg
 			m.refreshed = true
 			m.clampCursor()
+		case daemonResultMsg:
+			return m, m.setFlash(msg.flash, msg.isErr)
+		case diffResultMsg:
+			m.diffContent = msg.content
+			m.diffLoading = false
+		case agentOutputMsg:
+			if m.view == viewAgentDetail && msg.agentID == m.agentOutputID {
+				m.agentOutputCache = msg.events
+			}
+		case sendMailResultMsg:
+			return m, m.setFlash(msg.flash, msg.isErr)
 		}
 		return m, cmd
 	}
@@ -246,7 +312,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = msg.Width
 		return m, nil
 	case tickMsg:
-		return m, tea.Batch(m.refresh(), tickCmd())
+		cmds := []tea.Cmd{m.refresh(), tickCmd()}
+		if m.view == viewAgentDetail {
+			agents := m.filteredAgents()
+			if m.cursor < len(agents) {
+				a := agents[m.cursor]
+				if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+					cmds = append(cmds, agentOutputCmd(m.backend, m.loomRoot, a.ID))
+				}
+			}
+		}
+		return m, tea.Batch(cmds...)
 	case watchBinaryTickMsg:
 		return m, watchBinaryFrom(msg.mtime)
 	case binaryReloadMsg:
@@ -260,6 +336,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case clearFlashMsg:
 		m.flashMsg = ""
 		return m, nil
+	case daemonResultMsg:
+		return m, m.setFlash(msg.flash, msg.isErr)
+	case diffResultMsg:
+		m.diffContent = msg.content
+		m.diffLoading = false
+		return m, nil
+	case agentOutputMsg:
+		if m.view == viewAgentDetail && msg.agentID == m.agentOutputID {
+			m.agentOutputCache = msg.events
+		}
+		return m, nil
+	case sendMailResultMsg:
+		return m, m.setFlash(msg.flash, msg.isErr)
 	}
 
 	// Forward to active textinput
@@ -281,12 +370,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(agents) && m.nudgeCursor < len(nudge.Types) {
 				a := agents[m.cursor]
 				nt := nudge.Types[m.nudgeCursor]
-				err := daemon.Nudge(m.loomRoot, a.ID, nt.Message)
 				m.nudgeMode = false
-				if err != nil {
-					return m, m.setFlash(fmt.Sprintf("Nudge failed: %s", err), true)
-				}
-				return m, m.setFlash(fmt.Sprintf("Nudged %s: %s", a.ID, nt.Label), false)
+				lr := m.loomRoot
+				return m, daemonCmd(lr, func() error {
+					return daemon.Nudge(lr, a.ID, nt.Message)
+				}, fmt.Sprintf("Nudged %s: %s", a.ID, nt.Label))
 			}
 			m.nudgeMode = false
 		case "esc":
@@ -311,12 +399,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			agents := m.filteredAgents()
 			if m.cursor < len(agents) {
 				a := agents[m.cursor]
-				err := daemon.Kill(m.loomRoot, a.ID, false)
 				m.killConfirm = false
-				if err != nil {
-					return m, m.setFlash(fmt.Sprintf("Kill failed: %s", err), true)
-				}
-				return m, m.setFlash(fmt.Sprintf("Killed %s", a.ID), false)
+				lr := m.loomRoot
+				return m, daemonCmd(lr, func() error {
+					return daemon.Kill(lr, a.ID, false)
+				}, fmt.Sprintf("Killed %s", a.ID))
 			}
 			m.killConfirm = false
 		default:
@@ -332,14 +419,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			agents := m.filteredAgents()
 			if m.cursor < len(agents) && m.messageTI.Value() != "" {
 				a := agents[m.cursor]
-				err := daemon.Message(m.loomRoot, a.ID, m.messageTI.Value())
+				msgText := m.messageTI.Value()
 				m.messageMode = false
 				m.messageTI.SetValue("")
 				m.messageTI.Blur()
-				if err != nil {
-					return m, m.setFlash(fmt.Sprintf("Message failed: %s", err), true)
-				}
-				return m, m.setFlash(fmt.Sprintf("Messaged %s", a.ID), false)
+				lr := m.loomRoot
+				return m, daemonCmd(lr, func() error {
+					return daemon.Message(lr, a.ID, msgText)
+				}, fmt.Sprintf("Messaged %s", a.ID))
 			}
 			m.messageMode = false
 			m.messageTI.SetValue("")
@@ -460,9 +547,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case keyAgentOutput:
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
+			a := m.filteredAgents()[m.cursor]
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
+			m.agentOutputCache = nil
+			m.agentOutputID = a.ID
+			if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+				return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
+			}
 			return m, nil
 		}
 	case keySearch:
@@ -565,9 +658,15 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case viewAgents:
 		agents := m.filteredAgents()
 		if m.cursor < len(agents) {
+			a := agents[m.cursor]
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailScroll = 0
+			m.agentOutputCache = nil
+			m.agentOutputID = a.ID
+			if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
+				return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
+			}
 		}
 	case viewAgentDetail:
 		agents := m.filteredAgents()
@@ -598,12 +697,15 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case viewWorktrees:
 		worktrees := m.filteredWorktrees()
 		if m.cursor < len(worktrees) {
+			wtPath := worktrees[m.cursor].Path
 			m.cursors[m.view] = m.cursor
 			m.selectedWorktree = m.cursor
-			m.diffContent = fetchDiff(m.backend, worktrees[m.cursor].Path)
+			m.diffContent = ""
+			m.diffLoading = true
 			m.view = viewDiff
 			m.diffScroll = 0
 			m.cursor = 0
+			return m, diffCmd(m.backend, wtPath)
 		}
 	case viewMemory:
 		memories := m.filteredMemories()
@@ -653,11 +755,9 @@ func (m Model) composeSend() (tea.Model, tea.Cmd) {
 	if m.composeData.Subject == "" {
 		return m, m.setFlash("Send failed: 'Subject' is required", true)
 	}
-	err := m.backend.SendMail(m.loomRoot, "dashboard", m.composeData.To, m.composeData.Subject, m.composeData.Body, m.composeData.Type, m.composeData.Priority, "")
-	if err != nil {
-		return m, m.setFlash(fmt.Sprintf("Send failed: %s", err), true)
-	}
-	return m, m.setFlash(fmt.Sprintf("Sent to %s", m.composeData.To), false)
+	return m, sendMailCmd(m.backend, m.loomRoot, "dashboard",
+		m.composeData.To, m.composeData.Subject, m.composeData.Body,
+		m.composeData.Type, m.composeData.Priority, "")
 }
 
 func (m Model) openCompose(replyTo string) (tea.Model, tea.Cmd) {
@@ -696,6 +796,8 @@ func (m Model) listLen() int {
 		return len(m.filteredWorktrees())
 	case viewActivity:
 		return len(m.filteredActivity())
+	case viewLogs:
+		return len(m.filteredLogLines())
 	case viewDiff:
 		return 0
 	}

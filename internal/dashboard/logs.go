@@ -19,8 +19,47 @@ func (m Model) countLogAgents() int {
 	return len(seen)
 }
 
+func (m Model) filteredLogLines() []backend.LogLine {
+	agentSet := map[string]bool{}
+	for _, l := range m.data.Logs {
+		if l.Agent != "" {
+			agentSet[l.Agent] = true
+		}
+	}
+	agents := make([]string, 0, len(agentSet))
+	for a := range agentSet {
+		agents = append(agents, a)
+	}
+	sort.Strings(agents)
+
+	filter := ""
+	categories := []string{"", "lifecycle", "error", "stderr", "warn"}
+	if m.logFilter > 0 && m.logFilter < len(categories) {
+		filter = categories[m.logFilter]
+	}
+
+	agentFilter := ""
+	if m.logAgentFilter > 0 && m.logAgentFilter <= len(agents) {
+		agentFilter = agents[m.logAgentFilter-1]
+	}
+
+	var out []backend.LogLine
+	for _, l := range m.filteredLogs() {
+		if filter != "" && l.Category != filter {
+			continue
+		}
+		if agentFilter != "" && l.Agent != agentFilter {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
 func (m Model) renderLogs() string {
-	// Collect unique agents from log data
+	lines := m.filteredLogLines()
+
+	// Derive filter/agent labels for header display
 	agentSet := map[string]bool{}
 	for _, l := range m.data.Logs {
 		if l.Agent != "" {
@@ -54,17 +93,6 @@ func (m Model) renderLogs() string {
 	}
 	header := fmt.Sprintf("  Filter: [%s]  Agent: [%s]  (f=category, F=agent)\n", filterLabel, agentLabel)
 	header += separator(m.width) + "\n"
-
-	var lines []backend.LogLine
-	for _, l := range m.filteredLogs() {
-		if filter != "" && l.Category != filter {
-			continue
-		}
-		if agentFilter != "" && l.Agent != agentFilter {
-			continue
-		}
-		lines = append(lines, l)
-	}
 
 	if len(lines) == 0 {
 		header += renderEmpty("No matching log entries", availableWidth(m.width))

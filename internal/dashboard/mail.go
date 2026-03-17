@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 func (m Model) renderMail() string {
-	messages := m.filteredMessages()
+	filtered := m.filteredMessages()
+	messages := make([]*backend.Message, len(filtered))
+	copy(messages, filtered)
 	var unread, critical int
 	byType := map[string]int{}
 	for _, msg := range messages {

@@ -3,6 +3,7 @@ package dashboard
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,6 +16,28 @@ func testModel(v view) Model {
 	m.height = 40
 	m.view = v
 	return m
+}
+
+func TestRenderMail_DoesNotMutateSnapshotOrder(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", Priority: "low", Subject: "oldest", Timestamp: time.Now().Add(-3 * time.Hour), Read: true},
+		{From: "b", Priority: "critical", Subject: "middle", Timestamp: time.Now().Add(-2 * time.Hour), Read: false},
+		{From: "c", Priority: "normal", Subject: "newest", Timestamp: time.Now().Add(-1 * time.Hour), Read: false},
+	}
+
+	orig := make([]string, len(m.data.Messages))
+	for i, msg := range m.data.Messages {
+		orig[i] = msg.Subject
+	}
+
+	m.renderMail()
+
+	for i, msg := range m.data.Messages {
+		if msg.Subject != orig[i] {
+			t.Fatalf("renderMail mutated m.data.Messages[%d]: got %q, want %q", i, msg.Subject, orig[i])
+		}
+	}
 }
 
 func TestListLen_FilteredMailDetail(t *testing.T) {
@@ -51,6 +74,12 @@ func TestListLen_AllViews(t *testing.T) {
 	m.data.Memories = []*backend.MemoryEntry{{ID: "M1"}}
 	if m.listLen() != 1 {
 		t.Errorf("viewMemory: expected 1, got %d", m.listLen())
+	}
+
+	m.view = viewLogs
+	m.data.Logs = []backend.LogLine{{Category: "error", Agent: "a", Text: "x"}, {Category: "warn", Agent: "b", Text: "y"}}
+	if m.listLen() != 2 {
+		t.Errorf("viewLogs: expected 2, got %d", m.listLen())
 	}
 }
 
@@ -288,4 +317,190 @@ func TestTitleBarWidth(t *testing.T) {
 
 func keyMsg(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s), Alt: false}
+}
+
+func TestListLen_ViewLogs(t *testing.T) {
+	m := testModel(viewLogs)
+	m.data.Logs = []backend.LogLine{
+		{Category: "error", Agent: "builder", Text: "fail"},
+		{Category: "lifecycle", Agent: "planner", Text: "start"},
+		{Category: "warn", Agent: "builder", Text: "slow"},
+	}
+	if got := m.listLen(); got != 3 {
+		t.Errorf("viewLogs no filter: got %d, want 3", got)
+	}
+}
+
+func TestListLen_ViewLogs_WithCategoryFilter(t *testing.T) {
+	m := testModel(viewLogs)
+	m.data.Logs = []backend.LogLine{
+		{Category: "error", Agent: "builder", Text: "fail"},
+		{Category: "lifecycle", Agent: "planner", Text: "start"},
+		{Category: "error", Agent: "planner", Text: "crash"},
+	}
+	m.logFilter = 2 // "error"
+	if got := m.listLen(); got != 2 {
+		t.Errorf("viewLogs category=error: got %d, want 2", got)
+	}
+}
+
+func TestListLen_ViewLogs_WithAgentFilter(t *testing.T) {
+	m := testModel(viewLogs)
+	m.data.Logs = []backend.LogLine{
+		{Category: "error", Agent: "builder", Text: "fail"},
+		{Category: "lifecycle", Agent: "planner", Text: "start"},
+		{Category: "warn", Agent: "builder", Text: "slow"},
+	}
+	// agents sorted: ["builder", "planner"], index 1 = "builder"
+	m.logAgentFilter = 1
+	if got := m.listLen(); got != 2 {
+		t.Errorf("viewLogs agent=builder: got %d, want 2", got)
+	}
+}
+
+func TestListLen_ViewLogs_AllFilters(t *testing.T) {
+	m := testModel(viewLogs)
+	m.data.Logs = []backend.LogLine{
+		{Category: "error", Agent: "builder", Text: "fail"},
+		{Category: "error", Agent: "planner", Text: "crash"},
+		{Category: "lifecycle", Agent: "builder", Text: "start"},
+		{Category: "warn", Agent: "builder", Text: "slow query"},
+	}
+	m.logFilter = 2      // "error"
+	m.logAgentFilter = 1 // "builder" (sorted: builder, planner)
+	m.searchTI.SetValue("fail")
+	if got := m.listLen(); got != 1 {
+		t.Errorf("viewLogs all filters: got %d, want 1", got)
+	}
+}
+
+func TestHandleEnter_WorktreeReturnsCmd(t *testing.T) {
+	m := testModel(viewWorktrees)
+	m.data.Worktrees = []*backend.Worktree{{Name: "wt-1", Path: "/tmp/wt-1", Branch: "main"}}
+	m.cursor = 0
+
+	result, cmd := m.handleEnter()
+	got := result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for async diff fetch")
+	}
+	if !got.diffLoading {
+		t.Error("expected diffLoading=true")
+	}
+	if got.diffContent != "" {
+		t.Error("expected diffContent to be empty while loading")
+	}
+	if got.view != viewDiff {
+		t.Errorf("expected viewDiff, got %d", got.view)
+	}
+}
+
+func TestDiffResultMsg_SetsDiffContent(t *testing.T) {
+	m := testModel(viewDiff)
+	m.diffLoading = true
+
+	result, _ := m.Update(diffResultMsg{content: "diff --git a/foo"})
+	got := result.(Model)
+
+	if got.diffContent != "diff --git a/foo" {
+		t.Errorf("expected diffContent set, got %q", got.diffContent)
+	}
+	if got.diffLoading {
+		t.Error("expected diffLoading=false after receiving result")
+	}
+}
+
+func TestComposeSend_ValidData_ReturnsCmd(t *testing.T) {
+	m := testModel(viewMail)
+	m.composeMode = true
+	m.composeData = &composeData{To: "builder-001", Subject: "test", Body: "hello"}
+
+	result, cmd := m.composeSend()
+	got := result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for async send")
+	}
+	if got.composeMode {
+		t.Error("expected composeMode=false after send")
+	}
+}
+
+func TestAgentOutputMsg_UpdatesCache(t *testing.T) {
+	m := testModel(viewAgentDetail)
+	m.agentOutputID = "builder-001"
+	events := []backend.ACPEvent{{Kind: backend.TokenChunk, Content: "hello"}}
+
+	result, _ := m.Update(agentOutputMsg{agentID: "builder-001", events: events})
+	got := result.(Model)
+
+	if len(got.agentOutputCache) != 1 {
+		t.Fatalf("expected 1 cached event, got %d", len(got.agentOutputCache))
+	}
+	if got.agentOutputCache[0].Content != "hello" {
+		t.Errorf("expected cached content 'hello', got %q", got.agentOutputCache[0].Content)
+	}
+}
+
+func TestAgentOutputMsg_IgnoredWhenWrongView(t *testing.T) {
+	m := testModel(viewAgents) // not viewAgentDetail
+	m.agentOutputID = "builder-001"
+
+	result, _ := m.Update(agentOutputMsg{agentID: "builder-001", events: []backend.ACPEvent{{Content: "x"}}})
+	got := result.(Model)
+
+	if got.agentOutputCache != nil {
+		t.Error("expected cache to remain nil when not on agent detail view")
+	}
+}
+
+func TestHandleEnter_AgentDetail_FiresOutputCmd(t *testing.T) {
+	m := testModel(viewAgents)
+	m.data.Agents = []*backend.Agent{
+		{ID: "builder-001", Config: backend.AgentConfig{KiroMode: "acp"}},
+	}
+	m.data.AgentTree = []backend.AgentTreeNode{{}}
+	m.cursor = 0
+
+	result, cmd := m.handleEnter()
+	got := result.(Model)
+
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for async agent output fetch")
+	}
+	if got.agentOutputID != "builder-001" {
+		t.Errorf("expected agentOutputID='builder-001', got %q", got.agentOutputID)
+	}
+	if got.view != viewAgentDetail {
+		t.Errorf("expected viewAgentDetail, got %d", got.view)
+	}
+}
+
+func TestDaemonResultMsg_SetsFlash(t *testing.T) {
+	m := testModel(viewAgents)
+
+	result, cmd := m.Update(daemonResultMsg{flash: "Nudged builder", isErr: false})
+	got := result.(Model)
+
+	if got.flashMsg != "Nudged builder" {
+		t.Errorf("expected flash 'Nudged builder', got %q", got.flashMsg)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd (clearFlashAfter)")
+	}
+}
+
+func TestSendMailResultMsg_SetsFlash(t *testing.T) {
+	m := testModel(viewMail)
+
+	result, cmd := m.Update(sendMailResultMsg{flash: "Sent to builder", isErr: false})
+	got := result.(Model)
+
+	if got.flashMsg != "Sent to builder" {
+		t.Errorf("expected flash 'Sent to builder', got %q", got.flashMsg)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd (clearFlashAfter)")
+	}
 }

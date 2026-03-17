@@ -160,8 +160,8 @@ func (m Model) renderAgentDetail() string {
 	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
 		lines = append(lines, "")
 		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
-		events, err := m.backend.AgentOutput(m.loomRoot, a.ID)
-		if err == nil && len(events) > 0 {
+		events := m.agentOutputCache
+		if len(events) > 0 {
 			maxW := m.width - 8
 			if maxW < 40 {
 				maxW = 40
@@ -202,7 +202,11 @@ func (m Model) renderAgentDetail() string {
 				}
 			}
 		} else {
-			lines = append(lines, "  (waiting for output...)")
+			if m.agentOutputID == a.ID {
+				lines = append(lines, "  (loading output...)")
+			} else {
+				lines = append(lines, "  (waiting for output...)")
+			}
 		}
 	}
 

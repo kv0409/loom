@@ -6,12 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/karanagi/loom/internal/dashboard/backend"
 )
-
-func fetchDiff(b backend.Backend, wtPath string) string {
-	return b.Diff(wtPath)
-}
 
 func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
@@ -78,6 +73,10 @@ func (m Model) renderDiff() string {
 	title := "DIFF"
 	if m.selectedWorktree < len(m.data.Worktrees) {
 		title = "DIFF: " + slugFromWorktree(m.data.Worktrees[m.selectedWorktree].Name)
+	}
+
+	if m.diffLoading {
+		return panel(title, renderEmpty("Loading diff…", availableWidth(m.width)), panelWidth(m.width))
 	}
 
 	if m.diffContent == "" || m.diffContent == "(no diff available)" || m.diffContent == "(no changes)" {
