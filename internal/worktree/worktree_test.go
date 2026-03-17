@@ -41,6 +41,7 @@ func TestExtractIssueID(t *testing.T) {
 		{"LOOM-001-some-slug", "LOOM-001"},
 		{"LOOM-001-01-slug", "LOOM-001-01"},
 		{"LOOM-123-45-feature-work", "LOOM-123-45"},
+		{"LOOM-001-02-03-slug", "LOOM-001-02-03"},
 		{"random-branch", ""},
 		{"", ""},
 		{"LOOM-007", "LOOM-007"},

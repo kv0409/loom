@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var wtPrefixRe = regexp.MustCompile(`^LOOM-\d+-\d+-`)
+var wtPrefixRe = regexp.MustCompile(`^LOOM-\d+(?:-\d+)+-`)
 
 func slugFromWorktree(name string) string {
 	return wtPrefixRe.ReplaceAllString(name, "")

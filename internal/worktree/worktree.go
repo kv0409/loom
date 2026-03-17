@@ -269,7 +269,7 @@ func List(loomRoot string, opts ...ListOpts) ([]*Worktree, error) {
 	return worktrees, nil
 }
 
-var issueIDRe = regexp.MustCompile(`^(LOOM-\d+(?:-\d+)?)`)
+var issueIDRe = regexp.MustCompile(`^(LOOM-\d+(?:-\d+)*)`)
 
 // ExtractIssueID returns the issue ID prefix from a worktree/branch name,
 // or empty string if the name doesn't match the convention.
