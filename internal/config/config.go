@@ -1,8 +1,6 @@
 package config
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,7 +14,7 @@ import (
 
 var unsafeChars = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
-// SanitizeBasename returns a lowercased, tmux-safe version of the directory basename.
+// SanitizeBasename returns a lowercased, safe version of the directory basename.
 func SanitizeBasename(absDir string) string {
 	name := strings.ToLower(unsafeChars.ReplaceAllString(filepath.Base(absDir), "-"))
 	name = strings.Trim(name, "-")
@@ -26,18 +24,11 @@ func SanitizeBasename(absDir string) string {
 	return name
 }
 
-// DeriveSessionName returns "loom-<sanitized-basename>-<short-hash>" for the given absolute directory path.
-func DeriveSessionName(absDir string) string {
-	h := sha256.Sum256([]byte(absDir))
-	return "loom-" + SanitizeBasename(absDir) + "-" + hex.EncodeToString(h[:])[:8]
-}
-
 type Config struct {
 	Project string        `yaml:"project"`
 	Limits  LimitsConfig  `yaml:"limits"`
 	Merge   MergeConfig   `yaml:"merge"`
 	Polling PollingConfig `yaml:"polling"`
-	Tmux    TmuxConfig    `yaml:"tmux"`
 	Kiro    KiroConfig    `yaml:"kiro"`
 	Models  ModelsConfig  `yaml:"models"`
 	MCP     MCPConfig     `yaml:"mcp"`
@@ -125,13 +116,6 @@ type PollingConfig struct {
 	IdleShutdownSeconds      int `yaml:"idle_shutdown_seconds"`
 }
 
-type TmuxConfig struct {
-	SessionName      string `yaml:"session_name"`
-	OrchestratorWindow int  `yaml:"orchestrator_window"`
-	DashboardWindow  int    `yaml:"dashboard_window"`
-	AgentWindowStart int    `yaml:"agent_window_start"`
-}
-
 type KiroConfig struct {
 	Command     string `yaml:"command"`
 	DefaultMode string `yaml:"default_mode"`
@@ -165,12 +149,6 @@ func DefaultConfig() *Config {
 			ACPOutputIntervalMs:     1000,
 			WorktreeGCIntervalMs:    300000,
 			IdleShutdownSeconds:     300,
-		},
-		Tmux: TmuxConfig{
-			SessionName:        "loom",
-			OrchestratorWindow: 0,
-			DashboardWindow:    1,
-			AgentWindowStart:   2,
 		},
 		Kiro: KiroConfig{
 			Command:     "kiro-cli",
@@ -210,10 +188,12 @@ func DefaultConfig() *Config {
 
 func (c *Config) Validate() error {
 	switch c.Kiro.DefaultMode {
-	case "chat", "acp":
+	case "acp":
 		return nil
+	case "chat":
+		return fmt.Errorf("chat mode has been removed; set kiro.default_mode to acp")
 	default:
-		return fmt.Errorf("invalid kiro.default_mode %q: must be chat or acp", c.Kiro.DefaultMode)
+		return fmt.Errorf("invalid kiro.default_mode %q: must be acp", c.Kiro.DefaultMode)
 	}
 }
 

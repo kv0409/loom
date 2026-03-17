@@ -31,7 +31,6 @@ import (
 	"github.com/karanagi/loom/internal/nudge"
 	"github.com/karanagi/loom/internal/mcp"
 	"github.com/karanagi/loom/internal/memory"
-	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
@@ -68,7 +67,6 @@ func main() {
 	}
 	startCmd.Flags().Bool("resume", false, "Auto-resume without prompting")
 	startCmd.Flags().Bool("fresh", false, "Discard previous state")
-	startCmd.Flags().String("mode", "", "Kiro mode for orchestrator: chat|acp")
 	startCmd.Flags().Bool("no-dashboard", false, "Skip auto-opening the dashboard")
 	startCmd.GroupID = "lifecycle"
 
@@ -78,7 +76,7 @@ func main() {
 		RunE:  runStop,
 	}
 	stopCmd.Flags().Bool("force", false, "Send SIGKILL instead of SIGTERM")
-	stopCmd.Flags().Bool("daemon-only", false, "Stop only the daemon; leave agents and tmux session running")
+	stopCmd.Flags().Bool("daemon-only", false, "Stop only the daemon; leave agents running")
 	stopCmd.Flags().Bool("clean", false, "Remove all worktrees including unmerged branches")
 	stopCmd.GroupID = "lifecycle"
 
@@ -194,12 +192,6 @@ func main() {
 	}
 	agentCmd.AddCommand(agentShowCmd, agentHeartbeatCmd, agentCancelCmd)
 
-	attachCmd := &cobra.Command{
-		Use:   "attach <name>",
-		Short: "Attach to agent tmux pane",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runAttach,
-	}
 	nudgeCmd := &cobra.Command{
 		Use:   "nudge <agent> <type>",
 		Short: "Send predefined nudge to agent",
@@ -388,7 +380,6 @@ func main() {
 	spawnCmd.Flags().String("spawned-by", "", "Parent agent ID (defaults to LOOM_AGENT_ID env var)")
 	spawnCmd.Flags().String("slug", "", "Worktree slug for builders")
 	spawnCmd.Flags().String("task", "", "Custom task message for the agent")
-	spawnCmd.Flags().String("mode", "", "Kiro mode override: chat|acp")
 	spawnCmd.Flags().String("model", "", "Model override: sonnet|opus|haiku (default: from config)")
 	spawnCmd.Flags().String("scope", "", "Comma-separated file/directory scope hints for builders")
 	spawnCmd.Flags().String("dispatch", "", "Comma-separated key=value dispatch directives for assigned issues")
@@ -451,7 +442,7 @@ func main() {
 		dashCmd, taskCmd,
 		issueCmd,
 		agentsCmd, agentCmd,
-		attachCmd, nudgeCmd, killCmd,
+		nudgeCmd, killCmd,
 		spawnCmd,
 		mailCmd, memoryCmd, worktreeCmd, lockCmd,
 		logCmd, configCmd,
@@ -606,7 +597,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("getting working directory: %w", err)
 	}
-	cfg.Tmux.SessionName = config.DeriveSessionName(wd)
 	cfg.Project = config.SanitizeBasename(wd)
 	if err := config.Save(".loom", cfg); err != nil {
 		return fmt.Errorf("writing config: %w", err)
@@ -1489,7 +1479,6 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Role:        %s\n", a.Role)
 	fmt.Printf("Status:      %s\n", a.Status)
 	fmt.Printf("PID:         %d\n", a.PID)
-	fmt.Printf("Tmux Target: %s\n", a.TmuxTarget)
 	fmt.Printf("Spawned By:  %s\n", a.SpawnedBy)
 	fmt.Printf("Spawned At:  %s\n", a.SpawnedAt.Format("2006-01-02 15:04:05"))
 	fmt.Printf("Heartbeat:   %s (%s)\n", a.Heartbeat.Format("2006-01-02 15:04:05"), relativeTime(a.Heartbeat))
@@ -1499,7 +1488,6 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 	if a.WorktreeName != "" {
 		fmt.Printf("Worktree:    %s\n", a.WorktreeName)
 	}
-	fmt.Printf("Kiro Mode:   %s\n", a.Config.KiroMode)
 	if a.Config.Model != "" {
 		fmt.Printf("Model:       %s\n", a.Config.Model)
 	}
@@ -1531,18 +1519,6 @@ func runAgentCancel(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runAttach(cmd *cobra.Command, args []string) error {
-	root, err := config.FindLoomRoot()
-	if err != nil {
-		return err
-	}
-	a, err := agent.Load(root, args[0])
-	if err != nil {
-		return err
-	}
-	return tmux.AttachSession(a.TmuxTarget)
-}
-
 func nudgeTypeHelp() string {
 	var b strings.Builder
 	for _, nt := range nudge.Types {
@@ -1560,18 +1536,8 @@ func runNudge(cmd *cobra.Command, args []string) error {
 	if nt == nil {
 		return fmt.Errorf("unknown nudge type %q\n\nAvailable types:\n%s", args[1], nudgeTypeHelp())
 	}
-	a, err := agent.Load(root, args[0])
-	if err != nil {
+	if err := daemon.Nudge(root, args[0], nt.Message); err != nil {
 		return err
-	}
-	if a.Config.KiroMode == "acp" {
-		if err := daemon.Nudge(root, args[0], nt.Message); err != nil {
-			return err
-		}
-	} else {
-		if err := tmux.RunInPane(a.TmuxTarget, nt.Message); err != nil {
-			return err
-		}
 	}
 	fmt.Printf("Nudged %s: %s\n", args[0], nt.Label)
 	return nil
@@ -1583,18 +1549,8 @@ func runKill(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	cleanup, _ := cmd.Flags().GetBool("cleanup")
-	a, err := agent.Load(root, args[0])
-	if err != nil {
+	if err := daemon.Kill(root, args[0], cleanup); err != nil {
 		return err
-	}
-	if a.Config.KiroMode == "acp" {
-		if err := daemon.Kill(root, args[0], cleanup); err != nil {
-			return err
-		}
-	} else {
-		if err := agent.Kill(root, args[0], cleanup); err != nil {
-			return err
-		}
 	}
 	fmt.Printf("Killed %s\n", args[0])
 	return nil
@@ -1611,7 +1567,6 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	spawnedBy, _ := cmd.Flags().GetString("spawned-by")
 	slug, _ := cmd.Flags().GetString("slug")
 	task, _ := cmd.Flags().GetString("task")
-	mode, _ := cmd.Flags().GetString("mode")
 	model, _ := cmd.Flags().GetString("model")
 	scopeStr, _ := cmd.Flags().GetString("scope")
 	dispatchStr, _ := cmd.Flags().GetString("dispatch")
@@ -1658,7 +1613,6 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		AssignedIssues: issues,
 		IssueSlug:      slug,
 		ExtraContext:    extra,
-		Mode:           mode,
 		Model:          model,
 		FileScope:      fileScope,
 	})
@@ -2024,7 +1978,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check prerequisites
-	for _, bin := range []string{"tmux", "kiro-cli", "loom"} {
+	for _, bin := range []string{"kiro-cli", "loom"} {
 		if _, err := exec.LookPath(bin); err != nil {
 			return fmt.Errorf("%s not found in PATH (required)", bin)
 		}
@@ -2058,17 +2012,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 		}
 		logFile.Close()
 
-		cfg, _ := config.Load(root)
-		session := "loom"
-		if cfg != nil {
-			session = cfg.Tmux.SessionName
-		}
 		fmt.Println("Loom started in background.")
 		fmt.Printf("  Logs:   loom logs daemon  (or tail %s)\n", logPath)
 		fmt.Printf("  Status: loom status\n")
 		fmt.Printf("  Dash:   loom dash\n")
 		fmt.Printf("  Stop:   loom stop\n")
-		fmt.Printf("  Tmux:   tmux attach -t %s\n", session)
 
 		noDash, _ := cmd.Flags().GetBool("no-dashboard")
 		if !noDash {
@@ -2082,44 +2030,17 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Create tmux session (resolve name collisions with other projects)
-	desired := cfg.Tmux.SessionName
-	if tmux.SessionExists(desired) {
-		// If we own this session (lock is ours), reuse it.
-		// Otherwise, find a unique suffix.
-		_, alive := daemon.CheckLock(root)
-		if !alive {
-			for i := 2; i <= 99; i++ {
-				candidate := fmt.Sprintf("%s-%d", desired, i)
-				if !tmux.SessionExists(candidate) {
-					fmt.Fprintf(os.Stderr, "Warning: tmux session %q already exists, using %q\n", desired, candidate)
-					cfg.Tmux.SessionName = candidate
-					break
-				}
-			}
-			if cfg.Tmux.SessionName == desired {
-				return fmt.Errorf("tmux session %q (and suffixed variants) already exist", desired)
-			}
-		}
-	}
-	if !tmux.SessionExists(cfg.Tmux.SessionName) {
-		if err := tmux.CreateSession(cfg.Tmux.SessionName); err != nil {
-			return fmt.Errorf("creating tmux session: %w", err)
-		}
-	}
-
 	if err := daemon.AcquireLock(root); err != nil {
 		return err
 	}
 
 	resume, _ := cmd.Flags().GetBool("resume")
-	mode, _ := cmd.Flags().GetString("mode")
 	if resume {
 		// Re-queue active ACP agents so watchPendingAgents re-activates them.
 		// Their kiro-cli processes died when the old daemon exited.
 		agents, _ := agent.List(root)
 		for _, a := range agents {
-			if a.Config.KiroMode == "acp" && (a.Status == "active" || a.Status == "activating") {
+			if a.Status == "active" || a.Status == "activating" {
 				agent.KillProcess(a) // clean up orphaned kiro-cli
 				a.Status = "pending-acp"
 				agent.Save(root, a)
@@ -2129,7 +2050,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 		_, err = agent.Spawn(root, agent.SpawnOpts{
 			Role:         "orchestrator",
 			ExtraContext: map[string]string{"task": "You are now online. Check for open issues with loom issue list and process any that are unassigned. Then wait for new issue notifications."},
-			Mode:         mode,
 		})
 		if err != nil {
 			daemon.ReleaseLock(root)
@@ -2382,7 +2302,6 @@ func runStop(cmd *cobra.Command, args []string) error {
 	if !daemonOnly {
 		// Kill all registered agents
 		agents, _ := agent.List(root)
-		cfg, _ := config.Load(root)
 		for _, a := range agents {
 			fmt.Printf("Killing agent %s...\n", a.ID)
 			agent.Kill(root, a.ID, clean)
@@ -2395,11 +2314,6 @@ func runStop(cmd *cobra.Command, args []string) error {
 				fmt.Printf("Removing worktree %s...\n", wt.Name)
 				worktree.Remove(root, wt.Name, true)
 			}
-		}
-
-		// Kill the tmux session
-		if cfg != nil {
-			tmux.KillSession(cfg.Tmux.SessionName)
 		}
 	}
 
@@ -2414,7 +2328,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 		sig = syscall.SIGKILL
 	}
 	if err := p.Signal(sig); err != nil {
-		// Process may already be dead from tmux kill
+		// Process may already be dead
 		daemon.ReleaseLock(root)
 	}
 

@@ -16,7 +16,6 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
-	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -284,57 +283,45 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 		}
 
 		// ACP agents: read from .output files.
-		if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-			outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
-			raw, err := os.ReadFile(outPath)
-			if err != nil {
-				continue
-			}
-			events := acp.ReadOutputFile(raw)
-			var last *acp.ACPEvent
-			for i := range events {
-				if events[i].Kind == acp.ToolSummary {
-					last = &events[i]
-				}
-			}
-			if last == nil {
-				var sb strings.Builder
-				for i := range events {
-					if events[i].Kind == acp.TokenChunk {
-						sb.WriteString(events[i].Content)
-					}
-				}
-				if sb.Len() > 0 {
-					combined := acp.ACPEvent{Kind: acp.TokenChunk, Content: sb.String()}
-					last = &combined
-				}
-			}
-			if last != nil {
-				text := last.Content
-				const maxLen = 200
-				if runes := []rune(text); len(runes) > maxLen {
-					text = "…" + string(runes[len(runes)-(maxLen-1):])
-				}
-				tool, detail := summarizeACPContent(last.Content)
-				ts := last.Timestamp
-				timed = append(timed, timedEntry{ts: ts, entry: ActivityEntry{
-					AgentID: a.ID,
-					Line:    text,
-					Time:    RelativeTime(ts),
-					Tool:    tool,
-					Detail:  detail,
-				}})
-			}
-			continue
-		}
-
-		// Chat agents: tmux pane scraping.
-		out, err := tmux.CapturePane(a.TmuxTarget)
+		outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
+		raw, err := os.ReadFile(outPath)
 		if err != nil {
 			continue
 		}
-		for _, line := range parseActivityLines(out) {
-			timed = append(timed, timedEntry{entry: buildEntry(a.ID, line, projectRoot)})
+		events := acp.ReadOutputFile(raw)
+		var last *acp.ACPEvent
+		for i := range events {
+			if events[i].Kind == acp.ToolSummary {
+				last = &events[i]
+			}
+		}
+		if last == nil {
+			var sb strings.Builder
+			for i := range events {
+				if events[i].Kind == acp.TokenChunk {
+					sb.WriteString(events[i].Content)
+				}
+			}
+			if sb.Len() > 0 {
+				combined := acp.ACPEvent{Kind: acp.TokenChunk, Content: sb.String()}
+				last = &combined
+			}
+		}
+		if last != nil {
+			text := last.Content
+			const maxLen = 200
+			if runes := []rune(text); len(runes) > maxLen {
+				text = "…" + string(runes[len(runes)-(maxLen-1):])
+			}
+			tool, detail := summarizeACPContent(last.Content)
+			ts := last.Timestamp
+			timed = append(timed, timedEntry{ts: ts, entry: ActivityEntry{
+				AgentID: a.ID,
+				Line:    text,
+				Time:    RelativeTime(ts),
+				Tool:    tool,
+				Detail:  detail,
+			}})
 		}
 	}
 
@@ -347,39 +334,6 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 		entries[i] = te.entry
 	}
 	return entries
-}
-
-func parseActivityLines(raw string) []string {
-	var results []string
-	for _, line := range strings.Split(raw, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if isActivityLine(trimmed) {
-			results = append(results, trimmed)
-		}
-	}
-	if len(results) > 20 {
-		results = results[len(results)-20:]
-	}
-	return results
-}
-
-func isActivityLine(line string) bool {
-	markers := []string{
-		"⏺", "tool", "Tool", "invoke", "Invoke",
-		"execute_bash", "fs_read", "fs_write", "grep", "glob",
-		"search_symbols", "lookup_symbols", "pattern_search",
-		"[LOOM]", "loom ", "git ", "commit", "Commit",
-		"Reading", "Writing", "Creating", "running",
-	}
-	for _, m := range markers {
-		if strings.Contains(line, m) {
-			return true
-		}
-	}
-	return false
 }
 
 // countUnread counts unread mail messages across all agent inboxes.

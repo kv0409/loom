@@ -3,7 +3,6 @@ package dashboard
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -327,9 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			agents := m.filteredAgents()
 			if m.cursor < len(agents) {
 				a := agents[m.cursor]
-				if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-					cmds = append(cmds, agentOutputCmd(m.backend, m.loomRoot, a.ID))
-				}
+				cmds = append(cmds, agentOutputCmd(m.backend, m.loomRoot, a.ID))
 			}
 		}
 		return m, tea.Batch(cmds...)
@@ -573,10 +570,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
-			if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-				return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
-			}
-			return m, nil
+			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
 		}
 	case keySearch:
 		if isSearchableView(m.view) {
@@ -684,23 +678,10 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
-			if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-				return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
-			}
+			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
 		}
 	case viewAgentDetail:
-		agents := m.filteredAgents()
-		if m.cursor < len(agents) {
-			a := agents[m.cursor]
-			// ACP agents have no tmux pane — Enter is a no-op in detail view
-			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-				c := exec.Command("loom", "attach", "--", a.ID)
-				c.Stdin = os.Stdin
-				c.Stdout = os.Stdout
-				c.Stderr = os.Stderr
-				return m, tea.ExecProcess(c, func(err error) tea.Msg { return nil })
-			}
-		}
+		// ACP-only: no tmux pane to attach to
 	case viewIssues:
 		if len(m.filteredIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
@@ -984,13 +965,6 @@ func (m Model) helpBar() string {
 	switch m.view {
 	case viewAgentDetail:
 		ctx = "[n]udge [m]essage [j/k]scroll"
-		agents := m.filteredAgents()
-		if m.cursor < len(agents) {
-			a := agents[m.cursor]
-			if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-				ctx += " [Enter]attach"
-			}
-		}
 	case viewAgents:
 		ctx = "[n]udge [m]essage [o]utput [x]kill [Enter]detail"
 	case viewKanban:

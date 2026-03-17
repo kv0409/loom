@@ -16,7 +16,6 @@ import (
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/store"
-	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -25,7 +24,6 @@ type Agent struct {
 	Role           string      `yaml:"role"`
 	Status         string      `yaml:"status"`
 	PID            int         `yaml:"pid"`
-	TmuxTarget     string      `yaml:"tmux_target"`
 	SpawnedBy      string      `yaml:"spawned_by"`
 	SpawnedAt      time.Time   `yaml:"spawned_at"`
 	Heartbeat      time.Time   `yaml:"heartbeat"`
@@ -194,13 +192,6 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	}
 
 	now := time.Now()
-	mode := opts.Mode
-	if mode == "" {
-		mode = cfg.Kiro.DefaultMode
-	}
-	if mode != "chat" && mode != "acp" {
-		return nil, fmt.Errorf("invalid mode %q: must be chat or acp", mode)
-	}
 
 	// Resolve model: CLI flag > per-role config > empty (kiro-cli default).
 	model := opts.Model
@@ -217,103 +208,31 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 		AssignedIssues: opts.AssignedIssues,
 		FileScope:      opts.FileScope,
 		Config: AgentConfig{
-			KiroMode:   mode,
+			KiroMode:   "acp",
 			MCPEnabled: cfg.MCP.Enabled,
 			Model:      model,
 		},
 	}
 
-	// Create worktree for builders before registering (both modes need it).
-	createWorktree := func() error {
-		if opts.Role != "builder" || len(opts.AssignedIssues) == 0 {
-			return nil
-		}
+	// Create worktree for builders before registering.
+	if opts.Role == "builder" && len(opts.AssignedIssues) > 0 {
 		slug := opts.IssueSlug
 		if slug == "" {
 			slug = "work"
 		}
 		wt, err := worktree.Create(loomRoot, opts.AssignedIssues[0], slug, id)
 		if err != nil {
-			return fmt.Errorf("creating worktree: %w", err)
+			return nil, fmt.Errorf("creating worktree: %w", err)
 		}
 		a.WorktreeName = wt.Name
-		return nil
 	}
 
-	// --- ACP mode: register as pending-acp, daemon activates later ---
-	if mode == "acp" {
-		a.Status = "pending-acp"
-		a.InitialTask = buildTaskMsg(loomRoot, opts)
-		if err := createWorktree(); err != nil {
-			return nil, err
-		}
-		if err := Register(loomRoot, a); err != nil {
-			return nil, fmt.Errorf("registering agent: %w", err)
-		}
-		assignIssues(loomRoot, a)
-		return a, nil
-	}
-
-	// --- Chat mode: tmux-based spawn (unchanged) ---
-	target, err := tmux.NewWindow(cfg.Tmux.SessionName, id)
-	if err != nil {
-		return nil, fmt.Errorf("creating tmux window: %w", err)
-	}
-	a.Status = "spawning"
-	a.TmuxTarget = target
-
+	a.Status = "pending-acp"
+	a.InitialTask = buildTaskMsg(loomRoot, opts)
 	if err := Register(loomRoot, a); err != nil {
-		tmux.KillWindow(target)
 		return nil, fmt.Errorf("registering agent: %w", err)
 	}
 	assignIssues(loomRoot, a)
-
-	if err := createWorktree(); err != nil {
-		Deregister(loomRoot, id)
-		tmux.KillWindow(target)
-		return nil, err
-	}
-	if a.WorktreeName != "" {
-		Save(loomRoot, a)
-	}
-
-	agentName := "loom-" + opts.Role
-	projectRoot := filepath.Dir(loomRoot)
-
-	envPrefix := fmt.Sprintf("LOOM_AGENT_ID=%s LOOM_ROOT=%s LOOM_PROJECT_ROOT=%s LOOM_ROLE=%s",
-		id, loomRoot, projectRoot, opts.Role)
-	if a.WorktreeName != "" {
-		envPrefix += fmt.Sprintf(" LOOM_WORKTREE=%s", filepath.Join(loomRoot, "worktrees", a.WorktreeName))
-	}
-	if opts.SpawnedBy != "" {
-		envPrefix += fmt.Sprintf(" LOOM_PARENT_AGENT=%s", opts.SpawnedBy)
-	}
-	if len(opts.FileScope) > 0 {
-		envPrefix += fmt.Sprintf(" LOOM_FILE_SCOPE=%s", strings.Join(opts.FileScope, ","))
-	}
-
-	taskMsg := buildTaskMsg(loomRoot, opts)
-	kiroBase := fmt.Sprintf("%s %s %s --agent %s", envPrefix, cfg.Kiro.Command, mode, agentName)
-	if taskMsg != "" {
-		escaped := strings.ReplaceAll(taskMsg, "'", "'\\''")
-		kiroBase += fmt.Sprintf(" '%s'", escaped)
-	}
-
-	var kiroCmd string
-	if opts.Role == "builder" && a.WorktreeName != "" {
-		kiroCmd = fmt.Sprintf("cd %s && %s", filepath.Join(loomRoot, "worktrees", a.WorktreeName), kiroBase)
-	} else {
-		kiroCmd = kiroBase
-	}
-
-	if err := tmux.RunInPane(target, kiroCmd); err != nil {
-		Kill(loomRoot, id, true)
-		return nil, fmt.Errorf("starting kiro: %w", err)
-	}
-
-	a.Status = "active"
-	Save(loomRoot, a)
-
 	return a, nil
 }
 
@@ -335,25 +254,17 @@ func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 	if err != nil {
 		return fmt.Errorf("loading agent %s: %w", id, err)
 	}
-	// Cascade: kill or warn children first, skipping those with unresolved issues.
+	// Cascade: kill children, skipping those with unresolved issues.
 	children, _ := listChildren(loomRoot, id)
 	for _, child := range children {
 		if resolved != nil && !childIssuesResolved(loomRoot, child, resolved) {
 			continue
 		}
-		if childSafeToKill(loomRoot, child) || child.TmuxTarget == "" {
-			killWithResolved(loomRoot, child.ID, cleanupWorktree, resolved)
-		} else {
-			tmux.SendKeys(child.TmuxTarget, "[LOOM] Shutdown")
-		}
+		killWithResolved(loomRoot, child.ID, cleanupWorktree, resolved)
 	}
-	if a.TmuxTarget != "" {
-		tmux.KillWindow(a.TmuxTarget)
-	}
-	// Kill ACP process group by PID (covers kiro-cli + aim sandbox + children).
-	if a.PID > 0 && a.Config.KiroMode == "acp" {
+	// Kill ACP process group by PID.
+	if a.PID > 0 {
 		syscall.Kill(-a.PID, syscall.SIGTERM)
-		// Brief grace period, then force kill.
 		time.Sleep(500 * time.Millisecond)
 		syscall.Kill(-a.PID, syscall.SIGKILL)
 	}
@@ -379,7 +290,7 @@ func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 // KillProcess kills the OS process (group) for a dead agent by PID.
 // Returns true if a process was found and signalled.
 func KillProcess(a *Agent) bool {
-	if a.PID <= 0 || a.Config.KiroMode != "acp" {
+	if a.PID <= 0 {
 		return false
 	}
 	// Check if process is still alive.
@@ -454,36 +365,6 @@ func childIssuesResolved(loomRoot string, a *Agent, resolved map[string]bool) bo
 		}
 	}
 	return true
-}
-
-func childSafeToKill(loomRoot string, a *Agent) bool {
-	// Check pane is idle (last non-empty line looks like a shell prompt)
-	if a.TmuxTarget != "" {
-		output, err := tmux.CapturePane(a.TmuxTarget)
-		if err == nil && !paneIsIdle(output) {
-			return false
-		}
-	}
-	// Check worktree is clean
-	if a.WorktreeName != "" {
-		wtPath := filepath.Join(loomRoot, "worktrees", a.WorktreeName)
-		stats, err := worktree.DiffStatsFor(wtPath)
-		if err == nil && stats.FilesChanged > 0 {
-			return false
-		}
-	}
-	return true
-}
-
-func paneIsIdle(output string) bool {
-	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line != "" {
-			return strings.HasSuffix(line, "$") || strings.HasSuffix(line, "%") || strings.HasSuffix(line, "#")
-		}
-	}
-	return true // empty pane is idle
 }
 
 func RenderPrompt(loomRoot string, agent *Agent, extraContext map[string]string) (string, error) {

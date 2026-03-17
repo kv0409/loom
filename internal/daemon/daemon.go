@@ -18,7 +18,6 @@ import (
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
-	"github.com/karanagi/loom/internal/tmux"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -71,34 +70,22 @@ func (d *Daemon) touchActivity() {
 	d.mu.Unlock()
 }
 
-// notify delivers a message to an agent. ACP agents receive a session/prompt;
-// chat agents receive tmux send-keys.
+// notify delivers a message to an agent via ACP session/prompt.
 func (d *Daemon) notify(a *agent.Agent, msg string) {
-	if a.Config.KiroMode == "acp" {
-		d.mu.Lock()
-		c := d.acpClients[a.ID]
-		d.mu.Unlock()
-		if c != nil && a.ACPSessionID != "" {
-			c.SendPrompt(a.ACPSessionID, msg)
-		}
-		return
-	}
-	if a.TmuxTarget != "" {
-		tmux.SendKeys(a.TmuxTarget, msg)
-		tmux.SendKeys(a.TmuxTarget, "Enter")
+	d.mu.Lock()
+	c := d.acpClients[a.ID]
+	d.mu.Unlock()
+	if c != nil && a.ACPSessionID != "" {
+		c.SendPrompt(a.ACPSessionID, msg)
 	}
 }
 
 // isAlive checks whether an agent's backing process is still running.
 func (d *Daemon) isAlive(a *agent.Agent) bool {
-	if a.Config.KiroMode == "acp" {
-		d.mu.Lock()
-		c := d.acpClients[a.ID]
-		d.mu.Unlock()
-		return c != nil && !c.Exited()
-	}
-	_, err := tmux.CapturePane(a.TmuxTarget)
-	return err == nil
+	d.mu.Lock()
+	c := d.acpClients[a.ID]
+	d.mu.Unlock()
+	return c != nil && !c.Exited()
 }
 
 func (d *Daemon) Start() error {
@@ -636,10 +623,8 @@ func (d *Daemon) watchHeartbeats() {
 					d.mu.Lock()
 					_, hasClient := d.acpClients[a.ID]
 					d.mu.Unlock()
-					log.Printf("[heartbeat] marking %s dead: isAlive=false (mode=%s hasClient=%v pid=%d)", a.ID, a.Config.KiroMode, hasClient, a.PID)
-					if a.Config.KiroMode == "acp" {
-						d.UnregisterACPClient(a.ID)
-					}
+					log.Printf("[heartbeat] marking %s dead: isAlive=false (hasClient=%v pid=%d)", a.ID, hasClient, a.PID)
+					d.UnregisterACPClient(a.ID)
 					agent.KillProcess(a)
 					// Salvage and clean up worktree before marking dead.
 					if a.WorktreeName != "" {

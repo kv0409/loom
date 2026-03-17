@@ -222,7 +222,7 @@ func TestIsMerged_SquashFallback(t *testing.T) {
 		} `yaml:"kiro"`
 	}{}
 	cfg.Merge.Strategy = "squash"
-	cfg.Kiro.DefaultMode = "chat"
+	cfg.Kiro.DefaultMode = "acp"
 	store.WriteYAML(filepath.Join(loomRoot, "config.yaml"), &cfg)
 
 	// Write an issue with MergedAt set.
@@ -268,7 +268,7 @@ func TestIsMerged_SquashFallback_NoMergedAt(t *testing.T) {
 		} `yaml:"kiro"`
 	}{}
 	cfg.Merge.Strategy = "squash"
-	cfg.Kiro.DefaultMode = "chat"
+	cfg.Kiro.DefaultMode = "acp"
 	store.WriteYAML(filepath.Join(loomRoot, "config.yaml"), &cfg)
 
 	iss := &issue.Issue{ID: "LOOM-004", Status: "in-progress"}

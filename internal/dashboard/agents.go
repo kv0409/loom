@@ -130,15 +130,11 @@ func (m Model) renderAgentDetail() string {
 		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), fmtTime(a.Heartbeat, false)))
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
 		a.SpawnedBy, fmtTimeFull(a.SpawnedAt), a.PID))
-	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-		modeStr := "ACP"
-		if a.Config.Model != "" {
-			modeStr += " | Model: " + a.Config.Model
-		}
-		lines = append(lines, "  "+modeStr)
-	} else if a.TmuxTarget != "" {
-		lines = append(lines, fmt.Sprintf("  Tmux: %s", a.TmuxTarget))
+	modeStr := "ACP"
+	if a.Config.Model != "" {
+		modeStr += " | Model: " + a.Config.Model
 	}
+	lines = append(lines, "  "+modeStr)
 
 	if len(a.AssignedIssues) > 0 {
 		lines = append(lines, "")
@@ -157,9 +153,8 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	// ACP output — rendered by event type
-	if a.Config.KiroMode == "acp" || a.TmuxTarget == "" {
-		lines = append(lines, "")
-		lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
+	lines = append(lines, "")
+	lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
 		events := m.agentOutputCache
 		if len(events) > 0 {
 			maxW := detailContentWidth(m.width)
@@ -205,7 +200,6 @@ func (m Model) renderAgentDetail() string {
 				lines = append(lines, "  (waiting for output...)")
 			}
 		}
-	}
 
 	// Recent mail
 	lines = append(lines, "")
@@ -237,11 +231,7 @@ func (m Model) renderAgentDetail() string {
 	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	hint := ""
-	if a.Config.KiroMode != "acp" && a.TmuxTarget != "" {
-		hint = " [Enter]attach"
-	}
-	return panel("Agent: "+a.ID+" [n]udge"+hint+scrollInfo, viewContent, panelWidth(m.width))
+	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, viewContent, panelWidth(m.width))
 }
 
 // wrapEventContent word-wraps content into indented lines for the detail view.

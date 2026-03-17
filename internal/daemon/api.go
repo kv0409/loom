@@ -7,11 +7,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 
-	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
-	"github.com/karanagi/loom/internal/tmux"
 )
 
 // SockPath returns the daemon Unix socket path for a given loom root.
@@ -122,9 +119,8 @@ func (d *Daemon) apiKill(req Request) Response {
 	if err != nil {
 		return errResp("agent not found: " + req.AgentID)
 	}
-	if a.Config.KiroMode == "acp" {
-		d.UnregisterACPClient(req.AgentID)
-	}
+	d.UnregisterACPClient(req.AgentID)
+	_ = a // loaded to verify existence
 	if err := agent.Kill(d.LoomRoot, req.AgentID, req.Cleanup); err != nil {
 		return errResp("kill failed: " + err.Error())
 	}
@@ -135,9 +131,6 @@ func (d *Daemon) apiCancel(req Request) Response {
 	a, err := agent.Load(d.LoomRoot, req.AgentID)
 	if err != nil {
 		return errResp("agent not found: " + req.AgentID)
-	}
-	if a.Config.KiroMode != "acp" {
-		return errResp("session/cancel only supported for ACP agents")
 	}
 	if a.ACPSessionID == "" {
 		return errResp("agent has no active ACP session")
@@ -155,7 +148,7 @@ func (d *Daemon) apiCancel(req Request) Response {
 }
 
 func (d *Daemon) apiOutput(req Request) Response {
-	a, err := agent.Load(d.LoomRoot, req.AgentID)
+	_, err := agent.Load(d.LoomRoot, req.AgentID)
 	if err != nil {
 		return errResp("agent not found: " + req.AgentID)
 	}
@@ -163,23 +156,5 @@ func (d *Daemon) apiOutput(req Request) Response {
 	if lines <= 0 {
 		lines = 50
 	}
-	if a.Config.KiroMode == "acp" {
-		return okResp(d.GetACPOutput(req.AgentID, lines))
-	}
-	if a.TmuxTarget == "" {
-		return errResp("no tmux target for agent")
-	}
-	out, err := tmux.CapturePane(a.TmuxTarget)
-	if err != nil {
-		return errResp("capture failed: " + err.Error())
-	}
-	parts := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(parts) > lines {
-		parts = parts[len(parts)-lines:]
-	}
-	events := make([]acp.ACPEvent, len(parts))
-	for i, line := range parts {
-		events[i] = acp.ACPEvent{Kind: acp.TokenChunk, Content: line}
-	}
-	return okResp(events)
+	return okResp(d.GetACPOutput(req.AgentID, lines))
 }
