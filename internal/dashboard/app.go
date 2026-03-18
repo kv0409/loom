@@ -737,7 +737,9 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					m.cursor = i
 					m.view = viewAgentDetail
 					m.detailScroll = 0
-					break
+					m.agentOutputCache = nil
+					m.agentOutputID = a.ID
+					return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
 				}
 			}
 		}

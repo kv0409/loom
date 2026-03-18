@@ -664,3 +664,37 @@ func TestComposeReply_TargetsSortedSender(t *testing.T) {
 		t.Fatalf("expected reply to critical-sender, got %q", got.composeData.To)
 	}
 }
+func TestHandleEnter_ActivityToAgentDetail_InitializesOutputState(t *testing.T) {
+	m := testModel(viewActivity)
+	m.data.Agents = []*backend.Agent{
+		{ID: "builder-001"},
+		{ID: "builder-002"},
+	}
+	m.data.AgentTree = []backend.AgentTreeNode{{}, {}}
+	m.data.Activity = []backend.ActivityEntry{
+		{AgentID: "builder-002", Line: "Called execute_bash"},
+	}
+	// Simulate stale cache from a previously viewed agent.
+	m.agentOutputCache = []backend.ACPEvent{{Kind: backend.TokenChunk, Content: "stale"}}
+	m.agentOutputID = "builder-001"
+	m.cursor = 0
+
+	result, cmd := m.handleEnter()
+	got := result.(Model)
+
+	if got.view != viewAgentDetail {
+		t.Fatalf("expected viewAgentDetail, got %d", got.view)
+	}
+	if got.agentOutputID != "builder-002" {
+		t.Errorf("expected agentOutputID='builder-002', got %q", got.agentOutputID)
+	}
+	if got.agentOutputCache != nil {
+		t.Error("expected agentOutputCache cleared to nil")
+	}
+	if got.detailScroll != 0 {
+		t.Errorf("expected detailScroll=0, got %d", got.detailScroll)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for immediate agent output fetch")
+	}
+}
