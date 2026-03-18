@@ -3,7 +3,6 @@ package daemon
 import (
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -79,25 +78,4 @@ func isLoomProcess(pid int) bool {
 	return strings.Contains(cmd, "loom")
 }
 
-// KillStaleDaemons finds and kills any orphaned "loom start" daemon processes.
-// Deprecated: use Doctor() instead. This delegates to Doctor for backward compat.
-func KillStaleDaemons() {
-	// We don't have loomRoot here, so fall back to the original pgrep approach.
-	// Callers with a loomRoot should use Doctor() directly.
-	self := os.Getpid()
-	out, err := exec.Command("pgrep", "-f", "loom start").Output()
-	if err != nil {
-		return
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		pid, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil || pid == self || pid == os.Getppid() {
-			continue
-		}
-		if !isLoomProcess(pid) {
-			continue
-		}
-		log.Printf("[daemon] killing stale daemon process pid=%d", pid)
-		syscall.Kill(pid, syscall.SIGTERM)
-	}
-}
+
