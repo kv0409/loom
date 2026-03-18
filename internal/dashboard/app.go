@@ -713,6 +713,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor < len(memories) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewMemoryDetail
+			m.detailScroll = 0
 		}
 	case viewActivity:
 		activity := m.filteredActivity()

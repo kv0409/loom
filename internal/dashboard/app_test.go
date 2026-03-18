@@ -518,6 +518,38 @@ func TestClampCursor_EnsuresNonNegativeScroll(t *testing.T) {
 	}
 }
 
+func TestHandleEnter_MemoryDetail_ResetsScroll(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "DEC-001", Type: "decision", Title: "First"},
+		{ID: "DEC-002", Type: "decision", Title: "Second"},
+	}
+	m.cursor = 0
+
+	// Open first memory and simulate scrolling down.
+	result, _ := m.handleEnter()
+	got := result.(Model)
+	if got.view != viewMemoryDetail {
+		t.Fatalf("expected viewMemoryDetail, got %d", got.view)
+	}
+	if got.detailScroll != 0 {
+		t.Fatalf("expected detailScroll=0 on first open, got %d", got.detailScroll)
+	}
+	got.detailScroll = 15 // simulate scrolling
+
+	// Go back to memory list and open second entry.
+	got.switchView(viewMemory)
+	got.cursor = 1
+	result2, _ := got.handleEnter()
+	got2 := result2.(Model)
+	if got2.view != viewMemoryDetail {
+		t.Fatalf("expected viewMemoryDetail, got %d", got2.view)
+	}
+	if got2.detailScroll != 0 {
+		t.Errorf("expected detailScroll reset to 0 on new memory entry, got %d", got2.detailScroll)
+	}
+}
+
 func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 	tests := []struct {
 		name             string
