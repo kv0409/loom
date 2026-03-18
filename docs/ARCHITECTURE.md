@@ -2,7 +2,7 @@
 
 ## Overview
 
-Loom is a standalone CLI tool (single Go binary) that orchestrates multiple kiro-cli agent sessions via tmux. It provides built-in issue tracking, async mail, shared memory, worktree management, and a TUI dashboard.
+Loom is a standalone CLI tool (single Go binary) that orchestrates multiple kiro-cli agent sessions via ACP (Agent Control Protocol). It provides built-in issue tracking, async mail, shared memory, worktree management, and a TUI dashboard.
 
 ## System Diagram
 
@@ -18,20 +18,20 @@ Loom is a standalone CLI tool (single Go binary) that orchestrates multiple kiro
                     │   (Go binary)    │
                     └────────┬─────────┘
                              │
-              Writes to .loom/issues/ + notifies via tmux send-keys
+              Writes to .loom/issues/ + manages ACP subprocesses
                              │
               ┌──────────────▼──────────────┐
-              │  tmux session: loom          │
+              │  ACP-managed agent processes │
               │                              │
               │  ┌────────────────────────┐  │
-              │  │ Window 0: Orchestrator │  │
+              │  │ Orchestrator           │  │
               │  │ (persistent kiro-cli)  │  │
               │  └───────────┬────────────┘  │
               │              │               │
               │    Reads issues, spawns leads │
               │              │               │
               │  ┌───────────▼────────────┐  │
-              │  │ Window 2+: Lead Agents │  │
+              │  │ Lead Agents            │  │
               │  │ (kiro-cli per feature) │  │
               │  └───────────┬────────────┘  │
               │              │               │
@@ -56,7 +56,7 @@ Loom is a standalone CLI tool (single Go binary) that orchestrates multiple kiro
 1. Human runs: loom issue create "Build auth system" --priority high
 2. Loom CLI writes .loom/issues/LOOM-001.yaml
 3. Loom daemon (watcher goroutine) detects new issue file
-4. Daemon sends tmux keys to orchestrator: "[LOOM] New issue LOOM-001. Run: loom issue show LOOM-001"
+4. Daemon sends ACP prompt to orchestrator: "[LOOM] New issue LOOM-001. Run: loom issue show LOOM-001"
 5. Orchestrator reads issue, creates a plan, spawns lead agent
 6. Lead decomposes into sub-issues (LOOM-001-01, LOOM-001-02, ...)
 7. Lead spawns workers, assigns sub-issues
@@ -75,7 +75,7 @@ Agent A                    .loom/mail/              Agent B
    │                           │                       │
    │                    Daemon detects new file         │
    │                           │                       │
-   │                    tmux send-keys to B's pane      │
+   │                    ACP prompt to B's process       │
    │                           │                       │
    │                           └──────────────────────► │
    │                                    "[LOOM] Mail"   │
@@ -102,7 +102,7 @@ Agent A                    .loom/mail/              Agent B
 │  │          Internal Modules             │  │
 │  │                                       │  │
 │  │  agent/    issue/    mail/    memory/  │  │
-│  │  worktree/ tmux/     config/  store/   │  │
+│  │  worktree/ acp/      config/  store/   │  │
 │  └───────────────────┬───────────────────┘  │
 │                      │                      │
 │              ┌───────▼───────┐              │
@@ -117,7 +117,7 @@ The daemon is a background goroutine started by `loom start`. It:
 1. Polls `.loom/issues/` for new/changed issue files (every 2s)
 2. Polls `.loom/mail/inbox/*/` for new messages (every 2s)
 3. Checks agent heartbeats (every 30s)
-4. Delivers notifications via tmux send-keys
+4. Delivers notifications via ACP prompts
 5. Cleans up dead agents (stale heartbeat > configurable timeout)
 
 The daemon runs inside the `loom start` process. It does NOT require a separate process.
@@ -143,7 +143,7 @@ See [Integration](INTEGRATION.md) for details.
 ├── hive.lock                      # PID lock file (prevent double-start)
 │
 ├── agents/                        # Agent registry + state
-│   ├── orchestrator.yaml          # {id, role, status, pid, tmux_target, heartbeat}
+│   ├── orchestrator.yaml          # {id, role, status, pid, heartbeat}
 │   ├── lead-auth.yaml
 │   └── builder-017.yaml
 │
@@ -197,11 +197,11 @@ See [Integration](INTEGRATION.md) for details.
 
 ## Concurrency Model
 
-- Each agent is a separate kiro-cli process in its own tmux pane
+- Each agent is a separate kiro-cli ACP subprocess managed by the daemon
 - The loom daemon manages them via goroutines (one monitor goroutine per agent)
 - File-based communication (YAML files in .loom/) — no shared memory, no sockets between agents
 - File locks in `.loom/locks/` prevent conflicting edits across builders
-- The daemon is the only process that writes tmux send-keys notifications
+- The daemon is the only process that sends ACP prompts for notifications
 
 ## Error Recovery
 
@@ -241,14 +241,8 @@ polling:
   issue_interval_ms: 2000
   mail_interval_ms: 2000
   heartbeat_interval_ms: 30000
-tmux:
-  session_name: loom
-  orchestrator_window: 0
-  dashboard_window: 1
-  agent_window_start: 2
 kiro:
   command: kiro-cli       # path to kiro-cli binary
-  default_mode: chat      # chat | acp (if supported)
 mcp:
   enabled: true           # run built-in MCP server for agents
   port: 0                 # 0 = auto-assign

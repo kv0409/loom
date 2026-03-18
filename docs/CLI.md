@@ -16,8 +16,7 @@ loom init --config path/to/config.yaml   # use custom config
 
 ### `loom start`
 Launch the orchestrator and daemon.
-- Creates tmux session `loom`
-- Spawns orchestrator kiro-cli in window 0
+- Spawns orchestrator kiro-cli as ACP subprocess
 - Starts daemon (issue watcher, mail notifier, heartbeat monitor)
 - If `.loom/hive.lock` exists from a crash, offers to resume or start fresh
 
@@ -33,7 +32,7 @@ Graceful shutdown.
 - Waits for in-progress work to reach a checkpoint (configurable timeout)
 - Archives active mail
 - Preserves worktrees (does NOT auto-delete)
-- Kills tmux session
+- Kills agent processes
 - Removes `hive.lock`
 
 ```bash
@@ -135,16 +134,8 @@ Detail view of one agent.
 loom agent show builder-017
 ```
 
-### `loom attach <name>`
-Attach to an agent's tmux pane. You can observe and type directly into their kiro session.
-
-```bash
-loom attach builder-017
-# Ctrl+B D to detach back to your terminal
-```
-
 ### `loom nudge <name> <message>`
-Send an inline message to an agent's kiro session (via tmux send-keys).
+Send an inline message to an agent via ACP prompt.
 
 ```bash
 loom nudge builder-017 "Try using the existing auth middleware in src/middleware/auth.ts"

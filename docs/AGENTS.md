@@ -8,7 +8,6 @@
 - **Purpose**: Receives issues, creates plans, spawns leads, monitors progress
 - **Writes code**: Never
 - **Worktree**: None (works in main repo, read-only)
-- **Tmux**: Window 0
 
 ### Lead
 - **Count**: 1 per epic/major feature
@@ -16,7 +15,6 @@
 - **Purpose**: Decomposes feature into tasks, spawns workers, manages merges, resolves conflicts
 - **Writes code**: Only merge conflict resolution
 - **Worktree**: None (coordinates, doesn't build)
-- **Tmux**: Dedicated window per lead
 
 ### Builder
 - **Count**: 1+ per lead (up to `max_agents_per_lead`)
@@ -24,7 +22,6 @@
 - **Purpose**: Implements one task in isolation
 - **Writes code**: Yes, exclusively in assigned worktree
 - **Worktree**: One dedicated worktree per builder
-- **Tmux**: Pane within lead's window (or separate window if configured)
 
 ### Reviewer
 - **Count**: 1 per review request
@@ -32,7 +29,6 @@
 - **Purpose**: Reviews builder's work, reports findings
 - **Writes code**: Never
 - **Worktree**: Reads builder's worktree (read-only)
-- **Tmux**: Pane within lead's window
 
 ### Explorer
 - **Count**: As needed
@@ -40,7 +36,6 @@
 - **Purpose**: Searches codebase, finds patterns, traces call chains, gathers context
 - **Writes code**: Never
 - **Worktree**: None (reads main repo)
-- **Tmux**: Pane within requester's window
 
 ### Researcher
 - **Count**: As needed
@@ -48,7 +43,6 @@
 - **Purpose**: External research — docs, best practices, OSS examples
 - **Writes code**: Never
 - **Worktree**: None
-- **Tmux**: Pane within requester's window
 
 ---
 
@@ -60,8 +54,7 @@
                     └────┬────┘
                          │
               Create agent YAML in .loom/agents/
-              Create tmux pane
-              Start kiro-cli with role prompt
+              Start kiro-cli ACP subprocess
               Create mailbox in .loom/mail/inbox/
                          │
                     ┌────▼────┐
@@ -86,7 +79,7 @@
               Archive mail
               Remove worktree (if builder, after merge)
               Delete agent YAML
-              Kill tmux pane
+              Kill ACP subprocess
               Remove mailbox
                          │
                     ┌────▼────┐
@@ -112,7 +105,6 @@ id: builder-017
 role: builder                    # orchestrator | lead | builder | reviewer | explorer | researcher
 status: active                   # spawning | idle | active | blocked | done | dead
 pid: 54321                       # kiro-cli process ID
-tmux_target: "loom:3.1"          # tmux session:window.pane
 spawned_by: lead-auth            # parent agent
 spawned_at: 2026-03-09T18:40:00-04:00
 heartbeat: 2026-03-09T18:52:30-04:00
@@ -123,7 +115,6 @@ file_scope:
   - src/auth/login.ts
   - src/auth/types.ts
 config:
-  kiro_mode: chat                # chat | acp
   mcp_enabled: true
 ```
 
@@ -134,25 +125,12 @@ config:
 When the daemon spawns an agent:
 
 1. Generate agent ID: `{role}-{3-digit-counter}` (e.g., `builder-017`)
-2. Write agent YAML to `.loom/agents/{id}.yaml`
+2. Write agent YAML to `.loom/agents/{id}.yaml` with `status: pending-acp`
 3. Create mailbox directory `.loom/mail/inbox/{id}/`
 4. If builder: create worktree (see [Worktrees](WORKTREES.md))
 5. If builder and `--scope` was provided: store file-scope hints in agent YAML (`file_scope` field) and set `LOOM_FILE_SCOPE` in the agent's environment
-6. Create tmux pane:
-   ```bash
-   tmux new-window -t loom -n {id}
-   # or
-   tmux split-window -t loom:{lead-window}
-   ```
-7. Start kiro-cli in the pane:
-   ```bash
-   tmux send-keys -t loom:{target} "kiro-cli chat" Enter
-   ```
-8. Wait for kiro-cli to initialize
-9. Send the agent's prompt via tmux send-keys:
-   ```bash
-   tmux send-keys -t loom:{target} "{rendered prompt template}" Enter
-   ```
+6. Daemon's `watchPendingAgents()` detects the pending-acp agent and creates an ACP client subprocess
+7. Send the agent's prompt via ACP protocol
 
 ### Prompt Injection
 

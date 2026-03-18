@@ -10,7 +10,7 @@ Async message passing between agents. File-based (YAML files on disk), no socket
 2. **Critical points only** — agents send mail at defined trigger points (see below)
 3. **Inspectable** — all messages are human-readable YAML files
 4. **Auditable** — processed messages move to archive, never deleted
-5. **Simple delivery** — write file to inbox → daemon notifies via tmux send-keys
+5. **Simple delivery** — write file to inbox → daemon notifies via ACP prompt
 
 ## Directory Structure
 
@@ -100,10 +100,9 @@ Agents are instructed via their prompt templates to send mail at these points:
 1. Sender runs: `loom mail send <to> "<subject>" --type <type> --body "<body>"`
 2. Loom CLI writes YAML file to `.loom/mail/inbox/<to>/<timestamp>-<from>-<slug>.yaml`
 3. Daemon's mail watcher goroutine detects new file (polling every 2s)
-4. Daemon sends tmux notification:
-   ```bash
-   tmux send-keys -t <agent-tmux-target> \
-     "[LOOM] New mail from <from>: <subject>. Run: loom mail read" Enter
+4. Daemon sends ACP prompt to agent:
+   ```
+   [LOOM] New mail from <from>: <subject>. Run: loom mail read
    ```
 5. Agent reads mail, processes it, marks as read
 

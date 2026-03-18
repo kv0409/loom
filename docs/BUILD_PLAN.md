@@ -51,30 +51,29 @@ Build incrementally. Each phase produces a usable (if incomplete) tool.
 
 **Milestone**: `loom worktree` commands manage git worktrees in `.loom/worktrees/`.
 
-### Phase 6: Tmux Integration
-- [ ] Tmux session create/destroy
-- [ ] Window/pane management (create, kill, list)
-- [ ] Send-keys wrapper (for notifications and nudges)
-- [ ] Attach wrapper
-- [ ] Session detection (is loom already running?)
+### Phase 6: ACP Integration
+- [ ] ACP client subprocess management (spawn, kill, communicate)
+- [ ] Structured prompt/response protocol
+- [ ] Output capture to .output files
+- [ ] Process group management (kill -PID for cleanup)
 
-**Milestone**: Loom can create tmux sessions and send keys to panes.
+**Milestone**: Loom can create ACP subprocesses and send structured prompts.
 
 ### Phase 7: Agent Lifecycle
-- [ ] Agent spawn (create YAML, tmux pane, start kiro-cli, inject prompt)
+- [ ] Agent spawn (create YAML with pending-acp status, daemon picks up and creates ACP subprocess, inject prompt)
 - [ ] Agent registry (list, show, status)
 - [ ] Agent kill (cleanup)
 - [ ] Heartbeat update + monitoring
 - [ ] Prompt template rendering (Go templates with agent variables)
-- [ ] `loom nudge` (send-keys to agent pane)
-- [ ] `loom attach` (attach to agent pane)
+- [ ] `loom nudge` (ACP prompt to agent)
 
-**Milestone**: Can spawn a kiro-cli agent in tmux with a rendered prompt.
+**Milestone**: Can spawn a kiro-cli agent as ACP subprocess with a rendered prompt.
 
 ### Phase 8: Daemon
 - [ ] Issue watcher (poll `.loom/issues/` for new files)
-- [ ] Mail notifier (poll inboxes, send tmux notifications)
+- [ ] Mail notifier (poll inboxes, send ACP notifications)
 - [ ] Heartbeat monitor (detect dead agents)
+- [ ] Pending-acp agent watcher (`watchPendingAgents()`)
 - [ ] PID lock file (`hive.lock`)
 - [ ] Graceful shutdown
 - [ ] Crash recovery (detect orphaned state on start)

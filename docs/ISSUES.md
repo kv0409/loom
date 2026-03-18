@@ -11,7 +11,7 @@ Human creates issue ──► .loom/issues/LOOM-001.yaml written
                                     │
                         Daemon detects new file (polling)
                                     │
-                        Daemon notifies orchestrator via tmux
+                        Daemon notifies orchestrator via ACP
                                     │
                         Orchestrator reads issue
                         Orchestrator creates plan
@@ -114,7 +114,7 @@ Valid transitions:
 
 The daemon polls `.loom/issues/` every 2 seconds. When it detects:
 - A new file with `status: open` and no `assignee`
-- It sends a tmux notification to the orchestrator:
+- It sends an ACP prompt to the orchestrator:
   ```
   [LOOM] New issue LOOM-003: "Fix API timeout". Run: loom issue show LOOM-003
   ```

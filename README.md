@@ -2,7 +2,7 @@
 
 A multi-agent orchestration system for kiro-cli. One binary, zero runtime dependencies.
 
-Loom spawns and coordinates AI agents across tmux sessions. An orchestrator breaks work into features, leads decompose features into tasks, and workers (builders, reviewers, explorers, researchers) execute in isolation using git worktrees. Agents communicate through an async mail system and share institutional knowledge through a built-in memory store.
+Loom spawns and coordinates AI agents as ACP (Agent Control Protocol) subprocesses. An orchestrator breaks work into features, leads decompose features into tasks, and workers (builders, reviewers, explorers, researchers) execute in isolation using git worktrees. Agents communicate through an async mail system and share institutional knowledge through a built-in memory store.
 
 ## Core Concepts
 
@@ -17,7 +17,6 @@ Loom spawns and coordinates AI agents across tmux sessions. An orchestrator brea
 ## System Requirements
 
 - `git` ≥ 2.20
-- `tmux` ≥ 3.0
 - `kiro-cli`
 
 ## Install
@@ -36,7 +35,7 @@ loom update
 
 - **Language**: Go
 - **External deps**: cobra (CLI), bubbletea+lipgloss (TUI), yaml.v3
-- **Everything else**: stdlib + shelling out to git/tmux
+- **Everything else**: stdlib + shelling out to git
 
 ## Documentation
 
@@ -63,7 +62,7 @@ loom/
 │   ├── mail/                     # Mail system
 │   ├── memory/                   # Decision/discovery store
 │   ├── orchestrator/             # Core orchestration loop
-│   ├── tmux/                     # tmux wrapper
+│   ├── acp/                      # ACP client wrapper
 │   ├── worktree/                 # Git worktree lifecycle
 │   └── store/                    # YAML file helpers
 ├── mcp/                          # Loom MCP server (for agent integration)

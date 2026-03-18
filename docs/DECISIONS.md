@@ -14,16 +14,16 @@ Decisions made during the planning session on 2026-03-09.
 **Rationale**: Goroutines + channels map perfectly to agent orchestration. bubbletea is best-in-class TUI. Single binary, no runtime. 3-4x faster development than Rust for this use case. The bottleneck is LLM inference, not the orchestrator.
 **Alternatives considered**: Rust (overkill perf, slower dev), TypeScript (requires runtime).
 
-## DD-003: Agent Sessions — Interactive kiro-cli in tmux
+## DD-003: Agent Sessions — ACP subprocesses
 
-**Decision**: Spawn agents as regular interactive kiro-cli sessions in tmux panes.
-**Rationale**: Agents need bidirectional communication (receive mail/nudges, send updates). `--no-interactive` blocks inbound. Interactive + tmux send-keys enables both directions. The `loom` CLI becomes the universal interface for humans and agents.
-**Alternatives considered**: `--no-interactive` (no inbound), ACP mode (unclear support).
+**Decision**: Spawn agents as ACP (Agent Control Protocol) subprocesses managed by the daemon.
+**Rationale**: ACP provides structured prompt/response communication over stdin/stdout. The daemon manages agent processes directly, with output written to .output files. Eliminates external tmux dependency.
+**Alternatives considered**: `--no-interactive` (no inbound), tmux send-keys (removed in LOOM-005).
 
 ## DD-004: Communication — File-based async mail
 
-**Decision**: YAML files in `.loom/mail/inbox/` with daemon polling + tmux send-keys notification.
-**Rationale**: No sockets, no database, fully inspectable, auditable. Daemon polls every 2s and notifies agents via tmux. Simple, robust, zero additional dependencies.
+**Decision**: YAML files in `.loom/mail/inbox/` with daemon polling + ACP prompt notification.
+**Rationale**: No sockets, no database, fully inspectable, auditable. Daemon polls every 2s and notifies agents via ACP. Simple, robust, zero additional dependencies.
 **Alternatives considered**: Unix sockets (complex), shared memory (fragile), database (overkill).
 
 ## DD-005: Data Format — YAML
@@ -35,7 +35,7 @@ Decisions made during the planning session on 2026-03-09.
 ## DD-006: Minimal Dependencies
 
 **Decision**: 3 external dependency trees only: cobra, bubbletea ecosystem, yaml.v3.
-**Rationale**: User requirement. Everything else from Go stdlib or shelling out to git/tmux. Keeps binary small (~8-10MB), build fast, supply chain minimal.
+**Rationale**: User requirement. Everything else from Go stdlib or shelling out to git. Keeps binary small (~8-10MB), build fast, supply chain minimal.
 
 ## DD-007: Agent Integration — MCP Server (primary) + CLI (fallback)
 
@@ -56,3 +56,9 @@ Decisions made during the planning session on 2026-03-09.
 
 **Decision**: All git worktrees stored under `.loom/worktrees/` with branch prefix `loom/`.
 **Rationale**: Keeps main directory clean. `.loom/` is gitignored. `loom/` branch prefix makes cleanup easy (`git branch --list 'loom/*'`). Worktree name includes issue ID for traceability.
+
+## DD-011: Removed tmux/chat mode in favor of ACP-only (LOOM-005)
+
+**Decision**: Remove all tmux and chat mode code. ACP is now the sole execution mode.
+**Rationale**: ACP provides daemon-managed subprocesses with structured output, eliminating the tmux dependency. Agents spawn via the pending-acp status pattern, communicate via ACP protocol (structured prompts/responses), and output is written to .output files. Kill uses `syscall.Kill(-PID, SIGTERM/SIGKILL)` on the process group.
+**Removed**: `loom attach`, `--mode` flag, `TmuxTarget` field, `kiro_mode: chat` config, tmux session management.

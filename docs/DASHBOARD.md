@@ -10,7 +10,7 @@ Full TUI dashboard built with bubbletea + lipgloss. Provides real-time visibilit
 loom dash
 ```
 
-Runs in the current terminal. Does NOT require the tmux session (reads from `.loom/` files directly).
+Runs in the current terminal. Reads from `.loom/` files directly.
 
 ## Main View
 
@@ -75,7 +75,6 @@ Runs in the current terminal. Does NOT require the tmux session (reads from `.lo
 │                                                                        │
 │  Role: builder          Status: ● active       Heartbeat: 3s ago      │
 │  Spawned by: lead-auth  Spawned at: 18:40:00   PID: 54321             │
-│  Tmux: loom:3.1                                                        │
 │                                                                        │
 │  ASSIGNED ISSUES                                                       │
 │  └── LOOM-001-01 [in-progress] Login form validation                  │
@@ -92,7 +91,7 @@ Runs in the current terminal. Does NOT require the tmux session (reads from `.lo
 │  src/components/LoginForm.tsx                                          │
 │  src/utils/validation.ts                                               │
 │                                                                        │
-│  [a]ttach  [n]udge  [k]ill  [Esc] back                               │
+│  [n]udge  [k]ill  [Esc] back                               │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -146,14 +145,13 @@ Runs in the current terminal. Does NOT require the tmux session (reads from `.lo
 
 ## Refresh
 
-The dashboard polls `.loom/` files every 1 second for updates. No websockets, no IPC — just filesystem reads. This keeps it simple and means the dashboard can run from any terminal, not just within the tmux session.
+The dashboard polls `.loom/` files every 1 second for updates. No websockets, no IPC — just filesystem reads. This keeps it simple and means the dashboard can run from any terminal.
 
 ## Interactions from Dashboard
 
 | Action | How | Effect |
 |---|---|---|
-| Nudge agent | Select agent → `n` → type message → Enter | Sends tmux keys to agent's pane |
-| Attach to agent | Select agent → `a` | Opens agent's tmux pane (exits dashboard) |
+| Nudge agent | Select agent → `n` → type message → Enter | Sends ACP prompt to agent |
 | Kill agent | Select agent → `k` → confirm | Stops agent, preserves worktree |
 | Create issue | `i` view → `c` → fill form | Creates issue, triggers auto-pickup |
 | Search memory | `d` view → `/` → type query | Keyword search across all memory |
