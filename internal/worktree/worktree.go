@@ -12,6 +12,7 @@ import (
 
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/store"
 )
 
 type Worktree struct {
@@ -257,6 +258,14 @@ func List(loomRoot string, opts ...ListOpts) ([]*Worktree, error) {
 		worktrees = append(worktrees, wt)
 	}
 
+	// Derive agent ownership from the agent registry.
+	owners := agentOwnerMap(loomRoot)
+	for _, wt := range worktrees {
+		if id, ok := owners[wt.Name]; ok {
+			wt.Agent = id
+		}
+	}
+
 	if filter.Issue != "" {
 		var filtered []*Worktree
 		for _, wt := range worktrees {
@@ -280,10 +289,35 @@ func ExtractIssueID(name string) string {
 	return ""
 }
 
-// parseNameConvention extracts agent/issue from naming convention.
+// parseNameConvention extracts issue from naming convention.
 // Name format: <issueID>-<slug>
 func parseNameConvention(wt *Worktree) {
 	wt.Issue = ExtractIssueID(wt.Name)
+}
+
+// agentOwnerMap reads agent YAML files and returns a map from worktree name to agent ID.
+// Uses a minimal struct to avoid importing the agent package (which imports worktree).
+func agentOwnerMap(loomRoot string) map[string]string {
+	dir := filepath.Join(loomRoot, "agents")
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	m := make(map[string]string)
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".yaml") {
+			continue
+		}
+		var stub struct {
+			ID       string `yaml:"id"`
+			Worktree string `yaml:"worktree"`
+		}
+		if err := store.ReadYAML(filepath.Join(dir, f.Name()), &stub); err != nil || stub.Worktree == "" {
+			continue
+		}
+		m[stub.Worktree] = stub.ID
+	}
+	return m
 }
 
 func Show(loomRoot string, name string) (*Worktree, *DiffStats, error) {
