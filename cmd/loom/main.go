@@ -436,6 +436,13 @@ func main() {
 		RunE:  runUpdate,
 	}
 
+	doctorCmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose and fix stale processes, locks, and sockets",
+		RunE:  runDoctor,
+	}
+	doctorCmd.Flags().Bool("dry-run", false, "Show what would be cleaned")
+
 	root.AddCommand(
 		initCmd,
 		startCmd, stopCmd, restartCmd, statusCmd,
@@ -449,6 +456,7 @@ func main() {
 		gcCmd, exportCmd, mcpServerCmd, mergeCmd, mergesCmd,
 		findingCmd,
 		updateCmd,
+		doctorCmd,
 	)
 
 	if err := root.Execute(); err != nil {
@@ -1744,6 +1752,36 @@ func runExport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runDoctor(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	report, err := daemon.Doctor(root, dryRun)
+	if err != nil {
+		return err
+	}
+	for _, msg := range report.Messages {
+		fmt.Println(msg)
+	}
+	if len(report.Messages) == 0 {
+		fmt.Println("No issues found")
+	} else if dryRun {
+		fmt.Printf("\nDry run: %d issue(s) found\n", report.StaleProcesses+boolInt(report.StaleLock)+boolInt(report.StaleSocket))
+	} else {
+		fmt.Printf("\nFixed %d issue(s)\n", report.Fixed)
+	}
+	return nil
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func runGC(cmd *cobra.Command, args []string) error {
 	root, err := config.FindLoomRoot()
 	if err != nil {
@@ -2030,6 +2068,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Run doctor to clean up stale state before acquiring the lock.
+	daemon.Doctor(root, false)
+
 	if err := daemon.AcquireLock(root); err != nil {
 		return err
 	}
@@ -2056,10 +2097,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("spawning orchestrator: %w", err)
 		}
 	}
-
-	// Kill any orphaned daemon processes from previous runs to prevent
-	// dual-daemon races where two daemons mark each other's agents dead.
-	daemon.KillStaleDaemons()
 
 	// Start daemon goroutines
 	d := daemon.New(root, cfg)
@@ -2294,7 +2331,20 @@ func runStop(cmd *cobra.Command, args []string) error {
 
 	pid, alive := daemon.CheckLock(root)
 	if !alive {
-		return fmt.Errorf("loom is not running")
+		// Daemon not running — fall back to Doctor cleanup.
+		report, err := daemon.Doctor(root, false)
+		if err != nil {
+			return err
+		}
+		if len(report.Messages) > 0 {
+			for _, msg := range report.Messages {
+				fmt.Println(msg)
+			}
+			fmt.Printf("Cleaned %d stale item(s)\n", report.Fixed)
+		} else {
+			fmt.Println("Loom is not running (nothing to clean)")
+		}
+		return nil
 	}
 
 	daemonOnly, _ := cmd.Flags().GetBool("daemon-only")
@@ -2332,8 +2382,8 @@ func runStop(cmd *cobra.Command, args []string) error {
 		daemon.ReleaseLock(root)
 	}
 
-	// Kill any orphaned daemon processes that survived previous stops.
-	daemon.KillStaleDaemons()
+	// Clean up any remaining stale state.
+	daemon.Doctor(root, false)
 
 	fmt.Printf("Loom stopped (pid %d)\n", pid)
 	return nil

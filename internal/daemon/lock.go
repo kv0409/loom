@@ -79,10 +79,11 @@ func isLoomProcess(pid int) bool {
 	return strings.Contains(cmd, "loom")
 }
 
-// KillStaleDaemons finds and kills any orphaned "loom start" daemon processes
-// other than the current process. This prevents dual-daemon races where two
-// daemons fight over agent YAML files, each marking the other's agents dead.
+// KillStaleDaemons finds and kills any orphaned "loom start" daemon processes.
+// Deprecated: use Doctor() instead. This delegates to Doctor for backward compat.
 func KillStaleDaemons() {
+	// We don't have loomRoot here, so fall back to the original pgrep approach.
+	// Callers with a loomRoot should use Doctor() directly.
 	self := os.Getpid()
 	out, err := exec.Command("pgrep", "-f", "loom start").Output()
 	if err != nil {
@@ -93,7 +94,6 @@ func KillStaleDaemons() {
 		if err != nil || pid == self || pid == os.Getppid() {
 			continue
 		}
-		// Verify it's actually a loom process before killing
 		if !isLoomProcess(pid) {
 			continue
 		}
