@@ -57,17 +57,17 @@ func formatToolLine(line string, width int, projectRoot string) string {
 	args = backend.CleanArgs(args, projectRoot)
 
 	timePart := activityTimeStyle.Render(backend.RelativeTime(timeStr))
+	icon := activityIconStyle.Foreground(info.color).Render(info.icon)
 	label := activityLabelStyle.Foreground(info.labelColor).Render(info.label)
-	badge := activityBadgeStyle.Foreground(info.color).Render("[" + info.icon + "] " + toolName)
 
-	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(label) + 1 + lipgloss.Width(badge) + 1
+	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(icon) + 1 + lipgloss.Width(label) + 1
 	argW := width - usedW
 	if argW < 4 {
 		argW = 4
 	}
 	argPart := truncate(args, argW)
 
-	return timePart + " " + label + " " + badge + " " + argPart
+	return timePart + " " + icon + " " + label + " " + argPart
 }
 
 // resolveToolInfo returns the toolInfo for a given label.

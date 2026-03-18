@@ -317,7 +317,7 @@ var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 var (
 	activityTimeStyle  = lipgloss.NewStyle().Foreground(colGray)
 	activityLabelStyle = lipgloss.NewStyle().Bold(true).Width(5)
-	activityBadgeStyle = lipgloss.NewStyle()
+	activityIconStyle  = lipgloss.NewStyle().Bold(true).Width(2)
 )
 
 // Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
