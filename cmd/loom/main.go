@@ -135,6 +135,7 @@ func main() {
 	issueListCmd.Flags().String("assignee", "", "Filter by assignee")
 	issueListCmd.Flags().String("type", "", "Filter by type")
 	issueListCmd.Flags().Bool("all", false, "Include closed/cancelled")
+	issueListCmd.Flags().Bool("ready", false, "Only show dependency-ready issues")
 	issueListCmd.Flags().Bool("tree", false, "Show parent/child hierarchy")
 
 	issueShowCmd := &cobra.Command{
@@ -830,10 +831,16 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 	typ, _ := cmd.Flags().GetString("type")
 	all, _ := cmd.Flags().GetBool("all")
 	tree, _ := cmd.Flags().GetBool("tree")
+	ready, _ := cmd.Flags().GetBool("ready")
 
-	issues, err := issue.List(root, issue.ListOpts{
-		Status: status, Assignee: assignee, Type: typ, All: all,
-	})
+	var issues []*issue.Issue
+	if ready {
+		issues, err = issue.ListReady(root)
+	} else {
+		issues, err = issue.List(root, issue.ListOpts{
+			Status: status, Assignee: assignee, Type: typ, All: all,
+		})
+	}
 	if err != nil {
 		return err
 	}

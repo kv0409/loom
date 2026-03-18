@@ -228,6 +228,9 @@ func Update(loomRoot string, id string, opts UpdateOpts) (*Issue, error) {
 		issue.Priority = opts.Priority
 	}
 	if opts.Assignee != "" {
+		if !issue.IsReady(loomRoot) {
+			return nil, fmt.Errorf("cannot assign %s: has unresolved dependencies", id)
+		}
 		issue.History = append(issue.History, HistoryEntry{
 			At: now, By: actor(), Action: "assigned",
 			Detail: opts.Assignee,
@@ -345,6 +348,36 @@ func Cancel(loomRoot, id string) ([]CancelledInfo, error) {
 	}
 
 	return result, nil
+}
+
+// IsReady returns true if all issues in DependsOn are in a terminal state
+// (done or cancelled). An issue with no dependencies is always ready.
+func (iss *Issue) IsReady(loomRoot string) bool {
+	for _, depID := range iss.DependsOn {
+		dep, err := Load(loomRoot, depID)
+		if err != nil {
+			return false // missing dependency → not ready
+		}
+		if dep.Status != "done" && dep.Status != "cancelled" {
+			return false
+		}
+	}
+	return true
+}
+
+// ListReady returns open, unassigned issues whose dependencies are all resolved.
+func ListReady(loomRoot string) ([]*Issue, error) {
+	issues, err := List(loomRoot, ListOpts{Status: "open"})
+	if err != nil {
+		return nil, err
+	}
+	var ready []*Issue
+	for _, iss := range issues {
+		if iss.Assignee == "" && iss.IsReady(loomRoot) {
+			ready = append(ready, iss)
+		}
+	}
+	return ready, nil
 }
 
 func validateTransition(from, to string) error {

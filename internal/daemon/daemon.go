@@ -409,11 +409,21 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 }
 
 func (d *Daemon) watchIssues() {
-	// Seed with existing issues so we only notify about NEW ones
+	// Seed with existing ready issues so we only notify about NEW ones.
+	// Issues with unresolved dependencies are NOT seeded — they will be
+	// surfaced once their dependencies resolve.
 	notified := make(map[string]bool)
 	existing, _ := issue.List(d.LoomRoot, issue.ListOpts{All: true})
 	for _, iss := range existing {
-		notified[iss.ID] = true
+		// Already assigned/progressed or terminal — no need to notify.
+		if iss.Status != "open" || iss.Assignee != "" {
+			notified[iss.ID] = true
+			continue
+		}
+		// Open + unassigned + ready → already eligible, seed to avoid duplicate notify.
+		if iss.IsReady(d.LoomRoot) {
+			notified[iss.ID] = true
+		}
 	}
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -422,13 +432,13 @@ func (d *Daemon) watchIssues() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			issues, err := issue.List(d.LoomRoot, issue.ListOpts{Status: "open"})
+			issues, err := issue.ListReady(d.LoomRoot)
 			if err != nil {
-				d.rlog("watchIssues:list", "[issues] issue.List failed: %v", err)
+				d.rlog("watchIssues:list", "[issues] issue.ListReady failed: %v", err)
 				continue
 			}
 			for _, iss := range issues {
-				if iss.Assignee != "" || notified[iss.ID] {
+				if notified[iss.ID] {
 					continue
 				}
 				notified[iss.ID] = true
@@ -749,11 +759,11 @@ func (d *Daemon) watchHeartbeats() {
 // awaiting dispatch by the orchestrator). Issues already assigned/in-progress/
 // review are being handled by leads/builders, so the orchestrator is idle.
 func (d *Daemon) hasActiveIssues() bool {
-	issues, err := issue.List(d.LoomRoot, issue.ListOpts{Status: "open"})
+	ready, err := issue.ListReady(d.LoomRoot)
 	if err != nil {
 		return true // assume active on error to avoid suppressing nudges
 	}
-	return len(issues) > 0
+	return len(ready) > 0
 }
 
 // checkIdleAgents kills active non-orchestrator agents that have no active

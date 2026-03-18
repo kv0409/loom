@@ -232,7 +232,9 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	if err := Register(loomRoot, a); err != nil {
 		return nil, fmt.Errorf("registering agent: %w", err)
 	}
-	assignIssues(loomRoot, a)
+	if err := assignIssues(loomRoot, a); err != nil {
+		return nil, err
+	}
 	return a, nil
 }
 
@@ -327,7 +329,7 @@ func KillProcess(a *Agent) bool {
 }
 
 // assignIssues sets the assignee on each of the agent's assigned issues.
-func assignIssues(loomRoot string, a *Agent) {
+func assignIssues(loomRoot string, a *Agent) error {
 	for _, issID := range a.AssignedIssues {
 		iss, err := issue.Load(loomRoot, issID)
 		if err != nil {
@@ -337,8 +339,11 @@ func assignIssues(loomRoot string, a *Agent) {
 		if iss.Status == "open" {
 			opts.Status = "assigned"
 		}
-		issue.Update(loomRoot, issID, opts)
+		if _, err := issue.Update(loomRoot, issID, opts); err != nil {
+			return fmt.Errorf("assigning %s: %w", issID, err)
+		}
 	}
+	return nil
 }
 
 // UnassignIssues clears the assignee on each of the agent's assigned issues,

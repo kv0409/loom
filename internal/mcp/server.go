@@ -237,6 +237,14 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return fmt.Sprintf("Created %s: %s", iss.ID, iss.Title), nil
 
 	case "loom_issue_list":
+		if boolVal(args, "ready_only") {
+			issues, err := issue.ListReady(s.LoomRoot)
+			if err != nil {
+				return "", err
+			}
+			out, _ := json.MarshalIndent(issues, "", "  ")
+			return string(out), nil
+		}
 		issues, err := issue.List(s.LoomRoot, issue.ListOpts{
 			Status:   str(args, "status"),
 			Assignee: str(args, "assignee"),
@@ -419,7 +427,7 @@ func toolDefs() []toolDef {
 				"dispatch": propObj("Dispatch key-value pairs (e.g. SKIP_REVIEW, MAX_AGENTS)")},
 			"title")},
 		{Name: "loom_issue_list", Description: "List issues with optional filters", InputSchema: obj(
-			props{"status": propStr("Filter by status"), "assignee": propStr("Filter by assignee"), "type": propStr("Filter by type"), "all": propBool("Include closed/cancelled")})},
+			props{"status": propStr("Filter by status"), "assignee": propStr("Filter by assignee"), "type": propStr("Filter by type"), "all": propBool("Include closed/cancelled"), "ready_only": propBool("Only return open unassigned issues with resolved dependencies")})},
 		{Name: "loom_memory_add", Description: "Record a decision, discovery, or convention in shared memory", InputSchema: obj(
 			props{"type": propEnum("Memory type", "decision", "discovery", "convention"), "title": propStr("Title"),
 				"context": propStr("Context (decisions)"), "rationale": propStr("Rationale (decisions)"), "decision": propStr("Decision text"),
