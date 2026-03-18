@@ -1,5 +1,5 @@
 BINARY=loom
-VERSION=0.1.18
+VERSION=0.1.19
 COMMIT=$(shell git rev-parse --short HEAD)
 
 .PHONY: build install clean vet tidy test
