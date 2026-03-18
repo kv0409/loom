@@ -208,14 +208,32 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if err != nil {
 			return "", err
 		}
-		_, err = issue.Update(s.LoomRoot, id, issue.UpdateOpts{
-			Status:   str(args, "status"),
-			Priority: str(args, "priority"),
-			Assignee: str(args, "assignee"),
-			Dispatch: strMap(args, "dispatch"),
-		})
-		if err != nil {
-			return "", err
+		assignee := str(args, "assignee")
+		unassign := boolVal(args, "unassign")
+		if assignee != "" && unassign {
+			return "", fmt.Errorf("assignee and unassign are mutually exclusive")
+		}
+		if unassign {
+			if err := agent.UnassignIssue(s.LoomRoot, id); err != nil {
+				return "", err
+			}
+		}
+		if assignee != "" {
+			if err := agent.AssignIssue(s.LoomRoot, assignee, id); err != nil {
+				return "", err
+			}
+		}
+		status := str(args, "status")
+		priority := str(args, "priority")
+		dispatch := strMap(args, "dispatch")
+		if status != "" || priority != "" || len(dispatch) > 0 {
+			if _, err := issue.Update(s.LoomRoot, id, issue.UpdateOpts{
+				Status:   status,
+				Priority: priority,
+				Dispatch: dispatch,
+			}); err != nil {
+				return "", err
+			}
 		}
 		return fmt.Sprintf("Updated %s", id), nil
 
@@ -419,6 +437,7 @@ func toolDefs() []toolDef {
 			props{"id": propStr("Issue ID")}, "id")},
 		{Name: "loom_issue_update", Description: "Update issue status, priority, or assignee", InputSchema: obj(
 			props{"id": propStr("Issue ID"), "status": propStr("New status"), "priority": propStr("New priority"), "assignee": propStr("New assignee"),
+				"unassign": propBool("Remove current assignee"),
 				"dispatch": propObj("Dispatch key-value pairs (e.g. SKIP_REVIEW, MAX_AGENTS)")},
 			"id")},
 		{Name: "loom_issue_create", Description: "Create a new issue", InputSchema: obj(

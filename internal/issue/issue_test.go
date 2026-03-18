@@ -303,8 +303,6 @@ func TestValidateTransition_InvalidTransitions(t *testing.T) {
 		{"assigned", "done"},
 		{"assigned", "review"},
 		{"assigned", "blocked"},
-		{"assigned", "open"},
-		{"in-progress", "open"},
 		{"in-progress", "assigned"},
 		{"blocked", "done"},
 		{"blocked", "open"},

@@ -155,6 +155,7 @@ func main() {
 	issueUpdateCmd.Flags().String("status", "", "New status")
 	issueUpdateCmd.Flags().String("priority", "", "New priority")
 	issueUpdateCmd.Flags().String("assignee", "", "New assignee")
+	issueUpdateCmd.Flags().Bool("unassign", false, "Remove current assignee")
 	issueUpdateCmd.Flags().String("dispatch", "", "Comma-separated key=value dispatch pairs")
 
 	issueCloseCmd := &cobra.Command{
@@ -1015,12 +1016,17 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	status, _ := cmd.Flags().GetString("status")
 	priority, _ := cmd.Flags().GetString("priority")
 	assignee, _ := cmd.Flags().GetString("assignee")
+	unassign, _ := cmd.Flags().GetBool("unassign")
 	dispatchStr, _ := cmd.Flags().GetString("dispatch")
 
 	dispatch := parseDispatch(dispatchStr)
 
-	if status == "" && priority == "" && assignee == "" && len(dispatch) == 0 {
-		return fmt.Errorf("at least one of --status, --priority, --assignee, or --dispatch is required")
+	if status == "" && priority == "" && assignee == "" && !unassign && len(dispatch) == 0 {
+		return fmt.Errorf("at least one of --status, --priority, --assignee, --unassign, or --dispatch is required")
+	}
+
+	if assignee != "" && unassign {
+		return fmt.Errorf("--assignee and --unassign are mutually exclusive")
 	}
 
 	if status == "cancelled" {
@@ -1033,6 +1039,17 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 			if ci.PreviousAssignee == "" {
 				continue
 			}
+			// Sync agent state: remove cancelled issue from agent's AssignedIssues.
+			if a, err := agent.Load(root, ci.PreviousAssignee); err == nil {
+				filtered := a.AssignedIssues[:0]
+				for _, id := range a.AssignedIssues {
+					if id != ci.IssueID {
+						filtered = append(filtered, id)
+					}
+				}
+				a.AssignedIssues = filtered
+				agent.Save(root, a)
+			}
 			msg := fmt.Sprintf("[LOOM] Issue %s cancelled. Stop work immediately.", ci.IssueID)
 			if err := daemon.Message(root, ci.PreviousAssignee, msg); err != nil {
 				cliout.PrintError("could not notify "+ci.PreviousAssignee, err.Error())
@@ -1041,12 +1058,27 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	_, err = issue.Update(root, args[0], issue.UpdateOpts{
-		Status: status, Priority: priority, Assignee: assignee, Dispatch: dispatch,
-	})
-	if err != nil {
-		return err
+	// Handle assignee changes through agent package for state sync.
+	if unassign {
+		if err := agent.UnassignIssue(root, args[0]); err != nil {
+			return err
+		}
 	}
+	if assignee != "" {
+		if err := agent.AssignIssue(root, assignee, args[0]); err != nil {
+			return err
+		}
+	}
+
+	// Apply remaining non-assignee updates.
+	if status != "" || priority != "" || len(dispatch) > 0 {
+		if _, err := issue.Update(root, args[0], issue.UpdateOpts{
+			Status: status, Priority: priority, Dispatch: dispatch,
+		}); err != nil {
+			return err
+		}
+	}
+
 	cliout.PrintSuccess("Updated " + args[0])
 	return nil
 }

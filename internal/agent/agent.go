@@ -232,8 +232,10 @@ func Spawn(loomRoot string, opts SpawnOpts) (*Agent, error) {
 	if err := Register(loomRoot, a); err != nil {
 		return nil, fmt.Errorf("registering agent: %w", err)
 	}
-	if err := assignIssues(loomRoot, a); err != nil {
-		return nil, err
+	for _, issID := range a.AssignedIssues {
+		if err := AssignIssue(loomRoot, a.ID, issID); err != nil {
+			return nil, err
+		}
 	}
 	return a, nil
 }
@@ -285,7 +287,7 @@ func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 	}
 	// Archive remaining mail before removing inbox
 	archiveInbox(loomRoot, id)
-	UnassignIssues(loomRoot, a)
+	UnassignAllIssues(loomRoot, a)
 	return Deregister(loomRoot, id)
 }
 
@@ -328,42 +330,109 @@ func KillProcess(a *Agent) bool {
 	return true
 }
 
-// assignIssues sets the assignee on each of the agent's assigned issues.
-func assignIssues(loomRoot string, a *Agent) error {
-	for _, issID := range a.AssignedIssues {
-		iss, err := issue.Load(loomRoot, issID)
-		if err != nil {
-			continue
+// AssignIssue assigns an issue to an agent, updating both agent and issue state.
+// If the issue was previously assigned to a different agent, that agent's
+// AssignedIssues list is cleaned up first.
+func AssignIssue(loomRoot, agentID, issueID string) error {
+	iss, err := issue.Load(loomRoot, issueID)
+	if err != nil {
+		return fmt.Errorf("loading issue %s: %w", issueID, err)
+	}
+
+	// Remove from previous agent if reassigning.
+	if iss.Assignee != "" && iss.Assignee != agentID {
+		if prev, err := Load(loomRoot, iss.Assignee); err == nil {
+			prev.AssignedIssues = removeStr(prev.AssignedIssues, issueID)
+			Save(loomRoot, prev)
 		}
-		opts := issue.UpdateOpts{Assignee: a.ID}
-		if iss.Status == "open" {
-			opts.Status = "assigned"
-		}
-		if _, err := issue.Update(loomRoot, issID, opts); err != nil {
-			return fmt.Errorf("assigning %s: %w", issID, err)
+	}
+
+	// Update issue assignee.
+	opts := issue.UpdateOpts{Assignee: agentID}
+	if iss.Status == "open" {
+		opts.Status = "assigned"
+	}
+	if _, err := issue.Update(loomRoot, issueID, opts); err != nil {
+		return fmt.Errorf("updating issue %s: %w", issueID, err)
+	}
+
+	// Add to new agent's AssignedIssues if not already present.
+	a, err := Load(loomRoot, agentID)
+	if err != nil {
+		return fmt.Errorf("loading agent %s: %w", agentID, err)
+	}
+	if !containsStr(a.AssignedIssues, issueID) {
+		a.AssignedIssues = append(a.AssignedIssues, issueID)
+		if err := Save(loomRoot, a); err != nil {
+			return fmt.Errorf("saving agent %s: %w", agentID, err)
 		}
 	}
 	return nil
 }
 
-// UnassignIssues clears the assignee on each of the agent's assigned issues,
-// reopening any that were in-progress or assigned.
-func UnassignIssues(loomRoot string, a *Agent) {
-	unassignIssues(loomRoot, a)
+// UnassignIssue clears the assignee on an issue and removes it from the
+// current agent's AssignedIssues list.
+func UnassignIssue(loomRoot, issueID string) error {
+	iss, err := issue.Load(loomRoot, issueID)
+	if err != nil {
+		return fmt.Errorf("loading issue %s: %w", issueID, err)
+	}
+	if iss.Assignee == "" {
+		return nil
+	}
+
+	prevAgent := iss.Assignee
+
+	// Clear assignee directly and reopen if needed.
+	opts := issue.UpdateOpts{}
+	if iss.Status == "assigned" || iss.Status == "in-progress" {
+		opts.Status = "open"
+	}
+	iss.Assignee = ""
+	iss.History = append(iss.History, issue.HistoryEntry{
+		At: time.Now(), By: prevAgent, Action: "unassigned",
+	})
+	if err := issue.Save(loomRoot, iss); err != nil {
+		return fmt.Errorf("saving issue %s: %w", issueID, err)
+	}
+	// Apply status transition through Update for proper validation/history.
+	if opts.Status != "" {
+		if _, err := issue.Update(loomRoot, issueID, opts); err != nil {
+			return fmt.Errorf("updating issue %s: %w", issueID, err)
+		}
+	}
+
+	if a, err := Load(loomRoot, prevAgent); err == nil {
+		a.AssignedIssues = removeStr(a.AssignedIssues, issueID)
+		Save(loomRoot, a)
+	}
+	return nil
 }
 
-// unassignIssues clears the assignee on each of the agent's assigned issues.
-func unassignIssues(loomRoot string, a *Agent) {
+func containsStr(ss []string, s string) bool {
+	for _, v := range ss {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+func removeStr(ss []string, s string) []string {
+	out := ss[:0]
+	for _, v := range ss {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// UnassignAllIssues clears the assignee on each of the agent's assigned issues
+// using UnassignIssue for consistent state sync.
+func UnassignAllIssues(loomRoot string, a *Agent) {
 	for _, issID := range a.AssignedIssues {
-		iss, err := issue.Load(loomRoot, issID)
-		if err != nil || iss.Assignee != a.ID {
-			continue
-		}
-		iss.Assignee = ""
-		if iss.Status == "assigned" || iss.Status == "in-progress" {
-			iss.Status = "open"
-		}
-		issue.Save(loomRoot, iss)
+		UnassignIssue(loomRoot, issID)
 	}
 }
 

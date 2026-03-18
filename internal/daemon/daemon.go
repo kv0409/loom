@@ -683,7 +683,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 					}
-					agent.UnassignIssues(d.LoomRoot, a)
+					agent.UnassignAllIssues(d.LoomRoot, a)
 					delete(d.lastSeen, a.ID)
 					delete(d.idleSince, a.ID)
 					parentID := a.SpawnedBy

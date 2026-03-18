@@ -75,8 +75,8 @@ type UpdateOpts struct {
 
 var validTransitions = map[string][]string{
 	"open":        {"assigned"},
-	"assigned":    {"in-progress"},
-	"in-progress": {"review", "blocked", "done"},
+	"assigned":    {"in-progress", "open"},
+	"in-progress": {"review", "blocked", "done", "open"},
 	"blocked":     {"in-progress"},
 	"review":      {"done", "in-progress"},
 }

@@ -5,15 +5,21 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/karanagi/loom/internal/issue"
 )
 
-// setupRoot creates a temp .loom root with the agents/ directory.
+// setupRoot creates a temp .loom root with the agents/ and issues/ directories.
 func setupRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "agents"), 0755); err != nil {
-		t.Fatal(err)
+	for _, d := range []string{"agents", "issues"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0755); err != nil {
+			t.Fatal(err)
+		}
 	}
+	// Issue counter.
+	os.WriteFile(filepath.Join(root, "issues", "counter.txt"), []byte("0"), 0644)
 	return root
 }
 
@@ -226,5 +232,179 @@ func TestNextIDIgnoresOtherRoles(t *testing.T) {
 	id := NextID(root, "builder")
 	if id != "builder-001" {
 		t.Errorf("got %q, want %q", id, "builder-001")
+	}
+}
+
+// --- AssignIssue / UnassignIssue ---
+
+func createTestIssue(t *testing.T, root, title string) *issue.Issue {
+	t.Helper()
+	iss, err := issue.Create(root, title, issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+	return iss
+}
+
+func TestAssignIssue(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "test task")
+
+	if err := AssignIssue(root, "builder-001", iss.ID); err != nil {
+		t.Fatalf("AssignIssue: %v", err)
+	}
+
+	// Agent should have the issue in AssignedIssues.
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 1 || loaded.AssignedIssues[0] != iss.ID {
+		t.Errorf("agent AssignedIssues: got %v, want [%s]", loaded.AssignedIssues, iss.ID)
+	}
+
+	// Issue should have the agent as assignee and status assigned.
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Assignee != "builder-001" {
+		t.Errorf("issue Assignee: got %q, want %q", loadedIss.Assignee, "builder-001")
+	}
+	if loadedIss.Status != "assigned" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "assigned")
+	}
+}
+
+func TestReassignIssue(t *testing.T) {
+	root := setupRoot(t)
+	a1 := makeAgent("builder-001", "builder")
+	a2 := makeAgent("builder-002", "builder")
+	Register(root, a1)
+	Register(root, a2)
+	iss := createTestIssue(t, root, "reassign task")
+
+	// Assign to builder-001 first.
+	AssignIssue(root, "builder-001", iss.ID)
+
+	// Reassign to builder-002.
+	if err := AssignIssue(root, "builder-002", iss.ID); err != nil {
+		t.Fatalf("reassign: %v", err)
+	}
+
+	// Old agent should no longer have the issue.
+	old, _ := Load(root, "builder-001")
+	if len(old.AssignedIssues) != 0 {
+		t.Errorf("old agent still has issues: %v", old.AssignedIssues)
+	}
+
+	// New agent should have it.
+	new, _ := Load(root, "builder-002")
+	if len(new.AssignedIssues) != 1 || new.AssignedIssues[0] != iss.ID {
+		t.Errorf("new agent AssignedIssues: got %v, want [%s]", new.AssignedIssues, iss.ID)
+	}
+
+	// Issue should point to new agent.
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Assignee != "builder-002" {
+		t.Errorf("issue Assignee: got %q, want %q", loadedIss.Assignee, "builder-002")
+	}
+}
+
+func TestUnassignIssue(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "unassign task")
+
+	AssignIssue(root, "builder-001", iss.ID)
+
+	if err := UnassignIssue(root, iss.ID); err != nil {
+		t.Fatalf("UnassignIssue: %v", err)
+	}
+
+	// Agent should have no assigned issues.
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 0 {
+		t.Errorf("agent still has issues: %v", loaded.AssignedIssues)
+	}
+
+	// Issue should have no assignee and be open.
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Assignee != "" {
+		t.Errorf("issue Assignee: got %q, want empty", loadedIss.Assignee)
+	}
+	if loadedIss.Status != "open" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "open")
+	}
+}
+
+func TestUnassignIssueNoop(t *testing.T) {
+	root := setupRoot(t)
+	iss := createTestIssue(t, root, "unassigned task")
+
+	// Unassigning an already-unassigned issue should be a no-op.
+	if err := UnassignIssue(root, iss.ID); err != nil {
+		t.Fatalf("UnassignIssue on unassigned: %v", err)
+	}
+}
+
+func TestUnassignInProgressReopens(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "in-progress unassign")
+
+	AssignIssue(root, "builder-001", iss.ID)
+	issue.Update(root, iss.ID, issue.UpdateOpts{Status: "in-progress"})
+
+	if err := UnassignIssue(root, iss.ID); err != nil {
+		t.Fatalf("UnassignIssue: %v", err)
+	}
+
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Status != "open" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "open")
+	}
+	if loadedIss.Assignee != "" {
+		t.Errorf("issue Assignee: got %q, want empty", loadedIss.Assignee)
+	}
+}
+
+func TestAssignIssueIdempotent(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "idempotent task")
+
+	AssignIssue(root, "builder-001", iss.ID)
+	AssignIssue(root, "builder-001", iss.ID) // second call
+
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 1 {
+		t.Errorf("expected 1 issue, got %d: %v", len(loaded.AssignedIssues), loaded.AssignedIssues)
+	}
+}
+
+func TestReassignInProgressIssue(t *testing.T) {
+	root := setupRoot(t)
+	a1 := makeAgent("builder-001", "builder")
+	a2 := makeAgent("builder-002", "builder")
+	Register(root, a1)
+	Register(root, a2)
+	iss := createTestIssue(t, root, "in-progress reassign")
+
+	// Assign and move to in-progress.
+	AssignIssue(root, "builder-001", iss.ID)
+	issue.Update(root, iss.ID, issue.UpdateOpts{Status: "in-progress"})
+
+	// Reassign while in-progress — should not fail.
+	if err := AssignIssue(root, "builder-002", iss.ID); err != nil {
+		t.Fatalf("reassign in-progress: %v", err)
+	}
+
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Assignee != "builder-002" {
+		t.Errorf("issue Assignee: got %q, want %q", loadedIss.Assignee, "builder-002")
+	}
+	// Status should remain in-progress (not regress to assigned).
+	if loadedIss.Status != "in-progress" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "in-progress")
 	}
 }

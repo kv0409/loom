@@ -73,7 +73,7 @@ func TestRedispatch_ReopenedIssueAfterAgentDeath(t *testing.T) {
 	}
 
 	// Simulate agent death: unassign issues (reopens to open).
-	agent.UnassignIssues(root, a)
+	agent.UnassignAllIssues(root, a)
 
 	// Reload the issue to get the updated state.
 	iss, err = issue.Load(root, iss.ID)
@@ -133,7 +133,7 @@ func TestRedispatch_StableIssueNotRenotified(t *testing.T) {
 	}
 }
 
-// TestRedispatch_KillPathReopensIssue verifies that agent.Kill → UnassignIssues
+// TestRedispatch_KillPathReopensIssue verifies that agent.Kill → UnassignAllIssues
 // reopens in-progress issues, making them eligible for redispatch.
 func TestRedispatch_KillPathReopensIssue(t *testing.T) {
 	root := setupRedispatchRoot(t)
@@ -160,7 +160,7 @@ func TestRedispatch_KillPathReopensIssue(t *testing.T) {
 	}
 
 	// Simulate kill path: unassign issues.
-	agent.UnassignIssues(root, a)
+	agent.UnassignAllIssues(root, a)
 
 	iss, err = issue.Load(root, iss.ID)
 	if err != nil {
