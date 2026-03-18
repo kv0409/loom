@@ -35,7 +35,7 @@ const (
 	viewKanban
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees, viewKanban}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMemory, viewActivity, viewWorktrees}
 
 const (
 	// listHeaderRows is the number of fixed rows above list items in the screen layout:
@@ -291,7 +291,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
 			}
 			m.clampCursor()
-			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
+			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
 				m.detailScroll = 0
 			}
 			if m.view != viewDiff {
@@ -347,7 +347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
 		}
 		m.clampCursor()
-		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
+		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
 			m.detailScroll = 0
 		}
 		if m.view != viewDiff {
@@ -501,8 +501,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.switchView(viewAgents)
 		case viewIssueDetail:
 			m.switchView(viewIssues)
-		case viewMailDetail:
-			m.switchView(viewMail)
 		case viewMemoryDetail:
 			m.switchView(viewMemory)
 		case viewDiff:
@@ -533,14 +531,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case keyViewIssues:
 		m.switchView(viewIssues)
 		return m, nil
-	case keyViewMail: // "m": message-compose in agents/agent-detail; mail view elsewhere
+	case "m": // message-compose in agents/agent-detail
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.data.Agents) > 0 {
 			m.messageMode = true
 			m.messageTI.SetValue("")
 			m.messageTI.Focus()
 			return m, nil
 		}
-		m.switchView(viewMail)
 		return m, nil
 	case keyViewMemory:
 		m.switchView(viewMemory)
@@ -550,20 +547,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyViewActivity:
 		m.switchView(viewActivity)
-		return m, nil
-	case keyViewLogs: // "l": logs view — NOT a kanban-right alias (conflict resolved)
-		m.switchView(viewLogs)
-		return m, nil
-	case keyLogsFilter:
-		if m.view == viewLogs {
-			m.logFilter = (m.logFilter + 1) % 5 // all, lifecycle, error, stderr, warn
-		}
-		return m, nil
-	case keyLogsAgentFilter:
-		if m.view == viewLogs {
-			n := m.countLogAgents()
-			m.logAgentFilter = (m.logAgentFilter + 1) % (n + 1) // 0=all, 1..n=agent
-		}
 		return m, nil
 	case keyAgentNudge:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
@@ -593,30 +576,11 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.searchTI.Focus()
 			return m, nil
 		}
-	case keyCompose:
-		if m.view == viewMail || m.view == viewMailDetail {
-			return m.openCompose("")
-		}
-		return m, nil
-	case keyComposeReply:
-		if m.view == viewMailDetail {
-			msgs := m.sortedMessages()
-			if m.cursor < len(msgs) {
-				return m.openCompose(msgs[m.cursor].From)
-			}
-		} else if m.view == viewMail {
-			return m.openCompose("")
-		}
 	case keyTab:
 		m.switchView(nextView(m.view))
 		return m, nil
 	case keyVimDown, keyDown:
-		if m.view == viewKanban {
-			m.kanbanRow++
-			m.clampKanbanRow()
-			return m, nil
-		}
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
+		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll++
 			return m, nil
 		}
@@ -627,18 +591,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor++
 		m.clampCursor()
 		return m, nil
-	case keyViewKanban:
-		m.switchView(viewKanban)
-		return m, nil
 	case keyVimUp, keyUp:
-		if m.view == viewKanban {
-			m.kanbanRow--
-			if m.kanbanRow < 0 {
-				m.kanbanRow = 0
-			}
-			return m, nil
-		}
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
+		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -657,14 +611,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		return m, nil
-	case keyKanbanLeft, keyLeft: // "h" or left-arrow: kanban column left / diff hscroll left
-		if m.view == viewKanban {
-			m.kanbanCol--
-			if m.kanbanCol < 0 {
-				m.kanbanCol = 0
-			}
-			m.clampKanbanRow()
-		}
+	case "h", keyLeft: // diff hscroll left
 		if m.view == viewDiff {
 			m.diffHScroll -= diffHScrollStep
 			if m.diffHScroll < 0 {
@@ -672,14 +619,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
-	case keyKanbanRight: // right-arrow only: kanban column right / diff hscroll right
-		if m.view == viewKanban {
-			m.kanbanCol++
-			if m.kanbanCol >= len(kanbanColumns) {
-				m.kanbanCol = len(kanbanColumns) - 1
-			}
-			m.clampKanbanRow()
-		}
+	case keyRight: // diff hscroll right
 		if m.view == viewDiff {
 			m.diffHScroll += diffHScrollStep
 		}
@@ -709,13 +649,6 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if len(m.filteredIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
-			m.detailScroll = 0
-		}
-	case viewMail:
-		messages := m.sortedMessages()
-		if m.cursor < len(messages) {
-			m.cursors[m.view] = m.cursor
-			m.view = viewMailDetail
 			m.detailScroll = 0
 		}
 	case viewWorktrees:
@@ -753,19 +686,6 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					m.agentOutputCache = nil
 					m.agentOutputID = a.ID
 					return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
-				}
-			}
-		}
-	case viewKanban:
-		iss := m.kanbanSelectedIssue()
-		if iss != nil {
-			for i, is := range m.data.Issues {
-				if is.ID == iss.ID {
-					m.cursors[viewIssues] = i
-					m.cursor = i
-					m.view = viewIssueDetail
-					m.detailScroll = 0
-					break
 				}
 			}
 		}
@@ -825,16 +745,12 @@ func (m Model) listLen() int {
 		return len(m.filteredAgents())
 	case viewIssues, viewIssueDetail:
 		return len(m.filteredIssues())
-	case viewMail, viewMailDetail:
-		return len(m.sortedMessages())
 	case viewMemory, viewMemoryDetail:
 		return len(m.filteredMemories())
 	case viewWorktrees:
 		return len(m.filteredWorktrees())
 	case viewActivity:
 		return len(m.filteredActivity())
-	case viewLogs:
-		return len(m.filteredLogLines())
 	case viewDiff:
 		return 0
 	}
@@ -869,24 +785,16 @@ func (m Model) View() string {
 		content = m.renderIssues()
 	case viewIssueDetail:
 		content = m.renderIssueDetail()
-	case viewMail:
-		content = m.renderMail()
-	case viewMailDetail:
-		content = m.renderMailDetail()
 	case viewMemory:
 		content = m.renderMemory()
 	case viewMemoryDetail:
 		content = m.renderMemoryDetail()
 	case viewActivity:
 		content = m.renderActivity()
-	case viewLogs:
-		content = m.renderLogs()
 	case viewWorktrees:
 		content = m.renderWorktrees()
 	case viewDiff:
 		content = m.renderDiff()
-	case viewKanban:
-		content = m.renderKanban()
 	}
 
 	// Full-width title bar. titleStyle has Padding(0,2) adding 4 horizontal
@@ -997,24 +905,16 @@ func (m Model) helpBar() string {
 		ctx = "[n]udge [m]essage [j/k]scroll"
 	case viewAgents:
 		ctx = "[n]udge [m]essage [o]utput [x]kill [Enter]detail"
-	case viewKanban:
-		ctx = "[h/←/→]column [j/k]row [Enter]detail"
 	case viewIssues:
 		ctx = "[Enter]detail"
-	case viewMail:
-		ctx = "[c]ompose [Enter]detail"
 	case viewWorktrees:
 		ctx = "[Enter]diff"
 	case viewMemory:
 		ctx = "[Enter]detail"
-	case viewLogs:
-		ctx = "[/]search [f]ilter [F]agent"
 	case viewActivity:
 		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMemoryDetail:
 		ctx = "[j/k]scroll"
-	case viewMailDetail:
-		ctx = "[c]ompose [r]eply [j/k]scroll"
 	case viewDiff:
 		ctx = "[j/k]scroll [←/→]hscroll"
 	}
@@ -1030,7 +930,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp:
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
+		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
 				m.detailScroll = 0
@@ -1051,7 +951,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case msg.Button == tea.MouseButtonWheelDown:
-		if m.view == viewAgentDetail || m.view == viewMailDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
+		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll++
 			return m, nil
 		}
@@ -1088,14 +988,6 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.view == viewLogs {
-			item := m.mouseToListIndex(y)
-			if item >= 0 {
-				m.cursor = item
-				m.clampCursor()
-			}
-			return m, nil
-		}
 
 	}
 
@@ -1104,14 +996,14 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 func isListView(v view) bool {
 	switch v {
-	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity:
+	case viewAgents, viewIssues, viewMemory, viewWorktrees, viewActivity:
 		return true
 	}
 	return false
 }
 
 func isSearchableView(v view) bool {
-	return isListView(v) || v == viewLogs
+	return isListView(v)
 }
 
 // mouseToListIndex converts a screen Y coordinate to a list item index,

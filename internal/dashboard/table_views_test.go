@@ -13,44 +13,6 @@ import (
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
-// --- renderMail ---
-
-func TestRenderMail_Empty(t *testing.T) {
-	m := testModel(viewMail)
-	out := m.renderMail()
-	if out == "" {
-		t.Error("renderMail with empty data returned empty string")
-	}
-}
-
-func TestRenderMail_WithData(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "alice", To: "bob", Type: "task", Subject: "fix bug", Timestamp: time.Now()},
-		{From: "bob", To: "alice", Type: "reply", Subject: "done", Timestamp: time.Now()},
-	}
-	out := m.renderMail()
-	if !strings.Contains(out, "MAIL") {
-		t.Error("renderMail missing MAIL title")
-	}
-}
-
-func TestRenderMail_ShowsAllMessagesInTable(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Unread = 3
-	m.data.Messages = []*backend.Message{
-		{From: "lead", To: "builder", Type: "blocker", Priority: "critical", Subject: "Auth blocked", Ref: "LOOM-001", Timestamp: time.Now(), Read: false},
-		{From: "reviewer", To: "lead", Type: "question", Priority: "normal", Subject: "Need clarification", Ref: "LOOM-002", Timestamp: time.Now().Add(-1 * time.Minute), Read: false},
-		{From: "builder", To: "lead", Type: "status", Priority: "low", Subject: "Working", Ref: "LOOM-003", Timestamp: time.Now().Add(-2 * time.Minute), Read: true},
-	}
-	out := m.renderMail()
-	for _, expected := range []string{"MAIL", "2 unread", "critical", "lead", "builder", "Auth blocked"} {
-		if !strings.Contains(out, expected) {
-			t.Fatalf("renderMail missing %q in output:\n%s", expected, out)
-		}
-	}
-}
-
 // --- renderMemory ---
 
 func TestRenderMemory_Empty(t *testing.T) {
@@ -131,37 +93,6 @@ func TestRenderActivity_WithData(t *testing.T) {
 	out := m.renderActivity()
 	if !strings.Contains(out, "ACTIVITY") {
 		t.Error("renderActivity missing ACTIVITY title")
-	}
-}
-
-func TestRenderLogs_ShowsInvestigationSummary(t *testing.T) {
-	m := testModel(viewLogs)
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
-		{Category: "warn", Agent: "reviewer-001", Text: "warning about stale review"},
-		{Category: "lifecycle", Agent: "builder-001", Text: "activating agent builder-001"},
-	}
-	out := m.renderLogs()
-	for _, expected := range []string{"INVESTIGATION", "1 errors", "HOT AGENTS", "builder-001", "build failed on auth middleware"} {
-		if !strings.Contains(out, expected) {
-			t.Fatalf("renderLogs missing %q in output:\n%s", expected, out)
-		}
-	}
-}
-
-func TestRenderLogs_SearchFiltersMessages(t *testing.T) {
-	m := testModel(viewLogs)
-	m.searchTI.SetValue("auth")
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder-001", Text: "build failed on auth middleware"},
-		{Category: "warn", Agent: "reviewer-001", Text: "billing warning"},
-	}
-	out := m.renderLogs()
-	if !strings.Contains(out, "auth middleware") {
-		t.Fatalf("expected filtered logs to contain auth line:\n%s", out)
-	}
-	if strings.Contains(out, "billing warning") {
-		t.Fatalf("expected filtered logs to exclude billing warning:\n%s", out)
 	}
 }
 

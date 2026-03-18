@@ -3,7 +3,6 @@ package dashboard
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -16,44 +15,6 @@ func testModel(v view) Model {
 	m.height = 40
 	m.view = v
 	return m
-}
-
-func TestRenderMail_DoesNotMutateSnapshotOrder(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", Priority: "low", Subject: "oldest", Timestamp: time.Now().Add(-3 * time.Hour), Read: true},
-		{From: "b", Priority: "critical", Subject: "middle", Timestamp: time.Now().Add(-2 * time.Hour), Read: false},
-		{From: "c", Priority: "normal", Subject: "newest", Timestamp: time.Now().Add(-1 * time.Hour), Read: false},
-	}
-
-	orig := make([]string, len(m.data.Messages))
-	for i, msg := range m.data.Messages {
-		orig[i] = msg.Subject
-	}
-
-	m.renderMail()
-
-	for i, msg := range m.data.Messages {
-		if msg.Subject != orig[i] {
-			t.Fatalf("renderMail mutated m.data.Messages[%d]: got %q, want %q", i, msg.Subject, orig[i])
-		}
-	}
-}
-
-func TestListLen_FilteredMailDetail(t *testing.T) {
-	m := testModel(viewMailDetail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "hello"},
-		{From: "c", To: "d", Subject: "world"},
-		{From: "e", To: "f", Subject: "test"},
-	}
-	m.searchTI.SetValue("hello")
-
-	got := m.listLen()
-	want := len(m.filteredMessages())
-	if got != want {
-		t.Errorf("listLen(viewMailDetail) with filter: got %d, want %d (filtered count)", got, want)
-	}
 }
 
 func TestListLen_AllViews(t *testing.T) {
@@ -74,12 +35,6 @@ func TestListLen_AllViews(t *testing.T) {
 	m.data.Memories = []*backend.MemoryEntry{{ID: "M1"}}
 	if m.listLen() != 1 {
 		t.Errorf("viewMemory: expected 1, got %d", m.listLen())
-	}
-
-	m.view = viewLogs
-	m.data.Logs = []backend.LogLine{{Category: "error", Agent: "a", Text: "x"}, {Category: "warn", Agent: "b", Text: "y"}}
-	if m.listLen() != 2 {
-		t.Errorf("viewLogs: expected 2, got %d", m.listLen())
 	}
 }
 
@@ -136,25 +91,6 @@ func TestSwitchView_ClearsSearch(t *testing.T) {
 	}
 }
 
-func TestLogsView_EntersSearchMode(t *testing.T) {
-	m := testModel(viewLogs)
-	updated, _ := m.handleKey(keyMsg("/"))
-	got := updated.(Model)
-	if !got.searchMode {
-		t.Fatal("expected logs view to enter search mode on /")
-	}
-}
-
-func TestHelpBar_LogsShowsSearchAndFilters(t *testing.T) {
-	m := testModel(viewLogs)
-	bar := m.helpBar()
-	for _, expected := range []string{"[/]search", "[f]ilter", "[F]agent"} {
-		if !strings.Contains(bar, expected) {
-			t.Fatalf("helpBar for logs missing %q: %s", expected, bar)
-		}
-	}
-}
-
 func TestFilteredIssues_SearchesDescriptionsAndDependencies(t *testing.T) {
 	m := testModel(viewIssues)
 	m.data.Issues = []*backend.Issue{
@@ -170,24 +106,6 @@ func TestFilteredIssues_SearchesDescriptionsAndDependencies(t *testing.T) {
 	m.searchTI.SetValue("LOOM-099")
 	if got := m.filteredIssues(); len(got) != 1 || got[0].ID != "LOOM-001" {
 		t.Fatalf("expected dependency search to return LOOM-001, got %+v", got)
-	}
-}
-
-func TestFilteredMessages_SearchesBodyAndRef(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "lead", To: "builder", Subject: "Status", Body: "Please inspect auth middleware failure", Ref: "LOOM-001"},
-		{From: "lead", To: "reviewer", Subject: "Review", Body: "Check billing output", Ref: "LOOM-002"},
-	}
-
-	m.searchTI.SetValue("middleware")
-	if got := m.filteredMessages(); len(got) != 1 || got[0].Ref != "LOOM-001" {
-		t.Fatalf("expected body search to return LOOM-001 mail, got %+v", got)
-	}
-
-	m.searchTI.SetValue("LOOM-002")
-	if got := m.filteredMessages(); len(got) != 1 || got[0].Ref != "LOOM-002" {
-		t.Fatalf("expected ref search to return LOOM-002 mail, got %+v", got)
 	}
 }
 
@@ -262,13 +180,13 @@ func TestAdjustIssuesIndex_AfterSeparator(t *testing.T) {
 }
 
 func TestIsListView(t *testing.T) {
-	listViews := []view{viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity}
+	listViews := []view{viewAgents, viewIssues, viewMemory, viewWorktrees, viewActivity}
 	for _, v := range listViews {
 		if !isListView(v) {
 			t.Errorf("expected isListView(%d)=true", v)
 		}
 	}
-	nonListViews := []view{viewOverview, viewAgentDetail, viewIssueDetail, viewMailDetail, viewDiff, viewLogs, viewKanban}
+	nonListViews := []view{viewOverview, viewAgentDetail, viewIssueDetail, viewDiff}
 	for _, v := range nonListViews {
 		if isListView(v) {
 			t.Errorf("expected isListView(%d)=false", v)
@@ -279,8 +197,8 @@ func TestIsListView(t *testing.T) {
 func TestHelpBar_SingleLine(t *testing.T) {
 	views := []view{
 		viewOverview, viewAgents, viewAgentDetail, viewIssues, viewIssueDetail,
-		viewMail, viewMailDetail, viewMemory, viewMemoryDetail, viewActivity,
-		viewLogs, viewWorktrees, viewDiff, viewKanban,
+		viewMemory, viewMemoryDetail, viewActivity,
+		viewWorktrees, viewDiff,
 	}
 	for _, v := range views {
 		m := testModel(v)
@@ -317,61 +235,6 @@ func TestTitleBarWidth(t *testing.T) {
 
 func keyMsg(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s), Alt: false}
-}
-
-func TestListLen_ViewLogs(t *testing.T) {
-	m := testModel(viewLogs)
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder", Text: "fail"},
-		{Category: "lifecycle", Agent: "planner", Text: "start"},
-		{Category: "warn", Agent: "builder", Text: "slow"},
-	}
-	if got := m.listLen(); got != 3 {
-		t.Errorf("viewLogs no filter: got %d, want 3", got)
-	}
-}
-
-func TestListLen_ViewLogs_WithCategoryFilter(t *testing.T) {
-	m := testModel(viewLogs)
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder", Text: "fail"},
-		{Category: "lifecycle", Agent: "planner", Text: "start"},
-		{Category: "error", Agent: "planner", Text: "crash"},
-	}
-	m.logFilter = 2 // "error"
-	if got := m.listLen(); got != 2 {
-		t.Errorf("viewLogs category=error: got %d, want 2", got)
-	}
-}
-
-func TestListLen_ViewLogs_WithAgentFilter(t *testing.T) {
-	m := testModel(viewLogs)
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder", Text: "fail"},
-		{Category: "lifecycle", Agent: "planner", Text: "start"},
-		{Category: "warn", Agent: "builder", Text: "slow"},
-	}
-	// agents sorted: ["builder", "planner"], index 1 = "builder"
-	m.logAgentFilter = 1
-	if got := m.listLen(); got != 2 {
-		t.Errorf("viewLogs agent=builder: got %d, want 2", got)
-	}
-}
-
-func TestListLen_ViewLogs_AllFilters(t *testing.T) {
-	m := testModel(viewLogs)
-	m.data.Logs = []backend.LogLine{
-		{Category: "error", Agent: "builder", Text: "fail"},
-		{Category: "error", Agent: "planner", Text: "crash"},
-		{Category: "lifecycle", Agent: "builder", Text: "start"},
-		{Category: "warn", Agent: "builder", Text: "slow query"},
-	}
-	m.logFilter = 2      // "error"
-	m.logAgentFilter = 1 // "builder" (sorted: builder, planner)
-	m.searchTI.SetValue("fail")
-	if got := m.listLen(); got != 1 {
-		t.Errorf("viewLogs all filters: got %d, want 1", got)
-	}
 }
 
 func TestHandleEnter_WorktreeReturnsCmd(t *testing.T) {
@@ -474,22 +337,6 @@ func TestDiffResultMsg_SetsDiffContent(t *testing.T) {
 	}
 }
 
-func TestComposeSend_ValidData_ReturnsCmd(t *testing.T) {
-	m := testModel(viewMail)
-	m.composeMode = true
-	m.composeData = &composeData{To: "builder-001", Subject: "test", Body: "hello"}
-
-	result, cmd := m.composeSend()
-	got := result.(Model)
-
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd for async send")
-	}
-	if got.composeMode {
-		t.Error("expected composeMode=false after send")
-	}
-}
-
 func TestAgentOutputMsg_UpdatesCache(t *testing.T) {
 	m := testModel(viewAgentDetail)
 	m.agentOutputID = "builder-001"
@@ -555,7 +402,7 @@ func TestDaemonResultMsg_SetsFlash(t *testing.T) {
 }
 
 func TestSendMailResultMsg_SetsFlash(t *testing.T) {
-	m := testModel(viewMail)
+	m := testModel(viewAgents)
 
 	result, cmd := m.Update(sendMailResultMsg{flash: "Sent to builder", isErr: false})
 	got := result.(Model)
@@ -625,7 +472,6 @@ func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 		{"agent detail keeps detailScroll", viewAgentDetail, false, true},
 		{"issue detail keeps detailScroll", viewIssueDetail, false, true},
 		{"memory detail keeps detailScroll", viewMemoryDetail, false, true},
-		{"mail detail keeps detailScroll", viewMailDetail, false, true},
 		{"diff view keeps diffScroll", viewDiff, true, false},
 	}
 	for _, tt := range tests {
@@ -658,75 +504,6 @@ func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 	}
 }
 
-func TestSortedMessages_MatchesDisplayOrder(t *testing.T) {
-	m := testModel(viewMail)
-	now := time.Now()
-	m.data.Messages = []*backend.Message{
-		{From: "a", Priority: "low", Subject: "low-read", Timestamp: now.Add(-3 * time.Hour), Read: true},
-		{From: "b", Priority: "critical", Subject: "critical-unread", Timestamp: now.Add(-2 * time.Hour), Read: false},
-		{From: "c", Priority: "normal", Subject: "normal-unread", Timestamp: now.Add(-1 * time.Hour), Read: false},
-	}
-
-	sorted := m.sortedMessages()
-
-	// Critical unread should be first.
-	if sorted[0].Subject != "critical-unread" {
-		t.Fatalf("expected critical-unread first, got %q", sorted[0].Subject)
-	}
-	// Normal unread second.
-	if sorted[1].Subject != "normal-unread" {
-		t.Fatalf("expected normal-unread second, got %q", sorted[1].Subject)
-	}
-	// Low read last.
-	if sorted[2].Subject != "low-read" {
-		t.Fatalf("expected low-read last, got %q", sorted[2].Subject)
-	}
-}
-
-func TestHandleEnter_MailSelectsSortedMessage(t *testing.T) {
-	m := testModel(viewMail)
-	now := time.Now()
-	// Snapshot order: low first, critical second.
-	m.data.Messages = []*backend.Message{
-		{From: "a", Priority: "low", Subject: "low-msg", Timestamp: now.Add(-2 * time.Hour), Read: true},
-		{From: "b", Priority: "critical", Subject: "critical-msg", Timestamp: now.Add(-1 * time.Hour), Read: false},
-	}
-	m.cursor = 0 // First row in sorted order should be critical.
-
-	result, _ := m.handleEnter()
-	got := result.(Model)
-
-	if got.view != viewMailDetail {
-		t.Fatalf("expected viewMailDetail, got %d", got.view)
-	}
-
-	// Verify the detail view shows the critical message (sorted[0]).
-	sorted := got.sortedMessages()
-	if got.cursor >= len(sorted) || sorted[got.cursor].Subject != "critical-msg" {
-		t.Fatalf("expected detail to show critical-msg at cursor %d, got %q", got.cursor, sorted[got.cursor].Subject)
-	}
-}
-
-func TestComposeReply_TargetsSortedSender(t *testing.T) {
-	m := testModel(viewMailDetail)
-	now := time.Now()
-	m.data.Messages = []*backend.Message{
-		{From: "low-sender", Priority: "low", Subject: "low", Timestamp: now.Add(-2 * time.Hour), Read: true},
-		{From: "critical-sender", Priority: "critical", Subject: "critical", Timestamp: now.Add(-1 * time.Hour), Read: false},
-	}
-	m.data.Agents = []*backend.Agent{{ID: "critical-sender"}, {ID: "low-sender"}}
-	m.cursor = 0 // Sorted order: critical first.
-
-	result, _ := m.handleKey(keyMsg("r"))
-	got := result.(Model)
-
-	if !got.composeMode {
-		t.Fatal("expected composeMode=true after reply")
-	}
-	if got.composeData.To != "critical-sender" {
-		t.Fatalf("expected reply to critical-sender, got %q", got.composeData.To)
-	}
-}
 func TestHandleEnter_ActivityToAgentDetail_InitializesOutputState(t *testing.T) {
 	m := testModel(viewActivity)
 	m.data.Agents = []*backend.Agent{
@@ -759,94 +536,6 @@ func TestHandleEnter_ActivityToAgentDetail_InitializesOutputState(t *testing.T) 
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd for immediate agent output fetch")
-	}
-}
-
-// --- Regression tests: Mail cursor bounds and Enter behavior ---
-
-func TestMailCursorBounds_ClampsToListLen(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "one", Priority: "normal"},
-		{From: "c", To: "d", Subject: "two", Priority: "normal"},
-	}
-	m.cursor = 10
-	m.clampCursor()
-	if m.cursor != 1 {
-		t.Errorf("expected cursor clamped to 1, got %d", m.cursor)
-	}
-}
-
-func TestMailCursorBounds_EmptyList(t *testing.T) {
-	m := testModel(viewMail)
-	m.cursor = 5
-	m.clampCursor()
-	if m.cursor != 0 {
-		t.Errorf("expected cursor clamped to 0 for empty mail, got %d", m.cursor)
-	}
-}
-
-func TestMailEnter_OpensDetailAtCorrectSortedIndex(t *testing.T) {
-	m := testModel(viewMail)
-	now := time.Now()
-	m.data.Messages = []*backend.Message{
-		{From: "a", Priority: "low", Subject: "low-msg", Timestamp: now.Add(-2 * time.Hour), Read: true},
-		{From: "b", Priority: "critical", Subject: "critical-msg", Timestamp: now.Add(-1 * time.Hour), Read: false},
-		{From: "c", Priority: "normal", Subject: "normal-msg", Timestamp: now.Add(-30 * time.Minute), Read: false},
-	}
-	// cursor=1 should be the second item in sorted order (normal-msg)
-	m.cursor = 1
-	result, _ := m.handleEnter()
-	got := result.(Model)
-	if got.view != viewMailDetail {
-		t.Fatalf("expected viewMailDetail, got %d", got.view)
-	}
-	sorted := got.sortedMessages()
-	if got.cursor >= len(sorted) || sorted[got.cursor].Subject != "normal-msg" {
-		t.Errorf("expected detail for normal-msg at cursor %d, got %q", got.cursor, sorted[got.cursor].Subject)
-	}
-}
-
-func TestMailEnter_OutOfBounds_NoTransition(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "only", Priority: "normal"},
-	}
-	m.cursor = 5 // out of bounds
-	result, _ := m.handleEnter()
-	got := result.(Model)
-	if got.view != viewMail {
-		t.Errorf("expected to stay on viewMail when cursor out of bounds, got %d", got.view)
-	}
-}
-
-func TestMailCursorBounds_DownKeyStopsAtEnd(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "one", Priority: "normal"},
-		{From: "c", To: "d", Subject: "two", Priority: "normal"},
-	}
-	m.cursor = 1
-	// Press down — should clamp to 1 (last item)
-	result, _ := m.handleKey(keyMsg("j"))
-	got := result.(Model)
-	if got.cursor != 1 {
-		t.Errorf("expected cursor to stay at 1, got %d", got.cursor)
-	}
-}
-
-func TestMailMouseClick_SelectsCorrectItem(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "first", Priority: "critical"},
-		{From: "c", To: "d", Subject: "second", Priority: "normal"},
-		{From: "e", To: "f", Subject: "third", Priority: "low"},
-	}
-	// Click on the second row (listHeaderRows + 1)
-	result, _ := m.handleMouse(tea.MouseMsg{X: 5, Y: listHeaderRows + 1, Button: tea.MouseButtonLeft})
-	got := result.(Model)
-	if got.cursor != 1 {
-		t.Errorf("expected cursor=1 after clicking second row, got %d", got.cursor)
 	}
 }
 
@@ -933,18 +622,6 @@ func TestMemoryMouseClick_SelectsCorrectItem(t *testing.T) {
 	got := result.(Model)
 	if got.cursor != 2 {
 		t.Errorf("expected cursor=2 after clicking third row, got %d", got.cursor)
-	}
-}
-
-func TestMailListLen_MatchesSortedMessages(t *testing.T) {
-	m := testModel(viewMail)
-	m.data.Messages = []*backend.Message{
-		{From: "a", To: "b", Subject: "one", Priority: "normal"},
-		{From: "c", To: "d", Subject: "two", Priority: "critical"},
-		{From: "e", To: "f", Subject: "three", Priority: "low"},
-	}
-	if m.listLen() != len(m.sortedMessages()) {
-		t.Errorf("listLen()=%d != len(sortedMessages())=%d", m.listLen(), len(m.sortedMessages()))
 	}
 }
 

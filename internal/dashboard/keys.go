@@ -6,25 +6,23 @@ import (
 
 // keyMap implements help.KeyMap for the bubbles/help widget.
 type keyMap struct {
-	Tab     key.Binding
-	Compose key.Binding
-	Search  key.Binding
-	Esc     key.Binding
-	Quit    key.Binding
+	Tab    key.Binding
+	Search key.Binding
+	Esc    key.Binding
+	Quit   key.Binding
 }
 
 func defaultKeyMap() keyMap {
 	return keyMap{
-		Tab:     key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
-		Compose: key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "compose")),
-		Search:  key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-		Esc:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Quit:    key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		Tab:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
+		Search: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		Esc:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Compose, k.Search, k.Esc, k.Quit}
+	return []key.Binding{k.Tab, k.Search, k.Esc, k.Quit}
 }
 func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
@@ -55,38 +53,15 @@ const (
 	keyViewOverview2 = "H"
 	keyViewAgents    = "a"
 	keyViewIssues    = "i"
-	// keyViewMail: "m" is shared ONLY when not in agents/agent-detail view.
-	// In agents/agent-detail, "m" opens the message-compose modal instead.
-	keyViewMail     = "m"
-	keyViewMemory   = "d"
+	keyViewMemory    = "d"
 	keyViewWorktrees = "w"
-	keyViewActivity = "t"
-	// keyViewLogs: "l" is shared ONLY when not in kanban view.
-	// In kanban, right-column navigation uses keyRight / keyKanbanRight instead.
-	// The old "l" alias for kanban-right is intentionally removed to eliminate
-	// the conflict documented in DISC-008 / DISC-023 / DISC-042.
-	keyViewLogs = "l"
-	keyViewKanban = "b"
+	keyViewActivity  = "t"
 )
 
 // View-specific shortcuts — only meaningful in the named context.
 const (
 	// Agents / agent-detail view.
-	keyAgentNudge    = "n"
-	keyAgentOutput   = "o"
-	keyAgentKill     = "x"
-
-	// Logs view.
-	keyLogsFilter      = "f"
-	keyLogsAgentFilter = "F"
-
-	// Kanban view.
-	// Left column: h or left-arrow.  Right column: right-arrow ONLY (not "l").
-	// This resolves the l=logs vs l=kanban-right conflict.
-	keyKanbanLeft  = "h"     // also keyLeft (arrow)
-	keyKanbanRight = "right" // arrow only — "l" is NOT a kanban-right alias
-
-	// Compose modal.
-	keyCompose      = "c"
-	keyComposeReply = "r"
+	keyAgentNudge  = "n"
+	keyAgentOutput = "o"
+	keyAgentKill   = "x"
 )
