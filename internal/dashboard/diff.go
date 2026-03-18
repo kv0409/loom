@@ -71,8 +71,8 @@ func (m Model) renderWorktrees() string {
 
 func (m Model) renderDiff() string {
 	title := "DIFF"
-	if m.selectedWorktree < len(m.data.Worktrees) {
-		title = "DIFF: " + slugFromWorktree(m.data.Worktrees[m.selectedWorktree].Name)
+	if m.selectedWorktreeName != "" {
+		title = "DIFF: " + slugFromWorktree(m.selectedWorktreeName)
 	}
 
 	if m.diffLoading {

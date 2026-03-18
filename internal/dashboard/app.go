@@ -64,7 +64,7 @@ type Model struct {
 	messageMode      bool
 	messageTI        textinput.Model
 	killConfirm      bool
-	selectedWorktree int
+	selectedWorktreeName string
 	diffContent      string
 	kanbanCol        int // selected column in kanban view
 	kanbanRow        int // selected row within column
@@ -500,7 +500,13 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.switchView(viewMemory)
 		case viewDiff:
 			m.view = viewWorktrees
-			m.cursor = m.selectedWorktree
+			m.cursor = 0
+			for i, wt := range m.filteredWorktrees() {
+				if wt.Name == m.selectedWorktreeName {
+					m.cursor = i
+					break
+				}
+			}
 		default:
 			if m.searchTI.Value() != "" {
 				m.searchTI.SetValue("")
@@ -708,16 +714,16 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case viewWorktrees:
 		worktrees := m.filteredWorktrees()
 		if m.cursor < len(worktrees) {
-			wtPath := worktrees[m.cursor].Path
+			wt := worktrees[m.cursor]
 			m.cursors[m.view] = m.cursor
-			m.selectedWorktree = m.cursor
+			m.selectedWorktreeName = wt.Name
 			m.diffContent = ""
 			m.diffLoading = true
 			m.view = viewDiff
 			m.diffScroll = 0
 			m.diffHScroll = 0
 			m.cursor = 0
-			return m, diffCmd(m.backend, wtPath)
+			return m, diffCmd(m.backend, wt.Path)
 		}
 	case viewMemory:
 		memories := m.filteredMemories()

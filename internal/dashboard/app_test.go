@@ -396,6 +396,69 @@ func TestHandleEnter_WorktreeReturnsCmd(t *testing.T) {
 	}
 }
 
+func TestHandleEnter_FilteredWorktreeStoresName(t *testing.T) {
+	m := testModel(viewWorktrees)
+	m.data.Worktrees = []*backend.Worktree{
+		{Name: "wt-alpha", Path: "/tmp/wt-alpha", Branch: "alpha"},
+		{Name: "wt-beta", Path: "/tmp/wt-beta", Branch: "beta"},
+		{Name: "wt-gamma", Path: "/tmp/wt-gamma", Branch: "gamma"},
+	}
+	// Filter to show only "beta"
+	m.searchTI.SetValue("beta")
+	m.cursor = 0
+
+	result, _ := m.handleEnter()
+	got := result.(Model)
+
+	if got.selectedWorktreeName != "wt-beta" {
+		t.Errorf("expected selectedWorktreeName='wt-beta', got %q", got.selectedWorktreeName)
+	}
+}
+
+func TestRenderDiff_FilteredWorktreeShowsCorrectTitle(t *testing.T) {
+	m := testModel(viewDiff)
+	m.data.Worktrees = []*backend.Worktree{
+		{Name: "wt-alpha", Path: "/tmp/wt-alpha"},
+		{Name: "wt-beta", Path: "/tmp/wt-beta"},
+	}
+	m.selectedWorktreeName = "wt-beta"
+	m.diffContent = "+added line"
+
+	output := m.renderDiff()
+	if !strings.Contains(output, "wt-beta") {
+		t.Error("expected diff title to contain 'wt-beta'")
+	}
+	if strings.Contains(output, "wt-alpha") {
+		t.Error("diff title should not contain 'wt-alpha'")
+	}
+}
+
+func TestEscFromDiff_RestoresCursorByName(t *testing.T) {
+	m := testModel(viewWorktrees)
+	m.data.Worktrees = []*backend.Worktree{
+		{Name: "wt-alpha", Path: "/tmp/wt-alpha"},
+		{Name: "wt-beta", Path: "/tmp/wt-beta"},
+		{Name: "wt-gamma", Path: "/tmp/wt-gamma"},
+	}
+	// Simulate entering diff from filtered list where beta was cursor=0
+	m.searchTI.SetValue("beta")
+	m.cursor = 0
+	result, _ := m.handleEnter()
+	m = result.(Model)
+
+	// Now press Esc — search is cleared by switchView, so cursor should find beta at index 1
+	m.searchTI.SetValue("") // search cleared on view switch
+	result, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	got := result.(Model)
+
+	if got.view != viewWorktrees {
+		t.Fatalf("expected viewWorktrees, got %d", got.view)
+	}
+	if got.cursor != 1 {
+		t.Errorf("expected cursor=1 (wt-beta in unfiltered list), got %d", got.cursor)
+	}
+}
+
 func TestDiffResultMsg_SetsDiffContent(t *testing.T) {
 	m := testModel(viewDiff)
 	m.diffLoading = true
