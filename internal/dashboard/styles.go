@@ -328,7 +328,7 @@ var (
 var (
 	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
 	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
-	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSelBg)
 	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
 	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
 )
