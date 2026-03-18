@@ -30,13 +30,13 @@ func (m Model) renderAgents() string {
 	avail := availableWidth(m.width)
 	const numColsAgents = 6
 	avail -= numColsAgents * 2
-	// Compute idW first so the remaining budget is correctly passed to colWidths.
-	// Previously idW was computed from the same avail as the other 5 columns,
-	// causing the total to exceed avail at typical terminal widths (~80-90 cols),
-	// which made the rightmost columns (ISSUES, HEARTBEAT) get clipped or disappear.
 	idW := min(max(idWidth+2, 16), avail*25/100)
-	ws := colWidths(avail-idW, []struct{ pct, min int }{{10, 6}, {0, statusPillWidth + 4}, {22, 8}, {14, 6}, {0, 10}})
-	roleW, statusW, wtW, issueW, hbW := ws[0], ws[1], ws[2], ws[3], ws[4]
+	rem := avail - idW
+	roleW := proportionalWidth(rem, 12, 14)
+	statusW := statusPillWidth + 4
+	issueW := proportionalWidth(rem, 20, 10)
+	hbW := 10
+	wtW := max(8, rem-roleW-statusW-issueW-hbW)
 
 	cols := []table.Column{
 		{Title: "ID", Width: idW},

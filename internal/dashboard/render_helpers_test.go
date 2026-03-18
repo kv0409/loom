@@ -178,26 +178,6 @@ func TestScrollIndicator_Scrolled(t *testing.T) {
 	}
 }
 
-func TestColWidths_Basic(t *testing.T) {
-	widths := colWidths(100, []struct{ pct, min int }{{50, 10}, {30, 10}, {20, 10}})
-	if widths[0] != 50 {
-		t.Errorf("expected 50, got %d", widths[0])
-	}
-	if widths[1] != 30 {
-		t.Errorf("expected 30, got %d", widths[1])
-	}
-	if widths[2] != 20 {
-		t.Errorf("expected 20, got %d", widths[2])
-	}
-}
-
-func TestColWidths_MinEnforced(t *testing.T) {
-	widths := colWidths(20, []struct{ pct, min int }{{10, 15}})
-	if widths[0] != 15 { // 20*10/100=2, but min is 15
-		t.Errorf("expected min=15 enforced, got %d", widths[0])
-	}
-}
-
 func TestWordWrap_UTF8ByteSlicing(t *testing.T) {
 	// 30 multi-byte runes, width=10 → should split into rune-safe segments.
 	input := strings.Repeat("日", 30)

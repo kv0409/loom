@@ -181,25 +181,5 @@ func wrapLines(text string, maxW int, indent string) []string {
 	return out
 }
 
-// colWidths computes proportional column widths from a list of (percent, min) pairs
-// given the available pixel budget. Each entry is {pct: percentage of avail, min: minimum width}.
-func colWidths(avail int, cols []struct{ pct, min int }) []int {
-	out := make([]int, len(cols))
-	for i, c := range cols {
-		w := avail * c.pct / 100
-		if w < c.min {
-			w = c.min
-		}
-		out[i] = w
-	}
-	// Shrink last column if total exceeds budget
-	total := 0
-	for _, w := range out {
-		total += w
-	}
-	if total > avail && len(out) > 0 {
-		out[len(out)-1] = max(cols[len(cols)-1].min, out[len(out)-1]-(total-avail))
-	}
-	return out
-}
+
 
