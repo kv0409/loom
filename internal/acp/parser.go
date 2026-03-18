@@ -40,6 +40,7 @@ type ACPEvent struct {
 	Kind      Kind   `json:"kind"`
 	Timestamp string `json:"ts,omitempty"`
 	Content   string `json:"content"`
+	Title     string `json:"title,omitempty"`
 }
 
 // ReadOutputFile reads an .output file parsing line-by-line with per-line
@@ -84,7 +85,7 @@ func eventKind(sessionUpdate string) Kind {
 	switch sessionUpdate {
 	case "agent_message_chunk":
 		return TokenChunk
-	case "session_update":
+	case "session_update", "tool_call", "tool_call_update":
 		return ToolSummary
 	default:
 		return CompleteMessage

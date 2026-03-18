@@ -316,6 +316,7 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 		var params struct {
 			Update struct {
 				SessionUpdate string `json:"sessionUpdate"`
+				Title         string `json:"title"`
 				Content       struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
@@ -325,10 +326,11 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 		if err := json.Unmarshal(n.Params, &params); err != nil {
 			return
 		}
-		if params.Update.Content.Text != "" {
+		if params.Update.Content.Text != "" || params.Update.Title != "" {
 			c.appendEvent(ACPEvent{
 				Kind:    eventKind(params.Update.SessionUpdate),
 				Content: params.Update.Content.Text,
+				Title:   params.Update.Title,
 			})
 		}
 	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available", "_kiro.dev/session/update":
