@@ -781,7 +781,7 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 			if err != nil {
 				continue
 			}
-			if iss.Status != "done" && iss.Status != "cancelled" && iss.Status != "merged" {
+			if iss.Status != "done" && iss.Status != "cancelled" {
 				hasActive = true
 				break
 			}

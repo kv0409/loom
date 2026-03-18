@@ -2564,12 +2564,25 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	hashOut, _ := hashCmd.Output()
 	hash := strings.TrimSpace(string(hashOut))
 
-	// Set merged_at on the issue.
+	// Reconcile issue lifecycle: mark merged+done, clear assignee.
 	iss, err := issue.Load(root, issueID)
 	if err == nil {
-		now := time.Now()
-		iss.MergedAt = &now
-		issue.Save(root, iss)
+		prevAssignee := iss.Assignee
+		if _, mergeErr := issue.Merge(root, issueID); mergeErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: could not reconcile issue state: %v\n", mergeErr)
+		} else if prevAssignee != "" {
+			// Remove issue from agent's assigned list.
+			if a, aErr := agent.Load(root, prevAssignee); aErr == nil {
+				filtered := a.AssignedIssues[:0]
+				for _, id := range a.AssignedIssues {
+					if id != issueID {
+						filtered = append(filtered, id)
+					}
+				}
+				a.AssignedIssues = filtered
+				agent.Save(root, a)
+			}
+		}
 	}
 
 	fmt.Printf("Merged %s → %s\n", wt.Branch, hash)
