@@ -96,7 +96,7 @@
         "description": "Block writes outside assigned worktree"
       },
       {
-        "matcher": "shell",
+        "matcher": "*",
         "command": "loom agent heartbeat 2>/dev/null",
         "description": "Heartbeat on tool use",
         "timeout_ms": 2000

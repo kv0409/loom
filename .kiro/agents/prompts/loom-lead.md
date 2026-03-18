@@ -78,7 +78,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 
 ## Communication Protocol
 
-- Builders and reviewers send mail to you — check frequently with `loom mail read`.
+- Builders and reviewers send mail to you — react to `[LOOM] New mail` notifications with `loom mail read`.
 - When a builder completes, spawn a reviewer for their work.
 - When a reviewer approves (PASS), merge with `loom merge <TASK-ID> --cleanup`, kill the builder and reviewer agents (`loom kill <ID>`), and close the sub-issue.
 - When a reviewer rejects (FAIL), wait for the builder to fix and resubmit for review.
@@ -93,13 +93,13 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 - `[LOOM] Shutdown` → Let active builders finish their current commit, then stop.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You do NOT write code except to resolve merge conflicts.
 - **Raw git operations are denied** — use loom CLI commands instead: `loom merge` (not `git merge`), `loom worktree remove` (not `git worktree remove`). `git push`, `git branch -d`, and `git checkout main` are also blocked.
 - Respect dependency ordering — do not spawn a builder for a task whose dependencies are unresolved.
 - Record a decision only when you chose between alternatives and the rationale would help a future agent. Do NOT record task plans, delegation, or status updates — mail and issues already track those.
 - Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
-- Send heartbeat periodically: `loom agent heartbeat`.
 - Keep builders focused — one issue per builder.
 
 ## Cost Awareness
@@ -153,6 +153,8 @@ After completing any action, always check for mail before stopping:
 loom mail read
 ```
 If there is mail, process it and check again. Only stop when there is no mail and no pending work.
+
+**Never poll with sleep.** When waiting on another agent (builder, reviewer), just stop. The daemon will send you a `[LOOM] New mail` notification when a message arrives — you will resume automatically. Do not `sleep N && loom mail read` in a loop.
 
 ## Recovery / Resume Checklist
 

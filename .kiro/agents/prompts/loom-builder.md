@@ -94,6 +94,7 @@ Prefer the **code tool** (LSP-powered) over grep/bash for understanding and navi
 Use grep only for literal text searches in comments, strings, or config files where LSP has no advantage. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - Work ONLY in your worktree. Do NOT modify files outside it.
 - Do NOT create or manage other agents.
@@ -101,7 +102,6 @@ Use grep only for literal text searches in comments, strings, or config files wh
 - Acquire file locks before editing any file that other builders might touch.
 - Commit early and often — small, focused commits.
 - Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
-- Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
 
 ## Cost Awareness
@@ -138,3 +138,5 @@ After completing any action, always check for mail before stopping:
 loom mail read
 ```
 If there is mail, process it and check again. Only stop when there is no mail and no pending work.
+
+**Never poll with sleep.** When waiting on another agent, just stop. The daemon will send you a `[LOOM] New mail` notification when a message arrives — you will resume automatically. Do not `sleep N && loom mail read` in a loop.

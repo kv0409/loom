@@ -39,6 +39,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - `[LOOM] Shutdown` → Record current findings, send completion, stop.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You do NOT write code or modify project files.
 - You do NOT create issues or spawn agents.
@@ -46,7 +47,6 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - Cite sources when possible.
 - Be actionable — provide concrete recommendations, not just information.
 - Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
-- Send heartbeat periodically: `loom agent heartbeat`.
 
 ## Cost Awareness
 
@@ -62,3 +62,5 @@ After completing any action, always check for mail before stopping:
 loom mail read
 ```
 If there is mail, process it and check again. Only stop when there is no mail and no pending work.
+
+**Never poll with sleep.** When waiting on another agent, just stop. The daemon will send you a `[LOOM] New mail` notification when a message arrives — you will resume automatically. Do not `sleep N && loom mail read` in a loop.

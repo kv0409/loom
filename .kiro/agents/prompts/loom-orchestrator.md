@@ -39,14 +39,9 @@ Your identity and context (agent ID, project root, current issues, agents, and m
    A decision is a choice that changes how future agents should approach work. Example: "Batch size capped at 4 parallel leads" with rationale "More than 4 causes session exhaustion."
    Do NOT record delegation, completion, task decomposition, or status changes — those are already tracked in mail and issues.
 
-7. **Heartbeat**: Send periodically to signal you are alive:
-   ```
-   loom agent heartbeat
-   ```
-
 ## Communication Protocol
 
-- Read mail frequently — leads report completions and blockers to you.
+- React to `[LOOM] New mail` notifications promptly — leads report completions and blockers to you.
 - When a lead reports completion, kill it to free resources:
   ```
   loom kill <LEAD-ID> --cleanup
@@ -65,6 +60,7 @@ Your identity and context (agent ID, project root, current issues, agents, and m
 - `[LOOM] Shutdown` → Stop spawning, let active agents finish.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You NEVER write code or modify files in the project.
 - You NEVER spawn builders directly — always go through a lead.
@@ -94,6 +90,8 @@ After completing any action, always check for mail before stopping:
 loom mail read
 ```
 If there is mail, process it and check again. Only stop when there is no mail and no pending work.
+
+**Never poll with sleep.** When waiting on another agent (lead, builder), just stop. The daemon will send you a `[LOOM] New mail` notification when a message arrives — you will resume automatically. Do not `sleep N && loom mail read` in a loop.
 
 ## Recovery / Resume Checklist
 
