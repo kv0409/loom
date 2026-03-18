@@ -8,10 +8,27 @@ import (
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
-func (m Model) renderMail() string {
+// sortedMessages returns a copy of filteredMessages sorted by priority
+// (critical first), then unread first, then newest. This is the single
+// source of truth for mail display order — used by render, Enter, and reply.
+func (m Model) sortedMessages() []*backend.Message {
 	filtered := m.filteredMessages()
 	messages := make([]*backend.Message, len(filtered))
 	copy(messages, filtered)
+	sort.SliceStable(messages, func(i, j int) bool {
+		if mailPriorityWeight(messages[i].Priority) != mailPriorityWeight(messages[j].Priority) {
+			return mailPriorityWeight(messages[i].Priority) > mailPriorityWeight(messages[j].Priority)
+		}
+		if messages[i].Read != messages[j].Read {
+			return !messages[i].Read
+		}
+		return messages[i].Timestamp.After(messages[j].Timestamp)
+	})
+	return messages
+}
+
+func (m Model) renderMail() string {
+	messages := m.sortedMessages()
 	var unread, critical int
 	byType := map[string]int{}
 	for _, msg := range messages {
@@ -23,18 +40,6 @@ func (m Model) renderMail() string {
 		}
 		byType[msg.Type]++
 	}
-
-	// Sort messages by priority (critical first), then unread first, then newest.
-	// Use the same slice for display and cursor navigation so they stay in sync.
-	sort.SliceStable(messages, func(i, j int) bool {
-		if mailPriorityWeight(messages[i].Priority) != mailPriorityWeight(messages[j].Priority) {
-			return mailPriorityWeight(messages[i].Priority) > mailPriorityWeight(messages[j].Priority)
-		}
-		if messages[i].Read != messages[j].Read {
-			return !messages[i].Read
-		}
-		return messages[i].Timestamp.After(messages[j].Timestamp)
-	})
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("  %d unread · %d critical · %d total", unread, critical, len(messages)))
@@ -121,7 +126,7 @@ func mailPriorityTag(priority string) string {
 }
 
 func (m Model) renderMailDetail() string {
-	messages := m.filteredMessages()
+	messages := m.sortedMessages()
 	if m.cursor >= len(messages) {
 		return "No message selected"
 	}

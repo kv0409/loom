@@ -587,7 +587,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyComposeReply:
 		if m.view == viewMailDetail {
-			msgs := m.filteredMessages()
+			msgs := m.sortedMessages()
 			if m.cursor < len(msgs) {
 				return m.openCompose(msgs[m.cursor].From)
 			}
@@ -699,7 +699,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.detailScroll = 0
 		}
 	case viewMail:
-		messages := m.filteredMessages()
+		messages := m.sortedMessages()
 		if m.cursor < len(messages) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewMailDetail
@@ -811,7 +811,7 @@ func (m Model) listLen() int {
 	case viewIssues, viewIssueDetail:
 		return len(m.filteredIssues())
 	case viewMail, viewMailDetail:
-		return len(m.filteredMessages())
+		return len(m.sortedMessages())
 	case viewMemory, viewMemoryDetail:
 		return len(m.filteredMemories())
 	case viewWorktrees:

@@ -594,3 +594,73 @@ func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 		})
 	}
 }
+
+func TestSortedMessages_MatchesDisplayOrder(t *testing.T) {
+	m := testModel(viewMail)
+	now := time.Now()
+	m.data.Messages = []*backend.Message{
+		{From: "a", Priority: "low", Subject: "low-read", Timestamp: now.Add(-3 * time.Hour), Read: true},
+		{From: "b", Priority: "critical", Subject: "critical-unread", Timestamp: now.Add(-2 * time.Hour), Read: false},
+		{From: "c", Priority: "normal", Subject: "normal-unread", Timestamp: now.Add(-1 * time.Hour), Read: false},
+	}
+
+	sorted := m.sortedMessages()
+
+	// Critical unread should be first.
+	if sorted[0].Subject != "critical-unread" {
+		t.Fatalf("expected critical-unread first, got %q", sorted[0].Subject)
+	}
+	// Normal unread second.
+	if sorted[1].Subject != "normal-unread" {
+		t.Fatalf("expected normal-unread second, got %q", sorted[1].Subject)
+	}
+	// Low read last.
+	if sorted[2].Subject != "low-read" {
+		t.Fatalf("expected low-read last, got %q", sorted[2].Subject)
+	}
+}
+
+func TestHandleEnter_MailSelectsSortedMessage(t *testing.T) {
+	m := testModel(viewMail)
+	now := time.Now()
+	// Snapshot order: low first, critical second.
+	m.data.Messages = []*backend.Message{
+		{From: "a", Priority: "low", Subject: "low-msg", Timestamp: now.Add(-2 * time.Hour), Read: true},
+		{From: "b", Priority: "critical", Subject: "critical-msg", Timestamp: now.Add(-1 * time.Hour), Read: false},
+	}
+	m.cursor = 0 // First row in sorted order should be critical.
+
+	result, _ := m.handleEnter()
+	got := result.(Model)
+
+	if got.view != viewMailDetail {
+		t.Fatalf("expected viewMailDetail, got %d", got.view)
+	}
+
+	// Verify the detail view shows the critical message (sorted[0]).
+	sorted := got.sortedMessages()
+	if got.cursor >= len(sorted) || sorted[got.cursor].Subject != "critical-msg" {
+		t.Fatalf("expected detail to show critical-msg at cursor %d, got %q", got.cursor, sorted[got.cursor].Subject)
+	}
+}
+
+func TestComposeReply_TargetsSortedSender(t *testing.T) {
+	m := testModel(viewMailDetail)
+	now := time.Now()
+	m.data.Messages = []*backend.Message{
+		{From: "low-sender", Priority: "low", Subject: "low", Timestamp: now.Add(-2 * time.Hour), Read: true},
+		{From: "critical-sender", Priority: "critical", Subject: "critical", Timestamp: now.Add(-1 * time.Hour), Read: false},
+	}
+	m.data.Agents = []*backend.Agent{{ID: "critical-sender"}, {ID: "low-sender"}}
+	m.cursor = 0 // Sorted order: critical first.
+
+	result, _ := m.handleKey(keyMsg("r"))
+	got := result.(Model)
+
+	if !got.composeMode {
+		t.Fatal("expected composeMode=true after reply")
+	}
+	if got.composeData.To != "critical-sender" {
+		t.Fatalf("expected reply to critical-sender, got %q", got.composeData.To)
+	}
+}
