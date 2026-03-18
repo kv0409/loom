@@ -28,7 +28,7 @@ End users update via `loom update`, which downloads pre-built binaries from GitH
 
 ## Gotchas
 
-- `go:embed` assets (`agents/*.json`, `templates/*.md`, `agents/hooks/*`) are copied to `.loom/` and `.kiro/` during `loom init`. Changing embedded files requires `loom init --force` in existing projects.
+- `go:embed` assets (`agents/*.json`, `templates/*.md`, `agents/hooks/*`) are copied to `.loom/` and `.kiro/` during `loom init`. Changing embedded files requires `loom init --refresh` in existing projects (updates templates, agents, and hooks without wiping state).
 - `store.NextCounter()` is read-increment-write without locking — concurrent calls can produce duplicate IDs.
 - File locks are advisory only. Nothing prevents agents from writing without acquiring a lock. Two agents can clobber the same YAML file.
 - Corrupted YAML files silently vanish from `List()` calls (error → `continue`). Daemon watchers also swallow all errors.

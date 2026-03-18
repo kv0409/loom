@@ -76,9 +76,13 @@ func Send(loomRoot string, opts SendOpts) error {
 		return fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
 	}
 
-	// Route to parent if recipient is dead
+	// Route to parent if recipient is dead; validate parent exists and is alive
 	if a.Status == "dead" && a.SpawnedBy != "" {
 		to = a.SpawnedBy
+		parent, err := agent.Load(loomRoot, to)
+		if err != nil || parent.Status == "dead" {
+			return fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
+		}
 	}
 
 	dir := filepath.Join(loomRoot, "mail", "inbox", to)

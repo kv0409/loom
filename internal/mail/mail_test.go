@@ -202,6 +202,63 @@ func TestDeadAgentRerouting(t *testing.T) {
 	}
 }
 
+func TestDeadAgentRerouteToMissingParent(t *testing.T) {
+	root := setupRoot(t)
+
+	// Register a dead agent whose parent does NOT exist
+	dead := &agent.Agent{
+		ID:        "builder-dead",
+		Role:      "builder",
+		Status:    "dead",
+		SpawnedBy: "lead-ghost",
+	}
+	if err := agent.Register(root, dead); err != nil {
+		t.Fatalf("Register dead agent: %v", err)
+	}
+
+	err := Send(root, SendOpts{
+		From:    "orchestrator",
+		To:      "builder-dead",
+		Subject: "should fail",
+	})
+	if err == nil {
+		t.Fatal("expected error when rerouting to nonexistent parent")
+	}
+	if !errors.Is(err, ErrRecipientNotFound) {
+		t.Errorf("expected ErrRecipientNotFound, got: %v", err)
+	}
+}
+
+func TestDeadAgentRerouteToDeadParent(t *testing.T) {
+	root := setupRoot(t)
+
+	// Register a dead parent
+	if err := agent.Register(root, &agent.Agent{
+		ID: "lead-dead", Role: "lead", Status: "dead",
+	}); err != nil {
+		t.Fatalf("Register dead parent: %v", err)
+	}
+
+	// Register a dead child pointing to the dead parent
+	if err := agent.Register(root, &agent.Agent{
+		ID: "builder-dead", Role: "builder", Status: "dead", SpawnedBy: "lead-dead",
+	}); err != nil {
+		t.Fatalf("Register dead child: %v", err)
+	}
+
+	err := Send(root, SendOpts{
+		From:    "orchestrator",
+		To:      "builder-dead",
+		Subject: "should fail",
+	})
+	if err == nil {
+		t.Fatal("expected error when rerouting to dead parent")
+	}
+	if !errors.Is(err, ErrRecipientNotFound) {
+		t.Errorf("expected ErrRecipientNotFound, got: %v", err)
+	}
+}
+
 func TestCorruptedYAMLSkipped(t *testing.T) {
 	root := setupRoot(t)
 	registerAgent(t, root, "a", "builder", "active")
