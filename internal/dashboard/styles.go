@@ -286,6 +286,7 @@ func hshiftLine(line string, offset int) string {
 
 // diffHScrollStep is the number of columns each left/right press shifts.
 const diffHScrollStep = 8
+
 var (
 	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
 	diffDel    = lipgloss.NewStyle().Foreground(colRed)
@@ -376,6 +377,16 @@ func agentPillFor(displayText, colorID string) string {
 		Render(displayText)
 }
 
+// agentPillSelected renders the same pill geometry without a filled background
+// so the table's selection background can read as one continuous row.
+func agentPillSelected(displayText, colorID string) string {
+	return lipgloss.NewStyle().
+		Foreground(agentColor(colorID)).
+		Bold(true).
+		Padding(0, 1).
+		Render(displayText)
+}
+
 // agentPillPlain returns a plain-text string with the same visual width as agentPill(id).
 // The pill's Padding(0,1) adds 1 space each side, so we mirror that here.
 func agentPillPlain(id string) string {
@@ -424,6 +435,10 @@ func statusPill(status string) string {
 	return statusPillStyle(status).Width(statusPillWidth).Render(status)
 }
 
+func statusPillSelected(status string) string {
+	return statusPillStyle(status).Width(statusPillWidth).Background(colSelBg).Render(status)
+}
+
 // listViewport returns the start and end indices for a cursor-following list
 // viewport. visibleRows is the number of rows available for list items.
 func listViewport(cursor, total, visibleRows int) (start, end int) {
@@ -440,4 +455,3 @@ func listViewport(cursor, total, visibleRows int) (start, end int) {
 	}
 	return start, end
 }
-

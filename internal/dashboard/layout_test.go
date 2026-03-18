@@ -49,3 +49,18 @@ func TestIssuesViewport_ReducedViewportDoesNotExceedTotal(t *testing.T) {
 		t.Errorf("cursor 3 outside viewport [%d, %d)", start, end)
 	}
 }
+
+func TestSectionCursor_InactiveSectionReturnsFalse(t *testing.T) {
+	row, ok := sectionCursor(1, 0, 1)
+	if ok {
+		t.Fatalf("expected active section to be inactive when cursor is outside it, got row=%d", row)
+	}
+
+	row, ok = sectionCursor(1, 1, 2)
+	if !ok {
+		t.Fatal("expected done section to be active")
+	}
+	if row != 0 {
+		t.Fatalf("expected done section row 0, got %d", row)
+	}
+}

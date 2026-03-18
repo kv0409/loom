@@ -72,3 +72,13 @@ func issuesViewport(cursor, total, vRows, activeCount int) (start, end int) {
 	}
 	return start, end
 }
+
+// sectionCursor reports the cursor position relative to a list section.
+// When the cursor is outside the section, selected is false and the returned
+// row is undefined.
+func sectionCursor(cursor, start, end int) (row int, selected bool) {
+	if cursor < start || cursor >= end {
+		return 0, false
+	}
+	return cursor - start, true
+}

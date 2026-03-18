@@ -93,13 +93,16 @@ func (m Model) renderIssues() string {
 	} else {
 		// Active section.
 		activeRows, activeRepl := buildRows(start, activeEnd)
-		activeCursor := -1
-		if m.cursor >= start && m.cursor < activeEnd {
-			activeCursor = m.cursor - start
-		}
+		activeCursor, activeSelected := sectionCursor(m.cursor, start, activeEnd)
 		t := newStyledTable(cols, activeRows, len(activeRows))
-		if activeCursor >= 0 {
+		if activeSelected {
 			t.SetCursor(activeCursor)
+		} else {
+			t.SetStyles(table.Styles{
+				Header:   tableHeaderStyle,
+				Cell:     tableCellStyle,
+				Selected: tableCellStyle,
+			})
 		}
 		content = styledTableView(t, activeRepl) + "\n"
 
@@ -108,18 +111,21 @@ func (m Model) renderIssues() string {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += separator(m.width)
 			doneRows, doneRepl := buildRows(doneStart, end)
-			doneCursor := -1
-			if m.cursor >= doneStart && m.cursor < end {
-				doneCursor = m.cursor - doneStart
-			}
+			doneCursor, doneSelected := sectionCursor(m.cursor, doneStart, end)
 			dt := newStyledTableHeaderless(cols, doneRows, len(doneRows))
-			if doneCursor >= 0 {
+			if doneSelected {
 				dt.Focus()
 				dt.SetCursor(doneCursor)
 				dt.SetStyles(table.Styles{
 					Header:   tableHeaderlessHeaderStyle,
 					Cell:     tableCellStyle,
 					Selected: tableSelectedStyle,
+				})
+			} else {
+				dt.SetStyles(table.Styles{
+					Header:   tableHeaderlessHeaderStyle,
+					Cell:     tableCellStyle,
+					Selected: tableHeaderlessSelectedStyle,
 				})
 			}
 			doneView := tableBodyView(dt)

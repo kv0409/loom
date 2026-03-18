@@ -55,6 +55,7 @@ func (m Model) renderAgents() string {
 	ri := 0
 	for i := start; i < end; i++ {
 		a := agents[i]
+		selected := i == m.cursor
 		wt := "—"
 		if a.WorktreeName != "" {
 			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
@@ -92,6 +93,10 @@ func (m Model) renderAgents() string {
 		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
 		styledID := prefix + agentPillFor(truncID, a.ID)
 		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
+		if selected {
+			styledID = prefix + agentPillSelected(truncID, a.ID)
+			styledStatus = fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillSelected(a.Status))
+		}
 		phID := cellPlaceholder(ri, lipgloss.Width(prefix+agentPillPlain(truncID)))
 		phStatus := cellPlaceholder(ri+1, lipgloss.Width(styledStatus))
 		rows = append(rows, table.Row{phID, a.Role, phStatus, wt, issues, hb})
@@ -155,51 +160,51 @@ func (m Model) renderAgentDetail() string {
 	// ACP output — rendered by event type
 	lines = append(lines, "")
 	lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
-		events := m.agentOutputCache
-		if len(events) > 0 {
-			maxW := detailContentWidth(m.width)
-			// Group contiguous token_chunk events into single blocks.
-			type group struct {
-				kind      backend.ACPKind
-				timestamp string
-				content   string
-			}
-			var groups []group
-			for _, ev := range events {
-				if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
-					groups[len(groups)-1].content += ev.Content
-				} else {
-					groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content})
-				}
-			}
-			for i, g := range groups {
-				if i > 0 {
-					lines = append(lines, "")
-				}
-				switch g.kind {
-				case backend.ToolSummary:
-					line := g.content
-					line = truncate(line, maxW)
-					lines = append(lines, idleStyle.Render("  ⚙ "+line))
-				case backend.TokenChunk:
-					if g.timestamp != "" {
-						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
-					}
-					lines = append(lines, wrapLines(g.content, maxW, "  ")...)
-				default: // CompleteMessage
-					if g.timestamp != "" {
-						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
-					}
-					lines = append(lines, wrapLines(g.content, maxW, "  ")...)
-				}
-			}
-		} else {
-			if m.agentOutputID == a.ID {
-				lines = append(lines, "  (loading output...)")
+	events := m.agentOutputCache
+	if len(events) > 0 {
+		maxW := detailContentWidth(m.width)
+		// Group contiguous token_chunk events into single blocks.
+		type group struct {
+			kind      backend.ACPKind
+			timestamp string
+			content   string
+		}
+		var groups []group
+		for _, ev := range events {
+			if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
+				groups[len(groups)-1].content += ev.Content
 			} else {
-				lines = append(lines, "  (waiting for output...)")
+				groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content})
 			}
 		}
+		for i, g := range groups {
+			if i > 0 {
+				lines = append(lines, "")
+			}
+			switch g.kind {
+			case backend.ToolSummary:
+				line := g.content
+				line = truncate(line, maxW)
+				lines = append(lines, idleStyle.Render("  ⚙ "+line))
+			case backend.TokenChunk:
+				if g.timestamp != "" {
+					lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
+				}
+				lines = append(lines, wrapLines(g.content, maxW, "  ")...)
+			default: // CompleteMessage
+				if g.timestamp != "" {
+					lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
+				}
+				lines = append(lines, wrapLines(g.content, maxW, "  ")...)
+			}
+		}
+	} else {
+		if m.agentOutputID == a.ID {
+			lines = append(lines, "  (loading output...)")
+		} else {
+			lines = append(lines, "  (waiting for output...)")
+		}
+	}
 
 	// Recent mail
 	lines = append(lines, "")
@@ -233,6 +238,3 @@ func (m Model) renderAgentDetail() string {
 
 	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, viewContent, panelWidth(m.width))
 }
-
-
-
