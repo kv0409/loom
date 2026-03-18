@@ -281,10 +281,30 @@ func killWithResolved(loomRoot, id string, cleanupWorktree bool, resolved map[st
 			}
 		}
 	}
-	// Purge mail inbox for the dead agent
-	os.RemoveAll(filepath.Join(loomRoot, "mail", "inbox", id))
+	// Archive remaining mail before removing inbox
+	archiveInbox(loomRoot, id)
 	UnassignIssues(loomRoot, a)
 	return Deregister(loomRoot, id)
+}
+
+// archiveInbox moves all messages from an agent's inbox to the archive, then removes the inbox dir.
+func archiveInbox(loomRoot, agentID string) {
+	dir := filepath.Join(loomRoot, "mail", "inbox", agentID)
+	files, err := store.ListYAMLFiles(dir)
+	if err != nil {
+		os.RemoveAll(dir)
+		return
+	}
+	if len(files) > 0 {
+		date := time.Now().Format("2006-01-02")
+		dst := filepath.Join(loomRoot, "mail", "archive", date)
+		if err := os.MkdirAll(dst, 0755); err == nil {
+			for _, f := range files {
+				os.Rename(f, filepath.Join(dst, filepath.Base(f)))
+			}
+		}
+	}
+	os.RemoveAll(dir)
 }
 
 // KillProcess kills the OS process (group) for a dead agent by PID.

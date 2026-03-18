@@ -1,6 +1,8 @@
 package mail
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +48,9 @@ type LogOpts struct {
 	Since time.Duration
 }
 
+// ErrRecipientNotFound is returned when the recipient agent has no registration.
+var ErrRecipientNotFound = fmt.Errorf("recipient agent not found")
+
 func Send(loomRoot string, opts SendOpts) error {
 	msg := &Message{
 		From:     opts.From,
@@ -57,11 +62,22 @@ func Send(loomRoot string, opts SendOpts) error {
 		Ref:      opts.Ref,
 	}
 	msg.Timestamp = time.Now()
-	msg.ID = fmt.Sprintf("%d-%s-%s", msg.Timestamp.Unix(), msg.From, slug(msg.Subject))
 
-	// Route to parent if recipient is dead or missing
+	nonce, err := randomNonce()
+	if err != nil {
+		return fmt.Errorf("generating mail nonce: %w", err)
+	}
+	msg.ID = fmt.Sprintf("%d-%s-%s-%s", msg.Timestamp.UnixNano(), msg.From, slug(msg.Subject), nonce)
+
+	// Validate recipient exists
 	to := msg.To
-	if a, err := agent.Load(loomRoot, to); err == nil && a.Status == "dead" && a.SpawnedBy != "" {
+	a, err := agent.Load(loomRoot, to)
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
+	}
+
+	// Route to parent if recipient is dead
+	if a.Status == "dead" && a.SpawnedBy != "" {
 		to = a.SpawnedBy
 	}
 
@@ -70,6 +86,14 @@ func Send(loomRoot string, opts SendOpts) error {
 		return err
 	}
 	return store.WriteYAML(filepath.Join(dir, msg.ID+".yaml"), msg)
+}
+
+func randomNonce() (string, error) {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func Read(loomRoot string, opts ReadOpts) ([]*Message, error) {
@@ -114,6 +138,31 @@ func Archive(loomRoot string, agent string, msgID string) error {
 		return err
 	}
 	return os.Rename(src, filepath.Join(dst, msgID+".yaml"))
+}
+
+// ArchiveAndRemoveInbox archives all messages in an agent's inbox, then removes the directory.
+// Safe to call on empty or nonexistent inboxes.
+func ArchiveAndRemoveInbox(loomRoot string, agentID string) error {
+	dir := filepath.Join(loomRoot, "mail", "inbox", agentID)
+	files, err := store.ListYAMLFiles(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	date := time.Now().Format("2006-01-02")
+	dst := filepath.Join(loomRoot, "mail", "archive", date)
+	if len(files) > 0 {
+		if err := os.MkdirAll(dst, 0755); err != nil {
+			return err
+		}
+	}
+	for _, f := range files {
+		name := filepath.Base(f)
+		os.Rename(f, filepath.Join(dst, name))
+	}
+	return os.RemoveAll(dir)
 }
 
 func Log(loomRoot string, opts LogOpts) ([]*Message, error) {

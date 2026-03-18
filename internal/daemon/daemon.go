@@ -820,7 +820,7 @@ func (d *Daemon) watchInboxGC() {
 					continue
 				}
 				if _, err := agent.Load(d.LoomRoot, e.Name()); err != nil {
-					os.RemoveAll(filepath.Join(inboxRoot, e.Name()))
+					mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name())
 				}
 			}
 		}

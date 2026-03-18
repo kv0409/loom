@@ -1854,11 +1854,10 @@ func runGC(cmd *cobra.Command, args []string) error {
 	if entries, err := os.ReadDir(inboxDir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() && !liveAgents[e.Name()] {
-				dir := filepath.Join(inboxDir, e.Name())
 				if dryRun {
 					fmt.Printf("[dry-run] Would remove stale inbox: %s\n", e.Name())
 				} else {
-					os.RemoveAll(dir)
+					mail.ArchiveAndRemoveInbox(root, e.Name())
 					fmt.Printf("Removed stale inbox: %s\n", e.Name())
 				}
 				total++
