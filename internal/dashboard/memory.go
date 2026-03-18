@@ -2,62 +2,53 @@ package dashboard
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/karanagi/loom/internal/dashboard/backend"
+	"github.com/charmbracelet/bubbles/table"
 )
 
 func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
-	counts := map[string]int{}
-	for _, e := range memories {
-		counts[e.Type]++
+
+	avail := availableWidth(m.width)
+	const numCols = 4
+	avail -= numCols * 2
+
+	idW := proportionalWidth(avail, 12, 8)
+	typeW := proportionalWidth(avail, 12, 8)
+	titleW := proportionalWidth(avail, 36, 12)
+	snippetW := max(10, avail-idW-typeW-titleW)
+
+	cols := []table.Column{
+		{Title: "ID", Width: idW},
+		{Title: "TYPE", Width: typeW},
+		{Title: "TITLE", Width: titleW},
+		{Title: "DETAIL", Width: snippetW},
 	}
 
-	recentDecisions := make([]*backend.MemoryEntry, 0)
-	for _, e := range memories {
-		if e.Type == "decision" {
-			recentDecisions = append(recentDecisions, e)
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(memories), vRows)
+
+	rows := make([]table.Row, 0, end-start)
+	for i := start; i < end; i++ {
+		e := memories[i]
+		snippet := m.backend.MemorySnippet(e)
+		if snippet == "" {
+			snippet = e.Title
 		}
+		rows = append(rows, table.Row{e.ID, e.Type, truncate(e.Title, titleW), truncate(snippet, snippetW)})
 	}
-	sort.SliceStable(recentDecisions, func(i, j int) bool {
-		return recentDecisions[i].Timestamp.After(recentDecisions[j].Timestamp)
-	})
 
-	var lines []string
-	lines = append(lines, fmt.Sprintf("  %d decisions · %d discoveries · %d conventions", counts["decision"], counts["discovery"], counts["convention"]))
-	lines = append(lines, "", "  "+headerStyle.Render("MEMORY MAP"))
+	var content string
 	if len(memories) == 0 {
-		lines = append(lines, "  No memory entries yet.")
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No memory entries yet", avail)
 	} else {
-		for _, e := range memories[:min(3, len(memories))] {
-			snippet := m.backend.MemorySnippet(e)
-			if snippet == "" {
-				snippet = e.Title
-			}
-			affects := ""
-			if len(e.Affects) > 0 {
-				affects = idleStyle.Render(" · " + strings.Join(e.Affects, ", "))
-			}
-			lines = append(lines, fmt.Sprintf("  %s %s%s", e.ID, truncate(e.Title, 36), affects))
-			lines = append(lines, fmt.Sprintf("    %s", truncate(snippet, detailContentWidth(m.width)-4)))
-		}
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = t.View() + "\n"
 	}
-	lines = append(lines, "", "  "+headerStyle.Render("RECENT DECISIONS"))
-	if len(recentDecisions) == 0 {
-		lines = append(lines, "  No recorded decisions yet.")
-	} else {
-		for _, e := range recentDecisions[:min(4, len(recentDecisions))] {
-			lines = append(lines, fmt.Sprintf("  %s %s", e.ID, truncate(e.Title, 42)))
-			if e.Decision != "" {
-				lines = append(lines, fmt.Sprintf("    %s", truncate(e.Decision, detailContentWidth(m.width)-4)))
-			}
-		}
-	}
-
-	content := strings.Join(lines, "\n") + "\n"
 
 	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.Memories))
 	if m.searchTI.Value() != "" {

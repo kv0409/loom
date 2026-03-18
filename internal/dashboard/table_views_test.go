@@ -35,7 +35,7 @@ func TestRenderMail_WithData(t *testing.T) {
 	}
 }
 
-func TestRenderMail_ShowsInboxPressureAndNextUp(t *testing.T) {
+func TestRenderMail_ShowsAllMessagesInTable(t *testing.T) {
 	m := testModel(viewMail)
 	m.data.Unread = 3
 	m.data.Messages = []*backend.Message{
@@ -44,7 +44,7 @@ func TestRenderMail_ShowsInboxPressureAndNextUp(t *testing.T) {
 		{From: "builder", To: "lead", Type: "status", Priority: "low", Subject: "Working", Ref: "LOOM-003", Timestamp: time.Now().Add(-2 * time.Minute), Read: true},
 	}
 	out := m.renderMail()
-	for _, expected := range []string{"INBOX PRESSURE", "NEXT UP", "3 unread", "critical", "LOOM-001"} {
+	for _, expected := range []string{"MAIL", "2 unread", "critical", "lead", "builder", "Auth blocked"} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("renderMail missing %q in output:\n%s", expected, out)
 		}
@@ -73,14 +73,14 @@ func TestRenderMemory_WithData(t *testing.T) {
 	}
 }
 
-func TestRenderMemory_ShowsOperationalSummary(t *testing.T) {
+func TestRenderMemory_ShowsAllEntriesInTable(t *testing.T) {
 	m := testModel(viewMemory)
 	m.data.Memories = []*backend.MemoryEntry{
 		{ID: "DEC-001", Type: "decision", Title: "Use JWT", Decision: "Use JWT cookies", Affects: []string{"LOOM-001"}},
 		{ID: "DISC-001", Type: "discovery", Title: "Exporter location", Finding: "CSV export lives in internal/exporter", Affects: []string{"LOOM-002"}},
 	}
 	out := m.renderMemory()
-	for _, expected := range []string{"MEMORY MAP", "RECENT DECISIONS", "DEC-001", "LOOM-001", "JWT cookies"} {
+	for _, expected := range []string{"MEMORY", "DEC-001", "DISC-001", "decision", "discovery", "Use JWT", "Exporter location"} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("renderMemory missing %q in output:\n%s", expected, out)
 		}

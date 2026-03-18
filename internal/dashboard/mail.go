@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -29,67 +31,65 @@ func (m Model) sortedMessages() []*backend.Message {
 
 func (m Model) renderMail() string {
 	messages := m.sortedMessages()
-	var unread, critical int
-	byType := map[string]int{}
+
+	avail := availableWidth(m.width)
+	const numCols = 6
+	avail -= numCols * 2
+
+	prioW := proportionalWidth(avail, 8, 6)
+	fromW := proportionalWidth(avail, 14, 8)
+	toW := proportionalWidth(avail, 14, 8)
+	typeW := proportionalWidth(avail, 10, 6)
+	timeW := proportionalWidth(avail, 10, 7)
+	subjW := max(10, avail-prioW-fromW-toW-typeW-timeW)
+
+	cols := []table.Column{
+		{Title: "PRIO", Width: prioW},
+		{Title: "FROM", Width: fromW},
+		{Title: "TO", Width: toW},
+		{Title: "TYPE", Width: typeW},
+		{Title: "TIME", Width: timeW},
+		{Title: "SUBJECT", Width: subjW},
+	}
+
+	vRows := visibleRows(m.height, 9)
+	start, end := listViewport(m.cursor, len(messages), vRows)
+
+	rows := make([]table.Row, 0, end-start)
+	var replacements [][2]string
+	ri := 0
+	for i := start; i < end; i++ {
+		msg := messages[i]
+		styledPrio := mailPriorityTag(msg.Priority)
+		phPrio := cellPlaceholder(ri, lipgloss.Width(styledPrio))
+
+		subj := msg.Subject
+		if !msg.Read {
+			subj = "● " + subj
+		}
+
+		rows = append(rows, table.Row{phPrio, msg.From, msg.To, msg.Type, fmtTime(msg.Timestamp, false), truncate(subj, subjW)})
+		replacements = append(replacements, [2]string{phPrio, styledPrio})
+		ri++
+	}
+
+	var content string
+	if len(messages) == 0 {
+		t := newStyledTable(cols, nil, vRows)
+		content = t.View() + "\n" + renderEmpty("No queued messages", avail)
+	} else {
+		t := newStyledTable(cols, rows, vRows)
+		t.SetCursor(m.cursor - start)
+		content = styledTableView(t, replacements) + "\n"
+	}
+
+	var unread int
 	for _, msg := range messages {
 		if !msg.Read {
 			unread++
 		}
-		if msg.Priority == "critical" {
-			critical++
-		}
-		byType[msg.Type]++
 	}
-
-	var lines []string
-	lines = append(lines, fmt.Sprintf("  %d unread · %d critical · %d total", unread, critical, len(messages)))
-	if len(byType) > 0 {
-		var parts []string
-		for _, name := range []string{"blocker", "question", "review-request", "completion", "status", "task"} {
-			if count := byType[name]; count > 0 {
-				parts = append(parts, fmt.Sprintf("%d %s", count, name))
-			}
-		}
-		if len(parts) > 0 {
-			lines = append(lines, "  "+strings.Join(parts, idleStyle.Render(" · ")))
-		}
-	}
-	lines = append(lines, "", "  "+headerStyle.Render("INBOX PRESSURE"))
-	if len(messages) == 0 {
-		lines = append(lines, "  No queued messages.")
-	} else if critical > 0 {
-		lines = append(lines, deadStyle.Render(fmt.Sprintf("  %d critical message%s should be handled first.", critical, suffix(critical))))
-	} else if unread > 0 {
-		lines = append(lines, reviewStyle.Render(fmt.Sprintf("  %d unread message%s waiting for a response or acknowledgement.", unread, suffix(unread))))
-	} else {
-		lines = append(lines, activeStyle.Render("  Inbox is under control."))
-	}
-	lines = append(lines, "", "  "+headerStyle.Render("NEXT UP"))
-	if len(messages) == 0 {
-		lines = append(lines, "  No recent mail.")
-	} else {
-		for idx, msg := range messages[:min(4, len(messages))] {
-			prefix := "  "
-			if idx == m.cursor {
-				prefix = "▸ "
-			}
-			ref := ""
-			if msg.Ref != "" {
-				ref = idleStyle.Render(" · " + msg.Ref)
-			}
-			state := "read"
-			if !msg.Read {
-				state = "unread"
-			}
-			line := fmt.Sprintf("%s%s %s → %s · %s · %s%s", prefix, mailPriorityTag(msg.Priority), msg.From, msg.To, msg.Type, state, ref)
-			lines = append(lines, line)
-			lines = append(lines, fmt.Sprintf("    %s", truncate(msg.Subject, detailContentWidth(m.width)-4)))
-		}
-	}
-
-	content := strings.Join(lines, "\n") + "\n"
-
-	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.Messages), m.data.Unread)
+	title := fmt.Sprintf("[m] MAIL (%d messages, %d unread)", len(m.data.Messages), unread)
 	if m.searchTI.Value() != "" {
 		title = fmt.Sprintf("[m] MAIL (%d/%d) filter: %s", len(messages), len(m.data.Messages), m.searchTI.Value())
 	}

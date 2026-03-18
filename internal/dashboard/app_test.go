@@ -761,3 +761,200 @@ func TestHandleEnter_ActivityToAgentDetail_InitializesOutputState(t *testing.T) 
 		t.Fatal("expected non-nil cmd for immediate agent output fetch")
 	}
 }
+
+// --- Regression tests: Mail cursor bounds and Enter behavior ---
+
+func TestMailCursorBounds_ClampsToListLen(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", To: "b", Subject: "one", Priority: "normal"},
+		{From: "c", To: "d", Subject: "two", Priority: "normal"},
+	}
+	m.cursor = 10
+	m.clampCursor()
+	if m.cursor != 1 {
+		t.Errorf("expected cursor clamped to 1, got %d", m.cursor)
+	}
+}
+
+func TestMailCursorBounds_EmptyList(t *testing.T) {
+	m := testModel(viewMail)
+	m.cursor = 5
+	m.clampCursor()
+	if m.cursor != 0 {
+		t.Errorf("expected cursor clamped to 0 for empty mail, got %d", m.cursor)
+	}
+}
+
+func TestMailEnter_OpensDetailAtCorrectSortedIndex(t *testing.T) {
+	m := testModel(viewMail)
+	now := time.Now()
+	m.data.Messages = []*backend.Message{
+		{From: "a", Priority: "low", Subject: "low-msg", Timestamp: now.Add(-2 * time.Hour), Read: true},
+		{From: "b", Priority: "critical", Subject: "critical-msg", Timestamp: now.Add(-1 * time.Hour), Read: false},
+		{From: "c", Priority: "normal", Subject: "normal-msg", Timestamp: now.Add(-30 * time.Minute), Read: false},
+	}
+	// cursor=1 should be the second item in sorted order (normal-msg)
+	m.cursor = 1
+	result, _ := m.handleEnter()
+	got := result.(Model)
+	if got.view != viewMailDetail {
+		t.Fatalf("expected viewMailDetail, got %d", got.view)
+	}
+	sorted := got.sortedMessages()
+	if got.cursor >= len(sorted) || sorted[got.cursor].Subject != "normal-msg" {
+		t.Errorf("expected detail for normal-msg at cursor %d, got %q", got.cursor, sorted[got.cursor].Subject)
+	}
+}
+
+func TestMailEnter_OutOfBounds_NoTransition(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", To: "b", Subject: "only", Priority: "normal"},
+	}
+	m.cursor = 5 // out of bounds
+	result, _ := m.handleEnter()
+	got := result.(Model)
+	if got.view != viewMail {
+		t.Errorf("expected to stay on viewMail when cursor out of bounds, got %d", got.view)
+	}
+}
+
+func TestMailCursorBounds_DownKeyStopsAtEnd(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", To: "b", Subject: "one", Priority: "normal"},
+		{From: "c", To: "d", Subject: "two", Priority: "normal"},
+	}
+	m.cursor = 1
+	// Press down — should clamp to 1 (last item)
+	result, _ := m.handleKey(keyMsg("j"))
+	got := result.(Model)
+	if got.cursor != 1 {
+		t.Errorf("expected cursor to stay at 1, got %d", got.cursor)
+	}
+}
+
+func TestMailMouseClick_SelectsCorrectItem(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", To: "b", Subject: "first", Priority: "critical"},
+		{From: "c", To: "d", Subject: "second", Priority: "normal"},
+		{From: "e", To: "f", Subject: "third", Priority: "low"},
+	}
+	// Click on the second row (listHeaderRows + 1)
+	result, _ := m.handleMouse(tea.MouseMsg{X: 5, Y: listHeaderRows + 1, Button: tea.MouseButtonLeft})
+	got := result.(Model)
+	if got.cursor != 1 {
+		t.Errorf("expected cursor=1 after clicking second row, got %d", got.cursor)
+	}
+}
+
+// --- Regression tests: Memory cursor bounds and Enter behavior ---
+
+func TestMemoryCursorBounds_ClampsToListLen(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "M1", Type: "decision", Title: "First"},
+		{ID: "M2", Type: "discovery", Title: "Second"},
+		{ID: "M3", Type: "convention", Title: "Third"},
+	}
+	m.cursor = 10
+	m.clampCursor()
+	if m.cursor != 2 {
+		t.Errorf("expected cursor clamped to 2, got %d", m.cursor)
+	}
+}
+
+func TestMemoryCursorBounds_EmptyList(t *testing.T) {
+	m := testModel(viewMemory)
+	m.cursor = 5
+	m.clampCursor()
+	if m.cursor != 0 {
+		t.Errorf("expected cursor clamped to 0 for empty memory, got %d", m.cursor)
+	}
+}
+
+func TestMemoryEnter_OpensDetailAtCorrectIndex(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "DEC-001", Type: "decision", Title: "First"},
+		{ID: "DISC-001", Type: "discovery", Title: "Second"},
+		{ID: "CONV-001", Type: "convention", Title: "Third"},
+	}
+	m.cursor = 2
+	result, _ := m.handleEnter()
+	got := result.(Model)
+	if got.view != viewMemoryDetail {
+		t.Fatalf("expected viewMemoryDetail, got %d", got.view)
+	}
+	memories := got.filteredMemories()
+	if got.cursor >= len(memories) || memories[got.cursor].ID != "CONV-001" {
+		t.Errorf("expected detail for CONV-001 at cursor %d", got.cursor)
+	}
+}
+
+func TestMemoryEnter_OutOfBounds_NoTransition(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "M1", Type: "decision", Title: "Only"},
+	}
+	m.cursor = 5 // out of bounds
+	result, _ := m.handleEnter()
+	got := result.(Model)
+	if got.view != viewMemory {
+		t.Errorf("expected to stay on viewMemory when cursor out of bounds, got %d", got.view)
+	}
+}
+
+func TestMemoryCursorBounds_DownKeyStopsAtEnd(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "M1", Type: "decision", Title: "First"},
+		{ID: "M2", Type: "discovery", Title: "Second"},
+	}
+	m.cursor = 1
+	result, _ := m.handleKey(keyMsg("j"))
+	got := result.(Model)
+	if got.cursor != 1 {
+		t.Errorf("expected cursor to stay at 1, got %d", got.cursor)
+	}
+}
+
+func TestMemoryMouseClick_SelectsCorrectItem(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "M1", Type: "decision", Title: "First"},
+		{ID: "M2", Type: "discovery", Title: "Second"},
+		{ID: "M3", Type: "convention", Title: "Third"},
+	}
+	// Click on the third row (listHeaderRows + 2)
+	result, _ := m.handleMouse(tea.MouseMsg{X: 5, Y: listHeaderRows + 2, Button: tea.MouseButtonLeft})
+	got := result.(Model)
+	if got.cursor != 2 {
+		t.Errorf("expected cursor=2 after clicking third row, got %d", got.cursor)
+	}
+}
+
+func TestMailListLen_MatchesSortedMessages(t *testing.T) {
+	m := testModel(viewMail)
+	m.data.Messages = []*backend.Message{
+		{From: "a", To: "b", Subject: "one", Priority: "normal"},
+		{From: "c", To: "d", Subject: "two", Priority: "critical"},
+		{From: "e", To: "f", Subject: "three", Priority: "low"},
+	}
+	if m.listLen() != len(m.sortedMessages()) {
+		t.Errorf("listLen()=%d != len(sortedMessages())=%d", m.listLen(), len(m.sortedMessages()))
+	}
+}
+
+func TestMemoryListLen_MatchesFilteredMemories(t *testing.T) {
+	m := testModel(viewMemory)
+	m.data.Memories = []*backend.MemoryEntry{
+		{ID: "M1", Type: "decision", Title: "First"},
+		{ID: "M2", Type: "discovery", Title: "Second"},
+	}
+	if m.listLen() != len(m.filteredMemories()) {
+		t.Errorf("listLen()=%d != len(filteredMemories())=%d", m.listLen(), len(m.filteredMemories()))
+	}
+}
