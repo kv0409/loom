@@ -97,6 +97,29 @@ func cellPlaceholder(index, width int) string {
 	return tag + strings.Repeat(" ", pad)
 }
 
+// fixSelectedRowBg re-applies the selection background after inner ANSI resets
+// so the highlight spans the full row. bubbles/table wraps the selected row with
+// Selected style, but inner cell resets (\x1b[0m) break the background.
+func fixSelectedRowBg(out string) string {
+	selBg := lipgloss.NewStyle().Background(colSelBg).Render("")
+	idx := strings.Index(selBg, "m")
+	if idx < 0 {
+		return out
+	}
+	bgSeq := selBg[:idx+1]
+	reset := "\x1b[0m"
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, bgSeq) || strings.HasPrefix(line, "\x1b[1;48;2;") {
+			parts := strings.Split(line, reset)
+			if len(parts) > 2 {
+				lines[i] = strings.Join(parts[:len(parts)-1], reset+bgSeq) + reset
+			}
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // styledTableView renders t.View() and replaces each placeholder cell value with its
 // styled equivalent. Pass pairs as (placeholder, styled) in any order.
 // This is necessary because bubbles/table calls runewidth.Truncate on cell values, which
@@ -106,7 +129,7 @@ func styledTableView(t table.Model, replacements [][2]string) string {
 	for _, r := range replacements {
 		out = strings.Replace(out, r[0], r[1], 1)
 	}
-	return out
+	return fixSelectedRowBg(out)
 }
 
 // styledTableBodyView is like styledTableView but strips the header line (for headerless tables).

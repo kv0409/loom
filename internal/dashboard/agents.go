@@ -55,7 +55,6 @@ func (m Model) renderAgents() string {
 	ri := 0
 	for i := start; i < end; i++ {
 		a := agents[i]
-		selected := i == m.cursor
 		wt := "—"
 		if a.WorktreeName != "" {
 			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
@@ -93,10 +92,6 @@ func (m Model) renderAgents() string {
 		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
 		styledID := prefix + agentPillFor(truncID, a.ID)
 		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
-		if selected {
-			styledID = prefix + agentPillSelected(truncID, a.ID)
-			styledStatus = fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillSelected(a.Status))
-		}
 		phID := cellPlaceholder(ri, lipgloss.Width(prefix+agentPillPlain(truncID)))
 		phStatus := cellPlaceholder(ri+1, lipgloss.Width(styledStatus))
 		rows = append(rows, table.Row{phID, a.Role, phStatus, wt, issues, hb})

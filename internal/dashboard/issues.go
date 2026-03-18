@@ -132,7 +132,7 @@ func (m Model) renderIssues() string {
 			for _, r := range doneRepl {
 				doneView = strings.Replace(doneView, r[0], r[1], 1)
 			}
-			content += doneView + "\n"
+			content += fixSelectedRowBg(doneView) + "\n"
 		}
 	}
 

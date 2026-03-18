@@ -46,7 +46,7 @@ func (m Model) renderMemory() string {
 	} else {
 		t := newStyledTable(cols, rows, vRows)
 		t.SetCursor(m.cursor - start)
-		content = t.View() + "\n"
+		content = fixSelectedRowBg(t.View()) + "\n"
 	}
 
 	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.Memories))
