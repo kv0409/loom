@@ -409,20 +409,20 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 }
 
 func (d *Daemon) watchIssues() {
-	// Seed with existing ready issues so we only notify about NEW ones.
-	// Issues with unresolved dependencies are NOT seeded — they will be
-	// surfaced once their dependencies resolve.
-	notified := make(map[string]bool)
+	// Track the UpdatedAt timestamp of each issue when it was last notified.
+	// If an issue is reopened (e.g. after agent death), its UpdatedAt advances
+	// and it becomes eligible for re-notification.
+	notifiedAt := make(map[string]time.Time)
 	existing, _ := issue.List(d.LoomRoot, issue.ListOpts{All: true})
 	for _, iss := range existing {
-		// Already assigned/progressed or terminal — no need to notify.
+		// Already assigned/progressed or terminal — seed with current timestamp.
 		if iss.Status != "open" || iss.Assignee != "" {
-			notified[iss.ID] = true
+			notifiedAt[iss.ID] = iss.UpdatedAt
 			continue
 		}
 		// Open + unassigned + ready → already eligible, seed to avoid duplicate notify.
 		if iss.IsReady(d.LoomRoot) {
-			notified[iss.ID] = true
+			notifiedAt[iss.ID] = iss.UpdatedAt
 		}
 	}
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.IssueIntervalMs) * time.Millisecond)
@@ -438,10 +438,10 @@ func (d *Daemon) watchIssues() {
 				continue
 			}
 			for _, iss := range issues {
-				if notified[iss.ID] {
+				if prev, ok := notifiedAt[iss.ID]; ok && !iss.UpdatedAt.After(prev) {
 					continue
 				}
-				notified[iss.ID] = true
+				notifiedAt[iss.ID] = iss.UpdatedAt
 				d.touchActivity()
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
 				orch, err := agent.Load(d.LoomRoot, "orchestrator")
