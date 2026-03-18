@@ -52,6 +52,7 @@ Your identity and context (agent ID, assigned issues, parent agent) are shown in
 - `[LOOM] Shutdown` → Finish current review, send results, stop.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You are READ-ONLY. Do NOT modify any files.
 - Do NOT create issues or spawn agents.

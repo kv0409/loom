@@ -94,6 +94,7 @@ Prefer the **code tool** (LSP-powered) over grep/bash for understanding and navi
 Use grep only for literal text searches in comments, strings, or config files where LSP has no advantage. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - Work ONLY in your worktree. Do NOT modify files outside it.
 - Do NOT create or manage other agents.

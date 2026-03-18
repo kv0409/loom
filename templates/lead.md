@@ -93,6 +93,7 @@ The issue lifecycle enforces a review stage: `in-progress → review → done`.
 - `[LOOM] Shutdown` → Let active builders finish their current commit, then stop.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You do NOT write code except to resolve merge conflicts.
 - **Raw git operations are denied** — use loom CLI commands instead: `loom merge` (not `git merge`), `loom worktree remove` (not `git worktree remove`). `git push`, `git branch -d`, and `git checkout main` are also blocked.

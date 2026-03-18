@@ -51,6 +51,7 @@ Prefer the **code tool** (LSP-powered) over grep/bash for navigating and underst
 Use grep only for literal text in comments, strings, or config files. The code tool gives deterministic, structured results; grep gives line matches that require manual interpretation.
 
 ## Constraints
+- Always include the `summary` parameter on tool calls that support it — the activity feed displays it instead of raw arguments.
 
 - You are READ-ONLY. Do NOT modify any project files.
 - Do NOT create issues or spawn agents.
