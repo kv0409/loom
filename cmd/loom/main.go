@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -850,14 +851,16 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	cliout.PrintInfo(fmt.Sprintf("%-12s %-8s %-14s %-40s %s", "ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE"))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "ID\tTYPE\tSTATUS\tTITLE\tASSIGNEE\n")
 	for _, iss := range issues {
 		title := iss.Title
 		if len(title) > 40 {
 			title = title[:37] + "..."
 		}
-		fmt.Printf("%-12s %-8s %-14s %-40s %s\n", iss.ID, iss.Type, iss.Status, title, iss.Assignee)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", iss.ID, iss.Type, iss.Status, title, iss.Assignee)
 	}
+	w.Flush()
 	return nil
 }
 
@@ -1268,14 +1271,16 @@ func runMemoryList(cmd *cobra.Command, args []string) error {
 		fmt.Println("No memory entries")
 		return nil
 	}
-	fmt.Printf("%-12s %-12s %-40s %-16s %s\n", "ID", "TYPE", "TITLE", "BY", "TIMESTAMP")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "ID\tTYPE\tTITLE\tBY\tTIMESTAMP\n")
 	for _, e := range entries {
 		title := e.Title
 		if len(title) > 40 {
 			title = title[:37] + "..."
 		}
-		fmt.Printf("%-12s %-12s %-40s %-16s %s\n", e.ID, e.Type, title, memory.ByField(e), e.Timestamp.Format("2006-01-02 15:04"))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", e.ID, e.Type, title, memory.ByField(e), e.Timestamp.Format("2006-01-02 15:04"))
 	}
+	w.Flush()
 	return nil
 }
 
@@ -1347,10 +1352,12 @@ func runWorktreeList(cmd *cobra.Command, args []string) error {
 		fmt.Println("No active worktrees")
 		return nil
 	}
-	fmt.Printf("%-35s %-15s %-15s %s\n", "WORKTREE", "AGENT", "ISSUE", "BRANCH")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "WORKTREE\tAGENT\tISSUE\tBRANCH\n")
 	for _, wt := range wts {
-		fmt.Printf("%-35s %-15s %-15s %s\n", wt.Name, wt.Agent, wt.Issue, wt.Branch)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", wt.Name, wt.Agent, wt.Issue, wt.Branch)
 	}
+	w.Flush()
 	return nil
 }
 
@@ -1465,7 +1472,8 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		fmt.Println("No agents")
 		return nil
 	}
-	fmt.Printf("%-16s %-12s %-10s %-25s %-15s %s\n", "ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "ID\tROLE\tSTATUS\tWORKTREE\tISSUES\tHEARTBEAT\n")
 	for _, a := range agents {
 		wt := "—"
 		if a.WorktreeName != "" {
@@ -1476,8 +1484,9 @@ func runAgents(cmd *cobra.Command, args []string) error {
 			issues = strings.Join(a.AssignedIssues, ",")
 		}
 		hb := relativeTime(a.Heartbeat)
-		fmt.Printf("%-16s %-12s %-10s %-25s %-15s %s\n", a.ID, a.Role, a.Status, wt, issues, hb)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", a.ID, a.Role, a.Status, wt, issues, hb)
 	}
+	w.Flush()
 	return nil
 }
 
@@ -2575,8 +2584,8 @@ func runMerges(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Printf("%-30s %-30s %-12s %s\n", "WORKTREE", "BRANCH", "ISSUE", "STAGE")
-	fmt.Println(strings.Repeat("─", 80))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "WORKTREE\tBRANCH\tISSUE\tSTAGE\n")
 	for _, wt := range wts {
 		issueID := "—"
 		stage := "ready"
@@ -2591,16 +2600,10 @@ func runMerges(cmd *cobra.Command, args []string) error {
 				stage = "merged"
 			}
 		}
-		fmt.Printf("%-30s %-30s %-12s %s\n", truncStr(wt.Name, 30), truncStr(wt.Branch, 30), issueID, stage)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", wt.Name, wt.Branch, issueID, stage)
 	}
+	w.Flush()
 	return nil
-}
-
-func truncStr(s string, n int) string {
-	if len(s) > n {
-		return s[:n-3] + "..."
-	}
-	return s
 }
 
 func runFinding(cmd *cobra.Command, args []string) error {
