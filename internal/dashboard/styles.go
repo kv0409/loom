@@ -294,6 +294,9 @@ var (
 	diffHeader = lipgloss.NewStyle().Bold(true).Foreground(colYellow)
 )
 
+// Overview stats line style — bold foreground so it reads as a glanceable summary.
+var statsLineStyle = lipgloss.NewStyle().Bold(true).Foreground(colFg)
+
 // Progress bar styles
 var (
 	barLabel = lipgloss.NewStyle().Foreground(colBlue).Bold(true)

@@ -129,8 +129,10 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 		}
 	}
 
+	statsText := fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.Agents), suffix(len(m.data.Agents)), len(m.data.Worktrees), suffix(len(m.data.Worktrees)))
 	lines := []string{
-		fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.Agents), suffix(len(m.data.Agents)), len(m.data.Worktrees), suffix(len(m.data.Worktrees))),
+		statsLineStyle.Render(statsText),
+		strings.TrimRight(separator(fullW), "\n"),
 	}
 
 	shown := 0
@@ -224,6 +226,3 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	}
 	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)
 }
-
-
-
