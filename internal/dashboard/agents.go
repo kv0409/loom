@@ -168,13 +168,14 @@ func (m Model) renderAgentDetail() string {
 			kind      backend.ACPKind
 			timestamp string
 			content   string
+			title     string
 		}
 		var groups []group
 		for _, ev := range events {
 			if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
 				groups[len(groups)-1].content += ev.Content
 			} else {
-				groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content})
+				groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content, title: ev.Title})
 			}
 		}
 		for i, g := range groups {
@@ -183,7 +184,10 @@ func (m Model) renderAgentDetail() string {
 			}
 			switch g.kind {
 			case backend.ToolSummary:
-				line := g.content
+				line := g.title
+				if line == "" {
+					line = g.content
+				}
 				line = truncate(line, maxW)
 				lines = append(lines, idleStyle.Render("  ⚙ "+line))
 			case backend.TokenChunk:

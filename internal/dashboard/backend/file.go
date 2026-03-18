@@ -314,6 +314,9 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 				text = "…" + string(runes[len(runes)-(maxLen-1):])
 			}
 			tool, detail := summarizeACPContent(last.Content)
+			if last.Title != "" {
+				detail = last.Title
+			}
 			ts := last.Timestamp
 			timed = append(timed, timedEntry{ts: ts, entry: ActivityEntry{
 				AgentID: a.ID,
