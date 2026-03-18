@@ -84,16 +84,27 @@ func (m Model) renderDiff() string {
 	}
 
 	lines := splitLines(m.diffContent)
-	styledLines := make([]string, len(lines))
+
+	// Apply horizontal scroll on raw lines before styling so ANSI codes
+	// are not split mid-sequence.
+	shifted := make([]string, len(lines))
 	for i, l := range lines {
+		shifted[i] = hshiftLine(l, m.diffHScroll)
+	}
+
+	styledLines := make([]string, len(shifted))
+	for i, l := range shifted {
+		// Use original (pre-shift) line for prefix detection so the diff
+		// prefix character (+/-/@@) is always checked even when scrolled.
+		orig := lines[i]
 		switch {
-		case strings.HasPrefix(l, "diff --git"), strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+		case strings.HasPrefix(orig, "diff --git"), strings.HasPrefix(orig, "+++"), strings.HasPrefix(orig, "---"):
 			styledLines[i] = diffHeader.Render(l)
-		case strings.HasPrefix(l, "@@"):
+		case strings.HasPrefix(orig, "@@"):
 			styledLines[i] = diffHunk.Render(l)
-		case strings.HasPrefix(l, "+"):
+		case strings.HasPrefix(orig, "+"):
 			styledLines[i] = diffAdd.Render(l)
-		case strings.HasPrefix(l, "-"):
+		case strings.HasPrefix(orig, "-"):
 			styledLines[i] = diffDel.Render(l)
 		default:
 			styledLines[i] = l
@@ -104,5 +115,10 @@ func (m Model) renderDiff() string {
 	viewContent, clampedScroll, total := renderViewport(styledLines, m.diffScroll, viewH)
 	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
 
-	return panel(title+scrollInfo, viewContent+"\n", panelWidth(m.width))
+	hScrollInfo := ""
+	if m.diffHScroll > 0 {
+		hScrollInfo = idleStyle.Render(fmt.Sprintf(" ←%d", m.diffHScroll))
+	}
+
+	return panelNoTruncate(title+scrollInfo+hScrollInfo, viewContent+"\n", panelWidth(m.width))
 }

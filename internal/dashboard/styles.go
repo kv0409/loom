@@ -242,7 +242,50 @@ func truncate(s string, n int) string {
 	return s
 }
 
-// Diff view styles
+// panelNoTruncate renders a bordered panel like panel() but skips line
+// truncation. Used by the diff view which applies its own horizontal
+// scrolling before rendering.
+func panelNoTruncate(title string, content string, width int) string {
+	innerW := width - 2
+	if innerW < 1 {
+		innerW = 1
+	}
+	// Clamp lines to innerW using MaxWidth so the border isn't broken,
+	// but only AFTER the caller has already shifted content horizontally.
+	content = truncateLines(content, innerW)
+	s := borderStyle.Width(innerW).Render(content)
+	if title != "" {
+		lines := splitLines(s)
+		if len(lines) > 0 {
+			t := panelTitle.Render(" " + panelIcon(title) + title + " ")
+			tLen := lipgloss.Width(t)
+			bc := lipgloss.NewStyle().Foreground(colSubtle)
+			remaining := innerW - tLen - 1
+			if remaining < 0 {
+				remaining = 0
+			}
+			lines[0] = bc.Render("╭─") + t + bc.Render(strings.Repeat("─", remaining)+"╮")
+			s = joinLines(lines)
+		}
+	}
+	return s
+}
+
+// hshiftLine shifts a single plain-text line by offset runes to the right,
+// dropping the first offset runes. Returns the remaining string.
+func hshiftLine(line string, offset int) string {
+	if offset <= 0 {
+		return line
+	}
+	runes := []rune(line)
+	if offset >= len(runes) {
+		return ""
+	}
+	return string(runes[offset:])
+}
+
+// diffHScrollStep is the number of columns each left/right press shifts.
+const diffHScrollStep = 8
 var (
 	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
 	diffDel    = lipgloss.NewStyle().Foreground(colRed)

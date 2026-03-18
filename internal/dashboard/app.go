@@ -72,7 +72,8 @@ type Model struct {
 	lastClickTime    time.Time
 	lastClickRow     int
 	detailScroll     int // scroll offset for agent detail output
-	diffScroll       int // scroll offset for diff view
+	diffScroll       int // scroll offset for diff view (vertical)
+	diffHScroll      int // scroll offset for diff view (horizontal)
 	flashMsg         string
 	flashIsErr       bool
 	searchMode       bool
@@ -643,7 +644,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		return m, nil
-	case keyKanbanLeft, keyLeft: // "h" or left-arrow: kanban column left (kanban only)
+	case keyKanbanLeft, keyLeft: // "h" or left-arrow: kanban column left / diff hscroll left
 		if m.view == viewKanban {
 			m.kanbanCol--
 			if m.kanbanCol < 0 {
@@ -651,14 +652,23 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.clampKanbanRow()
 		}
+		if m.view == viewDiff {
+			m.diffHScroll -= diffHScrollStep
+			if m.diffHScroll < 0 {
+				m.diffHScroll = 0
+			}
+		}
 		return m, nil
-	case keyKanbanRight: // right-arrow only: kanban column right ("l" alias removed)
+	case keyKanbanRight: // right-arrow only: kanban column right / diff hscroll right
 		if m.view == viewKanban {
 			m.kanbanCol++
 			if m.kanbanCol >= len(kanbanColumns) {
 				m.kanbanCol = len(kanbanColumns) - 1
 			}
 			m.clampKanbanRow()
+		}
+		if m.view == viewDiff {
+			m.diffHScroll += diffHScrollStep
 		}
 		return m, nil
 	case keyEnter:
@@ -705,6 +715,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.diffLoading = true
 			m.view = viewDiff
 			m.diffScroll = 0
+			m.diffHScroll = 0
 			m.cursor = 0
 			return m, diffCmd(m.backend, wtPath)
 		}
@@ -787,6 +798,9 @@ func (m *Model) clampCursor() {
 	}
 	if m.diffScroll < 0 {
 		m.diffScroll = 0
+	}
+	if m.diffHScroll < 0 {
+		m.diffHScroll = 0
 	}
 }
 
@@ -987,7 +1001,7 @@ func (m Model) helpBar() string {
 	case viewMailDetail:
 		ctx = "[c]ompose [r]eply [j/k]scroll"
 	case viewDiff:
-		ctx = "[j/k]scroll"
+		ctx = "[j/k]scroll [←/→]hscroll"
 	}
 
 	if ctx != "" {
