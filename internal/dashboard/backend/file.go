@@ -12,6 +12,7 @@ import (
 
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
@@ -68,6 +69,9 @@ func (fb *FileBackend) Load() Snapshot {
 	_, sockErr := os.Stat(daemon.SockPath(fb.root))
 	s.DaemonOK = sockErr == nil
 	s.Errors = errs
+	if cfg, err := config.Load(fb.root); err == nil {
+		s.HeartbeatTimeoutSec = cfg.Limits.HeartbeatTimeoutSeconds
+	}
 	return s
 }
 

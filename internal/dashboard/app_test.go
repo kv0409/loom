@@ -11,7 +11,7 @@ import (
 )
 
 func testModel(v view) Model {
-	m := New("/tmp/test-loom")
+	m := New("/tmp/test-loom", 300)
 	m.width = 120
 	m.height = 40
 	m.view = v

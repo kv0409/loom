@@ -25,18 +25,19 @@ type LogLine struct {
 
 // Snapshot holds all dashboard state loaded in a single refresh cycle.
 type Snapshot struct {
-	Agents    []*Agent
-	AgentTree []AgentTreeNode
-	Issues    []*Issue
-	Worktrees []*Worktree
-	DiffStats map[string]*DiffStats
-	Messages  []*Message
-	Memories  []*MemoryEntry
-	Unread    int
-	Activity  []ActivityEntry
-	Logs      []LogLine
-	DaemonOK  bool
-	Errors    []string
+	Agents              []*Agent
+	AgentTree           []AgentTreeNode
+	Issues              []*Issue
+	Worktrees           []*Worktree
+	DiffStats           map[string]*DiffStats
+	Messages            []*Message
+	Memories            []*MemoryEntry
+	Unread              int
+	Activity            []ActivityEntry
+	Logs                []LogLine
+	DaemonOK            bool
+	Errors              []string
+	HeartbeatTimeoutSec int
 }
 
 // Backend loads a complete dashboard snapshot.

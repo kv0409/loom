@@ -89,6 +89,7 @@ type Model struct {
 	agentOutputID    string             // agent ID the cache belongs to
 	diffLoading      bool               // true while diff is being fetched
 	errorShown       bool               // set after first error flash to avoid repeating
+	heartbeatTimeoutSec int             // from config; used for countdown donut
 }
 
 type tickMsg time.Time
@@ -119,7 +120,7 @@ func clearFlashAfter(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return clearFlashMsg{} })
 }
 
-func New(loomRoot string) Model {
+func New(loomRoot string, heartbeatTimeoutSec int) Model {
 	h := help.New()
 	h.Styles.ShortKey = helpStyle.Bold(true)
 	h.Styles.ShortDesc = helpStyle
@@ -131,7 +132,7 @@ func New(loomRoot string) Model {
 	searchTI := textinput.New()
 	searchTI.Prompt = ""
 
-	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI, heartbeatTimeoutSec: heartbeatTimeoutSec}
 }
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
@@ -286,6 +287,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case backend.Snapshot:
 			m.data = msg
 			m.refreshed = true
+			if msg.HeartbeatTimeoutSec > 0 {
+				m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
+			}
 			m.clampCursor()
 			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
 				m.detailScroll = 0
@@ -339,6 +343,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case backend.Snapshot:
 		m.data = msg
 		m.refreshed = true
+		if msg.HeartbeatTimeoutSec > 0 {
+			m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
+		}
 		m.clampCursor()
 		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMailDetail && m.view != viewMemoryDetail {
 			m.detailScroll = 0

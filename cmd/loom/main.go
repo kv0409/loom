@@ -502,7 +502,11 @@ func launchDashboard(root string) error {
 			return nil
 		}
 		os.WriteFile(dashPidFile(root), []byte(fmt.Sprintf("%d", os.Getpid())), 0644)
-		m := dashboard.New(root)
+		hbTimeout := config.DefaultConfig().Limits.HeartbeatTimeoutSeconds
+		if cfg, err := config.Load(root); err == nil {
+			hbTimeout = cfg.Limits.HeartbeatTimeoutSeconds
+		}
+		m := dashboard.New(root, hbTimeout)
 		p := tea.NewProgram(m, dashboard.ProgramOptions()...)
 		finalModel, err := p.Run()
 		os.Remove(dashPidFile(root))

@@ -284,7 +284,7 @@ func TestRenderAgentDetail_ToolSummaryUTF8(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := New(dir)
+	m := New(dir, 300)
 	m.width = 80
 	m.height = 40
 	m.view = viewAgentDetail
