@@ -248,6 +248,27 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		}
 		priority := str(args, "priority")
 		dispatch := strMap(args, "dispatch")
+		if status == "cancelled" {
+			if _, err := agent.CancelIssue(s.LoomRoot, id); err != nil {
+				return "", err
+			}
+			// Apply any remaining non-status updates.
+			if priority != "" || len(dispatch) > 0 {
+				if _, err := issue.Update(s.LoomRoot, id, issue.UpdateOpts{
+					Priority: priority,
+					Dispatch: dispatch,
+				}); err != nil {
+					return "", err
+				}
+			}
+			return fmt.Sprintf("Cancelled %s", id), nil
+		}
+		if status == "done" {
+			if _, err := agent.CloseIssue(s.LoomRoot, id, ""); err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("Closed %s", id), nil
+		}
 		if status != "" || priority != "" || len(dispatch) > 0 {
 			if _, err := issue.Update(s.LoomRoot, id, issue.UpdateOpts{
 				Status:   status,
@@ -258,6 +279,16 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			}
 		}
 		return fmt.Sprintf("Updated %s", id), nil
+
+	case "loom_issue_close":
+		id, err := required(args, "id")
+		if err != nil {
+			return "", err
+		}
+		if _, err := agent.CloseIssue(s.LoomRoot, id, str(args, "reason")); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Closed %s", id), nil
 
 	case "loom_issue_create":
 		title, err := required(args, "title")
@@ -469,6 +500,9 @@ func toolDefs() []toolDef {
 			"title")},
 		{Name: "loom_issue_list", Description: "List issues with optional filters", InputSchema: obj(
 			props{"status": propStr("Filter by status"), "assignee": propStr("Filter by assignee"), "type": propStr("Filter by type"), "all": propBool("Include closed/cancelled"), "ready_only": propBool("Only return open unassigned issues with resolved dependencies")})},
+		{Name: "loom_issue_close", Description: "Close an issue (marks done, reconciles agent ownership)", InputSchema: obj(
+			props{"id": propStr("Issue ID"), "reason": propStr("Close reason")},
+			"id")},
 		{Name: "loom_memory_add", Description: "Record a decision, discovery, or convention in shared memory", InputSchema: obj(
 			props{"type": propEnum("Memory type", "decision", "discovery", "convention"), "title": propStr("Title"),
 				"context": propStr("Context (decisions)"), "rationale": propStr("Rationale (decisions)"), "decision": propStr("Decision text"),

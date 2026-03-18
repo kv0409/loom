@@ -408,3 +408,175 @@ func TestReassignInProgressIssue(t *testing.T) {
 		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "in-progress")
 	}
 }
+
+// --- CancelIssue / CloseIssue ---
+
+func TestCancelIssue_AssignedClearsAgent(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "cancel assigned")
+	AssignIssue(root, "builder-001", iss.ID)
+
+	cancelled, err := CancelIssue(root, iss.ID)
+	if err != nil {
+		t.Fatalf("CancelIssue: %v", err)
+	}
+	if len(cancelled) != 1 {
+		t.Fatalf("expected 1 cancelled, got %d", len(cancelled))
+	}
+	if cancelled[0].PreviousAssignee != "builder-001" {
+		t.Errorf("PreviousAssignee: got %q, want %q", cancelled[0].PreviousAssignee, "builder-001")
+	}
+
+	// Agent should have no assigned issues.
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 0 {
+		t.Errorf("agent still has issues: %v", loaded.AssignedIssues)
+	}
+
+	// Issue should be cancelled with no assignee.
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Status != "cancelled" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "cancelled")
+	}
+	if loadedIss.Assignee != "" {
+		t.Errorf("issue Assignee: got %q, want empty", loadedIss.Assignee)
+	}
+}
+
+func TestCancelIssue_InProgressClearsAgent(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "cancel in-progress")
+	AssignIssue(root, "builder-001", iss.ID)
+	issue.Update(root, iss.ID, issue.UpdateOpts{Status: "in-progress"})
+
+	cancelled, err := CancelIssue(root, iss.ID)
+	if err != nil {
+		t.Fatalf("CancelIssue: %v", err)
+	}
+	if len(cancelled) != 1 || cancelled[0].PreviousAssignee != "builder-001" {
+		t.Fatalf("unexpected cancelled result: %v", cancelled)
+	}
+
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 0 {
+		t.Errorf("agent still has issues: %v", loaded.AssignedIssues)
+	}
+
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Status != "cancelled" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "cancelled")
+	}
+}
+
+func TestCancelIssue_UnassignedNoError(t *testing.T) {
+	root := setupRoot(t)
+	iss := createTestIssue(t, root, "cancel unassigned")
+
+	cancelled, err := CancelIssue(root, iss.ID)
+	if err != nil {
+		t.Fatalf("CancelIssue: %v", err)
+	}
+	if len(cancelled) != 1 {
+		t.Fatalf("expected 1 cancelled, got %d", len(cancelled))
+	}
+	if cancelled[0].PreviousAssignee != "" {
+		t.Errorf("PreviousAssignee: got %q, want empty", cancelled[0].PreviousAssignee)
+	}
+}
+
+func TestCancelIssue_CascadesChildren(t *testing.T) {
+	root := setupRoot(t)
+	a1 := makeAgent("builder-001", "builder")
+	a2 := makeAgent("builder-002", "builder")
+	Register(root, a1)
+	Register(root, a2)
+
+	parent, _ := issue.Create(root, "parent", issue.CreateOpts{})
+	child, _ := issue.Create(root, "child", issue.CreateOpts{Parent: parent.ID})
+	AssignIssue(root, "builder-001", parent.ID)
+	AssignIssue(root, "builder-002", child.ID)
+
+	cancelled, err := CancelIssue(root, parent.ID)
+	if err != nil {
+		t.Fatalf("CancelIssue: %v", err)
+	}
+	if len(cancelled) != 2 {
+		t.Fatalf("expected 2 cancelled, got %d", len(cancelled))
+	}
+
+	// Both agents should have empty AssignedIssues.
+	for _, id := range []string{"builder-001", "builder-002"} {
+		loaded, _ := Load(root, id)
+		if len(loaded.AssignedIssues) != 0 {
+			t.Errorf("agent %s still has issues: %v", id, loaded.AssignedIssues)
+		}
+	}
+}
+
+func TestCloseIssue_AssignedClearsAgent(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "close assigned")
+	AssignIssue(root, "builder-001", iss.ID)
+	issue.Update(root, iss.ID, issue.UpdateOpts{Status: "in-progress"})
+
+	info, err := CloseIssue(root, iss.ID, "completed")
+	if err != nil {
+		t.Fatalf("CloseIssue: %v", err)
+	}
+	if info.PreviousAssignee != "builder-001" {
+		t.Errorf("PreviousAssignee: got %q, want %q", info.PreviousAssignee, "builder-001")
+	}
+
+	// Agent should have no assigned issues.
+	loaded, _ := Load(root, "builder-001")
+	if len(loaded.AssignedIssues) != 0 {
+		t.Errorf("agent still has issues: %v", loaded.AssignedIssues)
+	}
+
+	// Issue should be done with no assignee.
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Status != "done" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "done")
+	}
+	if loadedIss.Assignee != "" {
+		t.Errorf("issue Assignee: got %q, want empty", loadedIss.Assignee)
+	}
+	if loadedIss.CloseReason != "completed" {
+		t.Errorf("issue CloseReason: got %q, want %q", loadedIss.CloseReason, "completed")
+	}
+}
+
+func TestCloseIssue_UnassignedNoError(t *testing.T) {
+	root := setupRoot(t)
+	iss := createTestIssue(t, root, "close unassigned")
+
+	info, err := CloseIssue(root, iss.ID, "done")
+	if err != nil {
+		t.Fatalf("CloseIssue: %v", err)
+	}
+	if info.PreviousAssignee != "" {
+		t.Errorf("PreviousAssignee: got %q, want empty", info.PreviousAssignee)
+	}
+
+	loadedIss, _ := issue.Load(root, iss.ID)
+	if loadedIss.Status != "done" {
+		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "done")
+	}
+}
+
+func TestCloseIssue_BlockedByOpenChildren(t *testing.T) {
+	root := setupRoot(t)
+	parent, _ := issue.Create(root, "parent", issue.CreateOpts{})
+	issue.Create(root, "child", issue.CreateOpts{Parent: parent.ID})
+
+	_, err := CloseIssue(root, parent.ID, "try close")
+	if err == nil {
+		t.Fatal("expected error closing parent with open children")
+	}
+}

@@ -409,6 +409,41 @@ func UnassignIssue(loomRoot, issueID string) error {
 	return nil
 }
 
+// CancelIssue cancels an issue and reconciles agent ownership for all affected issues.
+// Returns the list of cancelled issues (with previous assignees) for caller notification.
+func CancelIssue(loomRoot, issueID string) ([]issue.CancelledInfo, error) {
+	cancelled, err := issue.Cancel(loomRoot, issueID)
+	if err != nil {
+		return nil, err
+	}
+	for _, ci := range cancelled {
+		if ci.PreviousAssignee == "" {
+			continue
+		}
+		if a, err := Load(loomRoot, ci.PreviousAssignee); err == nil {
+			a.AssignedIssues = removeStr(a.AssignedIssues, ci.IssueID)
+			Save(loomRoot, a)
+		}
+	}
+	return cancelled, nil
+}
+
+// CloseIssue closes an issue and reconciles agent ownership.
+// Returns info about the closed issue for caller notification.
+func CloseIssue(loomRoot, issueID, reason string) (*issue.ClosedInfo, error) {
+	info, err := issue.Close(loomRoot, issueID, reason)
+	if err != nil {
+		return nil, err
+	}
+	if info.PreviousAssignee != "" {
+		if a, err := Load(loomRoot, info.PreviousAssignee); err == nil {
+			a.AssignedIssues = removeStr(a.AssignedIssues, info.IssueID)
+			Save(loomRoot, a)
+		}
+	}
+	return info, nil
+}
+
 func containsStr(ss []string, s string) bool {
 	for _, v := range ss {
 		if v == s {

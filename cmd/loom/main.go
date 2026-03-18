@@ -1030,7 +1030,7 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if status == "cancelled" {
-		cancelled, err := issue.Cancel(root, args[0])
+		cancelled, err := agent.CancelIssue(root, args[0])
 		if err != nil {
 			return err
 		}
@@ -1039,22 +1039,19 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 			if ci.PreviousAssignee == "" {
 				continue
 			}
-			// Sync agent state: remove cancelled issue from agent's AssignedIssues.
-			if a, err := agent.Load(root, ci.PreviousAssignee); err == nil {
-				filtered := a.AssignedIssues[:0]
-				for _, id := range a.AssignedIssues {
-					if id != ci.IssueID {
-						filtered = append(filtered, id)
-					}
-				}
-				a.AssignedIssues = filtered
-				agent.Save(root, a)
-			}
 			msg := fmt.Sprintf("[LOOM] Issue %s cancelled. Stop work immediately.", ci.IssueID)
 			if err := daemon.Message(root, ci.PreviousAssignee, msg); err != nil {
 				cliout.PrintError("could not notify "+ci.PreviousAssignee, err.Error())
 			}
 		}
+		return nil
+	}
+
+	if status == "done" {
+		if _, err := agent.CloseIssue(root, args[0], ""); err != nil {
+			return err
+		}
+		cliout.PrintSuccess("Closed " + args[0])
 		return nil
 	}
 
@@ -1106,7 +1103,7 @@ func runIssueClose(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	reason, _ := cmd.Flags().GetString("reason")
-	_, err = issue.Close(root, args[0], reason)
+	_, err = agent.CloseIssue(root, args[0], reason)
 	if err != nil {
 		return err
 	}

@@ -520,13 +520,14 @@ func (d *Daemon) watchDoneIssues() {
 					continue
 				}
 				d.touchActivity()
-				if _, err := issue.Close(d.LoomRoot, iss.ID, "all children resolved"); err != nil {
+				info, err := agent.CloseIssue(d.LoomRoot, iss.ID, "all children resolved")
+				if err != nil {
 					d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
 					continue
 				}
 				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
-				target := iss.Assignee
+				target := info.PreviousAssignee
 				if target == "" {
 					target = "orchestrator"
 				}

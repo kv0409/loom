@@ -261,7 +261,13 @@ func Update(loomRoot string, id string, opts UpdateOpts) (*Issue, error) {
 	return issue, nil
 }
 
-func Close(loomRoot string, id string, reason string) (*Issue, error) {
+// ClosedInfo holds info about a closed issue for caller notification.
+type ClosedInfo struct {
+	IssueID          string
+	PreviousAssignee string
+}
+
+func Close(loomRoot string, id string, reason string) (*ClosedInfo, error) {
 	issue, err := Load(loomRoot, id)
 	if err != nil {
 		return nil, err
@@ -286,7 +292,10 @@ func Close(loomRoot string, id string, reason string) (*Issue, error) {
 	}
 
 	now := time.Now()
+	prevAssignee := issue.Assignee
+
 	issue.Status = "done"
+	issue.Assignee = ""
 	issue.ClosedAt = &now
 	issue.CloseReason = reason
 	issue.History = append(issue.History, HistoryEntry{
@@ -296,7 +305,7 @@ func Close(loomRoot string, id string, reason string) (*Issue, error) {
 	if err := Save(loomRoot, issue); err != nil {
 		return nil, err
 	}
-	return issue, nil
+	return &ClosedInfo{IssueID: id, PreviousAssignee: prevAssignee}, nil
 }
 
 // CancelledInfo holds info about a cancelled issue for caller notification.
