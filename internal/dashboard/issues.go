@@ -101,7 +101,7 @@ func (m Model) renderIssues() string {
 			t.SetStyles(table.Styles{
 				Header:   tableHeaderStyle,
 				Cell:     tableCellStyle,
-				Selected: tableCellStyle,
+				Selected: tableHeaderlessSelectedStyle,
 			})
 		}
 		content = styledTableView(t, activeRepl) + "\n"
