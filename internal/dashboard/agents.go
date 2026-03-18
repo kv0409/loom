@@ -185,12 +185,12 @@ func (m Model) renderAgentDetail() string {
 					if g.timestamp != "" {
 						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
 					}
-					lines = append(lines, wrapEventContent(g.content, maxW))
+					lines = append(lines, wrapLines(g.content, maxW, "  ")...)
 				default: // CompleteMessage
 					if g.timestamp != "" {
 						lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
 					}
-					lines = append(lines, wrapEventContent(g.content, maxW))
+					lines = append(lines, wrapLines(g.content, maxW, "  ")...)
 				}
 			}
 		} else {
@@ -234,39 +234,5 @@ func (m Model) renderAgentDetail() string {
 	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, viewContent, panelWidth(m.width))
 }
 
-// wrapEventContent word-wraps content into indented lines for the detail view.
-func wrapEventContent(content string, maxW int) string {
-	var sb strings.Builder
-	for i, bodyLine := range strings.Split(content, "\n") {
-		if i > 0 {
-			sb.WriteByte('\n')
-		}
-		if bodyLine == "" {
-			continue
-		}
-		first := true
-		runes := []rune(bodyLine)
-		for len(runes) > maxW {
-			cut := maxW
-			prefix := string(runes[:cut])
-			if sp := strings.LastIndex(prefix, " "); sp > 0 {
-				cut = len([]rune(prefix[:sp]))
-			}
-			if !first {
-				sb.WriteByte('\n')
-			}
-			sb.WriteString("  " + string(runes[:cut]))
-			runes = []rune(strings.TrimSpace(string(runes[cut:])))
-			first = false
-		}
-		if len(runes) > 0 {
-			if !first {
-				sb.WriteByte('\n')
-			}
-			sb.WriteString("  " + string(runes))
-		}
-	}
-	return sb.String()
-}
 
 

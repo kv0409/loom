@@ -3,7 +3,6 @@ package dashboard
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/table"
 )
@@ -69,19 +68,20 @@ func (m Model) renderMemoryDetail() string {
 	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, m.backend.MemoryByField(e)))
 	lines = append(lines, fmt.Sprintf("  Time: %s", fmtTimeFull(e.Timestamp)))
 
+	maxW := detailContentWidth(m.width)
 	switch e.Type {
 	case "decision":
 		if e.Context != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("CONTEXT"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Context, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Context, maxW, "    ")...)
 		}
 		if e.Decision != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("DECISION"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Decision, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Decision, maxW, "    ")...)
 		}
 		if e.Rationale != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("RATIONALE"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rationale, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Rationale, maxW, "    ")...)
 		}
 		if len(e.Alternatives) > 0 {
 			lines = append(lines, "", "  "+headerStyle.Render("ALTERNATIVES"))
@@ -98,16 +98,16 @@ func (m Model) renderMemoryDetail() string {
 		}
 		if e.Finding != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("FINDING"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Finding, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Finding, maxW, "    ")...)
 		}
 		if e.Implications != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("IMPLICATIONS"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Implications, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Implications, maxW, "    ")...)
 		}
 	case "convention":
 		if e.Rule != "" {
 			lines = append(lines, "", "  "+headerStyle.Render("RULE"))
-			lines = append(lines, strings.Split(strings.TrimRight(wrapField(e.Rule, detailContentWidth(m.width)), "\n"), "\n")...)
+			lines = append(lines, wrapLines(e.Rule, maxW, "    ")...)
 		}
 		if e.AppliesTo != "" {
 			lines = append(lines, fmt.Sprintf("  Applies to: %s", e.AppliesTo))
@@ -134,31 +134,4 @@ func (m Model) renderMemoryDetail() string {
 	return panel("Memory: "+e.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
 }
 
-// wrapField formats a multi-line text field with indentation.
-// Uses rune-based slicing to avoid splitting multi-byte UTF-8 characters.
-func wrapField(text string, maxW int) string {
-	var s string
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			s += "\n"
-			continue
-		}
-		runes := []rune(line)
-		for len(runes) > maxW {
-			cut := maxW
-			segment := string(runes[:cut])
-			if sp := strings.LastIndex(segment, " "); sp > 0 {
-				cut = utf8.RuneCountInString(segment[:sp])
-			}
-			s += "    " + string(runes[:cut]) + "\n"
-			runes = runes[cut:]
-			line = strings.TrimSpace(string(runes))
-			runes = []rune(line)
-		}
-		if len(runes) > 0 {
-			s += "    " + string(runes) + "\n"
-		}
-	}
-	return s
-}
+

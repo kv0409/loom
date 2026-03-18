@@ -118,6 +118,46 @@ func styledTableBodyView(t table.Model, replacements [][2]string) string {
 	return out
 }
 
+// wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
+func wordWrap(s string, width int) []string {
+	if width <= 0 || len(s) == 0 {
+		return []string{s}
+	}
+	var segments []string
+	for len(s) > 0 {
+		runes := []rune(s)
+		if len(runes) <= width {
+			segments = append(segments, s)
+			break
+		}
+		cut := width
+		prefix := string(runes[:width])
+		if idx := strings.LastIndex(prefix, " "); idx > 0 {
+			cut = len([]rune(prefix[:idx])) + 1
+		}
+		segments = append(segments, strings.TrimRight(string(runes[:cut]), " "))
+		s = strings.TrimLeft(string(runes[cut:]), " ")
+	}
+	return segments
+}
+
+// wrapLines word-wraps multi-line text, prefixing each output line with indent.
+// Returns the wrapped lines as a slice (one element per display line).
+func wrapLines(text string, maxW int, indent string) []string {
+	var out []string
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			out = append(out, "")
+			continue
+		}
+		for _, seg := range wordWrap(line, maxW) {
+			out = append(out, indent+seg)
+		}
+	}
+	return out
+}
+
 // colWidths computes proportional column widths from a list of (percent, min) pairs
 // given the available pixel budget. Each entry is {pct: percentage of avail, min: minimum width}.
 func colWidths(avail int, cols []struct{ pct, min int }) []int {

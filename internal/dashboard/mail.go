@@ -3,7 +3,6 @@ package dashboard
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/lipgloss"
@@ -144,11 +143,7 @@ func (m Model) renderMailDetail() string {
 	lines = append(lines, "  "+headerStyle.Render("BODY"))
 	if msg.Body != "" {
 		maxW := detailContentWidth(m.width)
-		for _, bl := range strings.Split(msg.Body, "\n") {
-			for _, seg := range wordWrap(bl, maxW) {
-				lines = append(lines, "  "+seg)
-			}
-		}
+		lines = append(lines, wrapLines(msg.Body, maxW, "  ")...)
 	} else {
 		lines = append(lines, "  (no body)")
 	}

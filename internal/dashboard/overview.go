@@ -225,26 +225,5 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)
 }
 
-// wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
-func wordWrap(s string, width int) []string {
-	if width <= 0 || len(s) == 0 {
-		return []string{s}
-	}
-	var segments []string
-	for len(s) > 0 {
-		runes := []rune(s)
-		if len(runes) <= width {
-			segments = append(segments, s)
-			break
-		}
-		cut := width
-		prefix := string(runes[:width])
-		if idx := strings.LastIndex(prefix, " "); idx > 0 {
-			cut = len([]rune(prefix[:idx])) + 1
-		}
-		segments = append(segments, strings.TrimRight(string(runes[:cut]), " "))
-		s = strings.TrimLeft(string(runes[cut:]), " ")
-	}
-	return segments
-}
+
 

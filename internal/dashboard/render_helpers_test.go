@@ -230,3 +230,60 @@ func TestCellPlaceholder_WidthMatchesRequested(t *testing.T) {
 		}
 	}
 }
+
+func TestWrapLines_SingleLine(t *testing.T) {
+	got := wrapLines("hello world", 20, "  ")
+	if len(got) != 1 || got[0] != "  hello world" {
+		t.Errorf("unexpected: %v", got)
+	}
+}
+
+func TestWrapLines_MultiLine(t *testing.T) {
+	got := wrapLines("line one\nline two", 20, "    ")
+	if len(got) != 2 {
+		t.Fatalf("expected 2 lines, got %d: %v", len(got), got)
+	}
+	if got[0] != "    line one" || got[1] != "    line two" {
+		t.Errorf("unexpected: %v", got)
+	}
+}
+
+func TestWrapLines_WrapsLongLine(t *testing.T) {
+	got := wrapLines("hello world foo bar", 11, "  ")
+	if len(got) < 2 {
+		t.Fatalf("expected wrapping, got %v", got)
+	}
+	for i, line := range got {
+		if line != "" && !strings.HasPrefix(line, "  ") {
+			t.Errorf("line %d missing indent: %q", i, line)
+		}
+	}
+}
+
+func TestWrapLines_EmptyLines(t *testing.T) {
+	got := wrapLines("above\n\nbelow", 20, "  ")
+	if len(got) != 3 {
+		t.Fatalf("expected 3 lines, got %d: %v", len(got), got)
+	}
+	if got[1] != "" {
+		t.Errorf("expected empty middle line, got %q", got[1])
+	}
+}
+
+func TestWrapLines_UTF8(t *testing.T) {
+	input := strings.Repeat("日", 20)
+	got := wrapLines(input, 10, "  ")
+	for i, line := range got {
+		if line != "" && !strings.HasPrefix(line, "  ") {
+			t.Errorf("line %d missing indent: %q", i, line)
+		}
+	}
+	// Reassemble without indent and verify content preserved.
+	var content string
+	for _, line := range got {
+		content += strings.TrimPrefix(line, "  ")
+	}
+	if content != input {
+		t.Errorf("content mismatch after wrap")
+	}
+}
