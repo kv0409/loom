@@ -326,11 +326,11 @@ var (
 
 // Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
 var (
-	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
-	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg)
+	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg)
 	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSelBg)
 	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
-	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg)
 )
 
 // Compose overlay styles
