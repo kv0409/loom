@@ -382,7 +382,7 @@ func ListReady(loomRoot string) ([]*Issue, error) {
 
 func validateTransition(from, to string) error {
 	if to == "cancelled" {
-		return nil
+		return fmt.Errorf("use issue.Cancel() to cancel issues (cascades to children)")
 	}
 	allowed, ok := validTransitions[from]
 	if !ok {

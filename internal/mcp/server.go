@@ -224,6 +224,28 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			}
 		}
 		status := str(args, "status")
+		if status == "cancelled" {
+			cancelled, err := issue.Cancel(s.LoomRoot, id)
+			if err != nil {
+				return "", err
+			}
+			for _, ci := range cancelled {
+				if ci.PreviousAssignee == "" {
+					continue
+				}
+				if a, err := agent.Load(s.LoomRoot, ci.PreviousAssignee); err == nil {
+					filtered := a.AssignedIssues[:0]
+					for _, aid := range a.AssignedIssues {
+						if aid != ci.IssueID {
+							filtered = append(filtered, aid)
+						}
+					}
+					a.AssignedIssues = filtered
+					agent.Save(s.LoomRoot, a)
+				}
+			}
+			return fmt.Sprintf("Cancelled %s (%d issues affected)", id, len(cancelled)), nil
+		}
 		priority := str(args, "priority")
 		dispatch := strMap(args, "dispatch")
 		if status != "" || priority != "" || len(dispatch) > 0 {

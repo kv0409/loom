@@ -319,11 +319,11 @@ func TestValidateTransition_InvalidTransitions(t *testing.T) {
 	}
 }
 
-func TestValidateTransition_CancelledAlwaysAllowed(t *testing.T) {
+func TestValidateTransition_CancelledRejected(t *testing.T) {
 	statuses := []string{"open", "assigned", "in-progress", "blocked", "review", "done"}
 	for _, from := range statuses {
-		if err := validateTransition(from, "cancelled"); err != nil {
-			t.Errorf("expected %s → cancelled to be valid, got error: %v", from, err)
+		if err := validateTransition(from, "cancelled"); err == nil {
+			t.Errorf("expected %s → cancelled to be rejected (must use Cancel())", from)
 		}
 	}
 }
