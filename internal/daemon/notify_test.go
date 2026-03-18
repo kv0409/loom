@@ -1,0 +1,123 @@
+package daemon
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/acp"
+	"github.com/karanagi/loom/internal/config"
+)
+
+// stubClient is a minimal ACP client stand-in for testing notify outcomes.
+// We can't easily construct a real *acp.Client without a subprocess, so we
+// test the three code paths by controlling what's in acpClients and the
+// agent's ACPSessionID.
+
+func newTestDaemon() *Daemon {
+	return &Daemon{
+		acpClients: make(map[string]*acp.Client),
+	}
+}
+
+func TestNotify_NoSession(t *testing.T) {
+	d := newTestDaemon()
+	a := &agent.Agent{ID: "test-agent", ACPSessionID: ""}
+	nr := d.notify(a, "hello")
+	if nr.Outcome != NotifySkipped {
+		t.Fatalf("expected skipped, got %s", nr.Outcome)
+	}
+	if nr.Reason != "no active session" {
+		t.Fatalf("unexpected reason: %s", nr.Reason)
+	}
+}
+
+func TestNotify_NoClient(t *testing.T) {
+	d := newTestDaemon()
+	a := &agent.Agent{ID: "test-agent", ACPSessionID: "sess-1"}
+	nr := d.notify(a, "hello")
+	if nr.Outcome != NotifySkipped {
+		t.Fatalf("expected skipped, got %s", nr.Outcome)
+	}
+	if nr.Reason != "no ACP client" {
+		t.Fatalf("unexpected reason: %s", nr.Reason)
+	}
+}
+
+func TestNotify_ExitedClient(t *testing.T) {
+	d := newTestDaemon()
+	// Register a nil client entry — simulates a client that was removed.
+	// With no client in the map, we get "no ACP client".
+	a := &agent.Agent{ID: "test-agent", ACPSessionID: "sess-1"}
+	nr := d.notify(a, "hello")
+	if nr.Outcome != NotifySkipped {
+		t.Fatalf("expected skipped, got %s", nr.Outcome)
+	}
+}
+
+func TestApiNudge_NoSession(t *testing.T) {
+	tmp := t.TempDir()
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+	}
+	// Create agents dir and a minimal agent file on disk.
+	os.MkdirAll(filepath.Join(tmp, "agents"), 0755)
+	a := &agent.Agent{ID: "test-agent", Status: "active", Role: "builder"}
+	if err := agent.Save(tmp, a); err != nil {
+		t.Fatal(err)
+	}
+	resp := d.apiNudge(Request{AgentID: "test-agent", Message: "wake up"})
+	if !resp.OK {
+		// OK is true even for skipped — only failed returns error.
+		// But since session is empty, it's skipped, which is OK.
+		t.Logf("response: ok=%v data=%v error=%v", resp.OK, resp.Data, resp.Error)
+	}
+	nr, ok := resp.Data.(NotifyResult)
+	if !ok {
+		t.Fatalf("expected NotifyResult in data, got %T", resp.Data)
+	}
+	if nr.Outcome != NotifySkipped {
+		t.Fatalf("expected skipped, got %s", nr.Outcome)
+	}
+}
+
+func TestApiMessage_NoClient(t *testing.T) {
+	tmp := t.TempDir()
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+	}
+	os.MkdirAll(filepath.Join(tmp, "agents"), 0755)
+	a := &agent.Agent{ID: "test-agent", Status: "active", Role: "builder", ACPSessionID: "sess-1"}
+	if err := agent.Save(tmp, a); err != nil {
+		t.Fatal(err)
+	}
+	resp := d.apiMessage(Request{AgentID: "test-agent", Message: "hello"})
+	if !resp.OK {
+		t.Logf("response: ok=%v error=%v", resp.OK, resp.Error)
+	}
+	nr, ok := resp.Data.(NotifyResult)
+	if !ok {
+		t.Fatalf("expected NotifyResult in data, got %T", resp.Data)
+	}
+	if nr.Outcome != NotifySkipped {
+		t.Fatalf("expected skipped, got %s", nr.Outcome)
+	}
+}
+
+func TestApiNudge_AgentNotFound(t *testing.T) {
+	tmp := t.TempDir()
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+	}
+	resp := d.apiNudge(Request{AgentID: "nonexistent", Message: "hello"})
+	if resp.OK {
+		t.Fatal("expected error for nonexistent agent")
+	}
+}

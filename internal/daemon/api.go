@@ -101,8 +101,11 @@ func (d *Daemon) apiNudge(req Request) Response {
 	if err != nil {
 		return errResp("agent not found: " + req.AgentID)
 	}
-	d.notify(a, "[LOOM] Nudge: "+req.Message)
-	return okResp(nil)
+	nr := d.notify(a, "[LOOM] Nudge: "+req.Message)
+	if nr.Outcome == NotifyFailed {
+		return errResp("notify failed: " + nr.Reason)
+	}
+	return okResp(nr)
 }
 
 func (d *Daemon) apiMessage(req Request) Response {
@@ -110,8 +113,11 @@ func (d *Daemon) apiMessage(req Request) Response {
 	if err != nil {
 		return errResp("agent not found: " + req.AgentID)
 	}
-	d.notify(a, req.Message)
-	return okResp(nil)
+	nr := d.notify(a, req.Message)
+	if nr.Outcome == NotifyFailed {
+		return errResp("notify failed: " + nr.Reason)
+	}
+	return okResp(nr)
 }
 
 func (d *Daemon) apiKill(req Request) Response {

@@ -70,14 +70,46 @@ func (d *Daemon) touchActivity() {
 	d.mu.Unlock()
 }
 
-// notify delivers a message to an agent via ACP session/prompt.
-func (d *Daemon) notify(a *agent.Agent, msg string) {
+// NotifyOutcome describes the result of a notification attempt.
+type NotifyOutcome string
+
+const (
+	NotifyDelivered NotifyOutcome = "delivered"
+	NotifySkipped   NotifyOutcome = "skipped"
+	NotifyFailed    NotifyOutcome = "failed"
+)
+
+// NotifyResult captures the outcome of a notify call.
+type NotifyResult struct {
+	Outcome NotifyOutcome `json:"outcome"`
+	Reason  string        `json:"reason,omitempty"`
+}
+
+// notify delivers a message to an agent via ACP session/prompt and reports the outcome.
+func (d *Daemon) notify(a *agent.Agent, msg string) NotifyResult {
+	if a.ACPSessionID == "" {
+		return NotifyResult{Outcome: NotifySkipped, Reason: "no active session"}
+	}
 	d.mu.Lock()
 	c := d.acpClients[a.ID]
 	d.mu.Unlock()
-	if c != nil && a.ACPSessionID != "" {
-		c.SendPrompt(a.ACPSessionID, msg)
+	if c == nil {
+		return NotifyResult{Outcome: NotifySkipped, Reason: "no ACP client"}
 	}
+	if err := c.SendPrompt(a.ACPSessionID, msg); err != nil {
+		return NotifyResult{Outcome: NotifyFailed, Reason: err.Error()}
+	}
+	return NotifyResult{Outcome: NotifyDelivered}
+}
+
+// logNotify calls notify and logs non-delivered outcomes. Used by internal
+// lifecycle paths where the caller is fire-and-forget but should not be silent.
+func (d *Daemon) logNotify(a *agent.Agent, msg string) NotifyResult {
+	nr := d.notify(a, msg)
+	if nr.Outcome != NotifyDelivered {
+		log.Printf("[notify] %s to %s: %s (%s)", nr.Outcome, a.ID, nr.Reason, msg)
+	}
+	return nr
 }
 
 // isAlive checks whether an agent's backing process is still running.
@@ -407,7 +439,7 @@ func (d *Daemon) watchIssues() {
 					d.rlog("watchIssues:orch", "[issues] load orchestrator: %v", err)
 					continue
 				}
-				d.notify(orch, msg)
+				d.logNotify(orch, msg)
 			}
 		}
 	}
@@ -493,7 +525,7 @@ func (d *Daemon) watchDoneIssues() {
 					d.rlog("watchDoneIssues:load:"+target, "[done-issues] load agent %s: %v", target, err)
 					continue
 				}
-				d.notify(a, msg)
+				d.logNotify(a, msg)
 			}
 
 			// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
@@ -531,7 +563,7 @@ func (d *Daemon) watchDoneIssues() {
 				}
 				notifiedAgents[a.ID] = time.Now()
 				log.Printf("[daemon] notifying %s: assigned issue resolved, wrap up", a.ID)
-				d.notify(a, "[LOOM] Your assigned issue is resolved. Wrap up any final work and exit.")
+				d.logNotify(a, "[LOOM] Your assigned issue is resolved. Wrap up any final work and exit.")
 			}
 
 			// Clean up tracking for agents that are gone.
@@ -585,7 +617,7 @@ func (d *Daemon) watchMail() {
 					}
 					notifiedAt[m.ID] = time.Now()
 					msg := "[LOOM] New mail from " + m.From + ": " + m.Subject + ". Run: loom mail read"
-					d.notify(a, msg)
+					d.logNotify(a, msg)
 				}
 			}
 		}
@@ -652,7 +684,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err != nil {
 						continue
 					}
-					d.notify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
+					d.logNotify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
 					continue
 				}
 
@@ -687,7 +719,7 @@ func (d *Daemon) watchHeartbeats() {
 					if a.Role == "orchestrator" && !d.hasActiveIssues() {
 						continue
 					}
-					d.notify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
+					d.logNotify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
 					a.NudgeCount++
 					a.LastNudge = time.Now()
 					if err := agent.Save(d.LoomRoot, a); err != nil {
@@ -697,7 +729,7 @@ func (d *Daemon) watchHeartbeats() {
 						if parentID := a.SpawnedBy; parentID != "" {
 							parent, err := agent.Load(d.LoomRoot, parentID)
 							if err == nil {
-								d.notify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
+								d.logNotify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
 							}
 						}
 					}
@@ -763,7 +795,7 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 		if parentID := a.SpawnedBy; parentID != "" {
 			parent, err := agent.Load(d.LoomRoot, parentID)
 			if err == nil {
-				d.notify(parent, "[LOOM] Agent "+a.ID+" auto-killed: idle with no active issues for "+idleTimeout.String())
+				d.logNotify(parent, "[LOOM] Agent "+a.ID+" auto-killed: idle with no active issues for "+idleTimeout.String())
 			}
 		}
 	}
