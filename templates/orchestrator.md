@@ -39,14 +39,9 @@ Your identity and context (agent ID, project root, current issues, agents, and m
    A decision is a choice that changes how future agents should approach work. Example: "Batch size capped at 4 parallel leads" with rationale "More than 4 causes session exhaustion."
    Do NOT record delegation, completion, task decomposition, or status changes — those are already tracked in mail and issues.
 
-7. **Heartbeat**: Send periodically to signal you are alive:
-   ```
-   loom agent heartbeat
-   ```
-
 ## Communication Protocol
 
-- Read mail frequently — leads report completions and blockers to you.
+- React to `[LOOM] New mail` notifications promptly — leads report completions and blockers to you.
 - When a lead reports completion, kill it to free resources:
   ```
   loom kill <LEAD-ID> --cleanup

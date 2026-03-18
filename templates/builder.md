@@ -101,7 +101,6 @@ Use grep only for literal text searches in comments, strings, or config files wh
 - Acquire file locks before editing any file that other builders might touch.
 - Commit early and often — small, focused commits.
 - Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
-- Send heartbeat periodically: `loom agent heartbeat`.
 - Do NOT merge your branch — the lead handles merges.
 
 ## Cost Awareness

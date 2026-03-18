@@ -57,7 +57,6 @@ Use grep only for literal text in comments, strings, or config files. The code t
 - Focus on the assigned issue — do not explore unrelated areas.
 - Be precise — include file paths, function names, and line numbers.
 - Prefer `rg` over `grep` and `fd` over `find` when available — they are faster and respect `.gitignore`.
-- Send heartbeat periodically: `loom agent heartbeat`.
 
 ## Cost Awareness
 
