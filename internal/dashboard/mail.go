@@ -140,5 +140,5 @@ func (m Model) renderMailDetail() string {
 	scrollInfo := vpScrollIndicator(vp)
 
 	content := headerStr + "\n" + vp.View()
-	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, content, panelWidth(m.width))
+	return panel("Mail: "+truncate(msg.Subject, panelWidth(m.width)-20)+scrollInfo, content, panelWidth(m.width))
 }

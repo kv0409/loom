@@ -237,7 +237,8 @@ func (m Model) renderAgentFooter(a *backend.Agent) []string {
 			if msg.From == a.ID {
 				other = msg.To
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s %s: %s", dir, fmtTime(msg.Timestamp, false), other, truncate(msg.Subject, 40)))
+			prefix := fmt.Sprintf("  %s %s %s: ", dir, fmtTime(msg.Timestamp, false), other)
+			lines = append(lines, prefix+truncate(msg.Subject, detailContentWidth(m.width)-lipgloss.Width(prefix)))
 			count++
 			if count >= 5 {
 				break

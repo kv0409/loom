@@ -178,7 +178,8 @@ func (m Model) renderIssueDetail() string {
 		for _, cid := range iss.Children {
 			label := cid
 			if ci, ok := issueMap[cid]; ok {
-				label = fmt.Sprintf("%s %s [%s] %s", statusIndicator(ci.Status), cid, ci.Status, truncate(ci.Title, 30))
+				prefix := fmt.Sprintf("%s %s [%s] ", statusIndicator(ci.Status), cid, ci.Status)
+				label = prefix + truncate(ci.Title, detailContentWidth(m.width)-lipgloss.Width(prefix))
 			}
 			t.Child(label)
 		}
@@ -205,7 +206,7 @@ func (m Model) renderIssueDetail() string {
 			if snippet == "" {
 				snippet = entry.Title
 			}
-			body = append(body, fmt.Sprintf("  %s %s", entry.ID, truncate(entry.Title, 48)))
+			body = append(body, fmt.Sprintf("  %s %s", entry.ID, truncate(entry.Title, detailContentWidth(m.width)-len(entry.ID)-4)))
 			body = append(body, fmt.Sprintf("    %s", truncate(snippet, detailContentWidth(m.width)-4)))
 		}
 	}
