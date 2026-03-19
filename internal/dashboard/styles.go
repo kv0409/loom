@@ -384,37 +384,10 @@ func agentPillFor(displayText, colorID string) string {
 		Render(displayText)
 }
 
-// agentPillSelected renders the same pill geometry without a filled background
-// so the table's selection background can read as one continuous row.
-func agentPillSelected(displayText, colorID string) string {
-	return lipgloss.NewStyle().
-		Foreground(agentColor(colorID)).
-		Bold(true).
-		Padding(0, 1).
-		Render(displayText)
-}
-
 // agentPillPlain returns a plain-text string with the same visual width as agentPill(id).
 // The pill's Padding(0,1) adds 1 space each side, so we mirror that here.
 func agentPillPlain(id string) string {
 	return " " + id + " "
-}
-
-// agentPillForRow returns the agent pill styled for normal or selected rows.
-// Selected rows use foreground-only so the table selection background shows through.
-func agentPillForRow(id string, selected bool) string {
-	if selected {
-		return agentPillSelected(id, id)
-	}
-	return agentPillFor(id, id)
-}
-
-// statusPillForRow returns the status pill styled for normal or selected rows.
-func statusPillForRow(status string, selected bool) string {
-	if selected {
-		return statusPillSelected(status)
-	}
-	return statusPill(status)
 }
 
 func renderEmpty(msg string, width int) string {
@@ -440,10 +413,6 @@ const statusPillWidth = 13
 
 func statusPill(status string) string {
 	return statusPillStyle(status).Width(statusPillWidth).Render(status)
-}
-
-func statusPillSelected(status string) string {
-	return statusPillStyle(status).Width(statusPillWidth).Background(colSelBg).Render(status)
 }
 
 // listViewport returns the start and end indices for a cursor-following list

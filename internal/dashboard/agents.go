@@ -54,9 +54,8 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		selected := i == m.cursor
-		styledID := prefix + agentPillForRow(a.ID, selected)
-		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillForRow(a.Status, selected))
+		styledID := prefix + agentPillFor(a.ID, a.ID)
+		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
 		rows = append(rows, []string{styledID, a.Role, styledStatus, wt, issues, hb})
 	}
 
