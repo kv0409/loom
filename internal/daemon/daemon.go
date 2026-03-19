@@ -120,7 +120,37 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 	return c != nil && !c.Exited()
 }
 
+// recoverOrphanedAgents scans for agents in active/activating status that have
+// no registered ACP client (i.e. orphaned from a previous daemon process). It
+// kills their stale OS processes and resets them to pending-acp so
+// watchPendingAgents re-activates them with fresh pipes.
+func (d *Daemon) recoverOrphanedAgents() {
+	agents, err := agent.List(d.LoomRoot)
+	if err != nil {
+		log.Printf("[recover] agent.List failed: %v", err)
+		return
+	}
+	d.mu.Lock()
+	clients := d.acpClients
+	d.mu.Unlock()
+	for _, a := range agents {
+		if a.Status != "active" && a.Status != "activating" {
+			continue
+		}
+		if clients[a.ID] != nil {
+			continue
+		}
+		log.Printf("[recover] orphaned agent %s (status=%s pid=%d): killing and resetting to pending-acp", a.ID, a.Status, a.PID)
+		agent.KillProcess(a)
+		a.Status = "pending-acp"
+		if err := agent.Save(d.LoomRoot, a); err != nil {
+			log.Printf("[recover] save agent %s: %v", a.ID, err)
+		}
+	}
+}
+
 func (d *Daemon) Start() error {
+	d.recoverOrphanedAgents()
 	if err := d.startAPI(); err != nil {
 		return fmt.Errorf("starting API: %w", err)
 	}
