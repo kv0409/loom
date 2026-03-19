@@ -106,9 +106,47 @@ func (m Model) renderAgentDetail() string {
 	}
 	a := agents[m.cursor]
 
-	// Build all lines, then apply scroll viewport.
-	var lines []string
+	pw := panelWidth(m.width)
+	maxW := detailContentWidth(m.width)
 
+	// --- Fixed header: metadata ---
+	headerLines := m.renderAgentHeader(a)
+
+	// --- Scrollable output viewport ---
+	outputLines := m.renderAgentOutput(a, maxW)
+
+	// --- Fixed footer: recent mail ---
+	footerLines := m.renderAgentFooter(a)
+
+	// Compute viewport height for the output section.
+	vpH := agentDetailVPHeight(m.height, len(headerLines), len(footerLines))
+	if vpH < 1 {
+		vpH = 1
+	}
+
+	vp := m.detailVP
+	vp.SetHeight(vpH)
+	vp.SetContentLines(outputLines)
+	vp.SetYOffset(m.detailYOff)
+	scrollInfo := vpScrollIndicator(vp)
+
+	// Assemble: header + viewport + footer
+	var lines []string
+	lines = append(lines, headerLines...)
+	lines = append(lines, "") // blank separator before output
+	lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k scroll, G bottom)"+scrollInfo)
+	for _, l := range splitLines(vp.View()) {
+		lines = append(lines, l)
+	}
+	lines = append(lines, "") // blank separator before footer
+	lines = append(lines, footerLines...)
+
+	return panel("Agent: "+a.ID+" [n]udge", strings.Join(lines, "\n"), pw)
+}
+
+// renderAgentHeader returns the fixed metadata lines for agent detail.
+func (m Model) renderAgentHeader(a *backend.Agent) []string {
+	var lines []string
 	lines = append(lines, fmt.Sprintf("  Role: %-14s Status: %s %s Heartbeat: %s",
 		a.Role, statusIndicator(a.Status), statusPillStyle(a.Status).Render(a.Status), fmtTime(a.Heartbeat, false)))
 	lines = append(lines, fmt.Sprintf("  Spawned by: %-10s Spawned at: %-10s PID: %d",
@@ -118,78 +156,75 @@ func (m Model) renderAgentDetail() string {
 		modeStr += " | Model: " + a.Config.Model
 	}
 	lines = append(lines, "  "+modeStr)
-
 	if len(a.AssignedIssues) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "  "+headerStyle.Render("ASSIGNED ISSUES"))
-		lines = append(lines, fmt.Sprintf("  └── %s", strings.Join(a.AssignedIssues, ", ")))
+		lines = append(lines, fmt.Sprintf("  Issues: %s", strings.Join(a.AssignedIssues, ", ")))
 	}
 	if a.WorktreeName != "" {
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  "+headerStyle.Render("WORKTREE")+": %s", slugFromWorktree(a.WorktreeName)))
+		lines = append(lines, fmt.Sprintf("  Worktree: %s", slugFromWorktree(a.WorktreeName)))
 	}
-
 	if a.NudgeCount > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "  "+headerStyle.Render("NUDGES"))
-		lines = append(lines, fmt.Sprintf("  Count: %d  Last: %s", a.NudgeCount, fmtTime(a.LastNudge, false)))
+		lines = append(lines, fmt.Sprintf("  Nudges: %d  Last: %s", a.NudgeCount, fmtTime(a.LastNudge, false)))
 	}
+	return lines
+}
 
-	// ACP output — rendered by event type
-	lines = append(lines, "")
-	lines = append(lines, "  "+headerStyle.Render("RECENT OUTPUT")+" (j/k to scroll)")
+// renderAgentOutput returns the scrollable output lines for agent detail.
+func (m Model) renderAgentOutput(a *backend.Agent, maxW int) []string {
 	events := m.agentOutputCache
-	if len(events) > 0 {
-		maxW := detailContentWidth(m.width)
-		// Group contiguous token_chunk events into single blocks.
-		type group struct {
-			kind      backend.ACPKind
-			timestamp string
-			content   string
-			title     string
-		}
-		var groups []group
-		for _, ev := range events {
-			if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
-				groups[len(groups)-1].content += ev.Content
-			} else {
-				groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content, title: ev.Title})
-			}
-		}
-		for i, g := range groups {
-			if i > 0 {
-				lines = append(lines, "")
-			}
-			switch g.kind {
-			case backend.ToolSummary:
-				line := g.title
-				if line == "" {
-					line = g.content
-				}
-				line = truncate(line, maxW)
-				lines = append(lines, idleStyle.Render("  ⚙ "+line))
-			case backend.TokenChunk:
-				if g.timestamp != "" {
-					lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
-				}
-				lines = append(lines, wrapLines(g.content, maxW, "  ")...)
-			default: // CompleteMessage
-				if g.timestamp != "" {
-					lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
-				}
-				lines = append(lines, wrapLines(g.content, maxW, "  ")...)
-			}
-		}
-	} else {
+	if len(events) == 0 {
 		if m.agentOutputID == a.ID {
-			lines = append(lines, "  "+m.spinner.View()+" loading output...")
+			return []string{"  " + m.spinner.View() + " loading output..."}
+		}
+		return []string{"  (waiting for output...)"}
+	}
+
+	// Group contiguous token_chunk events into single blocks.
+	type group struct {
+		kind      backend.ACPKind
+		timestamp string
+		content   string
+		title     string
+	}
+	var groups []group
+	for _, ev := range events {
+		if ev.Kind == backend.TokenChunk && len(groups) > 0 && groups[len(groups)-1].kind == backend.TokenChunk {
+			groups[len(groups)-1].content += ev.Content
 		} else {
-			lines = append(lines, "  (waiting for output...)")
+			groups = append(groups, group{kind: ev.Kind, timestamp: ev.Timestamp, content: ev.Content, title: ev.Title})
 		}
 	}
 
-	// Recent mail
-	lines = append(lines, "")
+	var lines []string
+	for i, g := range groups {
+		if i > 0 {
+			lines = append(lines, "")
+		}
+		switch g.kind {
+		case backend.ToolSummary:
+			line := g.title
+			if line == "" {
+				line = g.content
+			}
+			line = truncate(line, maxW)
+			lines = append(lines, idleStyle.Render("  ⚙ "+line))
+		case backend.TokenChunk:
+			if g.timestamp != "" {
+				lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
+			}
+			lines = append(lines, wrapLines(g.content, maxW, "  ")...)
+		default: // CompleteMessage
+			if g.timestamp != "" {
+				lines = append(lines, idleStyle.Render(fmt.Sprintf("  ── %s ──", g.timestamp)))
+			}
+			lines = append(lines, wrapLines(g.content, maxW, "  ")...)
+		}
+	}
+	return lines
+}
+
+// renderAgentFooter returns the fixed recent-mail lines for agent detail.
+func (m Model) renderAgentFooter(a *backend.Agent) []string {
+	var lines []string
 	lines = append(lines, "  "+headerStyle.Render("RECENT MAIL"))
 	count := 0
 	for _, msg := range m.data.Messages {
@@ -212,12 +247,5 @@ func (m Model) renderAgentDetail() string {
 	if count == 0 {
 		lines = append(lines, "  No recent activity for this agent.")
 	}
-
-	// Apply scroll viewport
-	vp := m.detailVP
-	vp.SetContentLines(lines)
-	vp.SetYOffset(m.detailYOff)
-	scrollInfo := vpScrollIndicator(vp)
-
-	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, vp.View(), panelWidth(m.width))
+	return lines
 }

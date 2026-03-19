@@ -76,6 +76,7 @@ type Model struct {
 	detailYOff       int // desired Y offset for detail viewport
 	diffYOff         int // desired Y offset for diff viewport
 	diffXOff         int // desired X offset for diff viewport
+	detailAutoScroll bool // auto-scroll agent detail output to bottom
 	flashMsg         string
 	flashIsErr       bool
 	searchMode       bool
@@ -310,6 +311,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.diffYOff = 0
 				m.diffXOff = 0
 			}
+			m.applyAutoScroll()
 			if len(msg.Errors) > 0 && !m.errorShown {
 				m.errorShown = true
 			}
@@ -321,6 +323,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case agentOutputMsg:
 			if m.view == viewAgentDetail && msg.agentID == m.agentOutputID {
 				m.agentOutputCache = msg.events
+				m.applyAutoScroll()
 			}
 		case sendMailResultMsg:
 			return m, m.setFlash(msg.flash, msg.isErr)
@@ -375,6 +378,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.diffYOff = 0
 			m.diffXOff = 0
 		}
+		m.applyAutoScroll()
 		if len(msg.Errors) > 0 && !m.errorShown {
 			m.errorShown = true
 			return m, m.setFlash(fmt.Sprintf("%d data error(s): %s", len(msg.Errors), msg.Errors[0]), true)
@@ -392,6 +396,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case agentOutputMsg:
 		if m.view == viewAgentDetail && msg.agentID == m.agentOutputID {
 			m.agentOutputCache = msg.events
+			m.applyAutoScroll()
 		}
 		return m, nil
 	case sendMailResultMsg:
@@ -607,6 +612,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailYOff = 0
+			m.detailAutoScroll = true
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
 			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -624,6 +630,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyDown:
 		switch m.view {
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+			if m.view == viewAgentDetail {
+				m.detailAutoScroll = false
+			}
 			m.detailYOff++
 			return m, nil
 		case viewDiff:
@@ -636,6 +645,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyUp:
 		switch m.view {
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+			if m.view == viewAgentDetail {
+				m.detailAutoScroll = false
+			}
 			m.detailYOff--
 			if m.detailYOff < 0 {
 				m.detailYOff = 0
@@ -653,6 +665,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		}
 		return m, nil
+	case keyGoBottom:
+		if m.view == viewAgentDetail {
+			m.detailAutoScroll = true
+			m.applyAutoScroll()
+			return m, nil
+		}
 	case "h", keyLeft: // diff hscroll left
 		if m.view == viewDiff {
 			m.diffXOff -= 8
@@ -681,6 +699,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
 			m.detailYOff = 0
+			m.detailAutoScroll = true
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
 			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -732,6 +751,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					m.cursor = i
 					m.view = viewAgentDetail
 					m.detailYOff = 0
+					m.detailAutoScroll = true
 					m.agentOutputCache = nil
 					m.agentOutputID = a.ID
 					return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -975,7 +995,7 @@ func (m Model) helpBar() string {
 	var ctx string
 	switch m.view {
 	case viewAgentDetail:
-		ctx = "[n]udge [m]essage [j/k]scroll"
+		ctx = "[n]udge [m]essage [j/k]scroll [G]bottom"
 	case viewAgents:
 		ctx = "[n]udge [m]essage [o]utput [x]kill [Enter]detail"
 	case viewIssues:
@@ -1005,6 +1025,9 @@ func (m Model) helpBar() string {
 func (m Model) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	switch m.view {
 	case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+		if m.view == viewAgentDetail {
+			m.detailAutoScroll = false
+		}
 		switch msg.Button {
 		case tea.MouseWheelUp:
 			m.detailYOff--
@@ -1082,6 +1105,31 @@ func isListView(v view) bool {
 
 func isSearchableView(v view) bool {
 	return isListView(v)
+}
+
+// applyAutoScroll sets detailYOff to the bottom of the output viewport
+// when detailAutoScroll is true and we're viewing agent detail.
+func (m *Model) applyAutoScroll() {
+	if !m.detailAutoScroll || m.view != viewAgentDetail {
+		return
+	}
+	agents := m.filteredAgents()
+	if m.cursor >= len(agents) {
+		return
+	}
+	a := agents[m.cursor]
+	outputLines := m.renderAgentOutput(a, detailContentWidth(m.width))
+	headerLines := m.renderAgentHeader(a)
+	footerLines := m.renderAgentFooter(a)
+	vpH := agentDetailVPHeight(m.height, len(headerLines), len(footerLines))
+	if vpH < 1 {
+		vpH = 1
+	}
+	maxOff := len(outputLines) - vpH
+	if maxOff < 0 {
+		maxOff = 0
+	}
+	m.detailYOff = maxOff
 }
 
 // mouseToListIndex converts a screen Y coordinate to a list item index,

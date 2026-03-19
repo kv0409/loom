@@ -6,18 +6,20 @@ import (
 
 // keyMap implements help.KeyMap for the bubbles/help widget.
 type keyMap struct {
-	Tab    key.Binding
-	Search key.Binding
-	Esc    key.Binding
-	Quit   key.Binding
+	Tab      key.Binding
+	Search   key.Binding
+	Esc      key.Binding
+	Quit     key.Binding
+	GoBottom key.Binding
 }
 
 func defaultKeyMap() keyMap {
 	return keyMap{
-		Tab:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
-		Search: key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
-		Esc:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Quit:   key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		Tab:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
+		Search:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		Esc:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Quit:     key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
+		GoBottom: key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
 	}
 }
 
@@ -68,4 +70,7 @@ const (
 	// Mail view.
 	keyMailCompose = "c"
 	keyMailReply   = "r"
+
+	// Detail views.
+	keyGoBottom = "G"
 )

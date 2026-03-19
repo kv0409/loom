@@ -82,3 +82,17 @@ func sectionCursor(cursor, start, end int) (row int, selected bool) {
 	}
 	return cursor - start, true
 }
+
+// agentDetailVPHeight returns the viewport height for the scrollable output
+// section in agent detail, subtracting the fixed header lines, footer lines,
+// panel border (2), output section header (1), and blank separators (2).
+func agentDetailVPHeight(termH, headerLines, footerLines int) int {
+	// panel border top/bottom = 2, title bar = 1, blank before output = 1,
+	// output header line = 1, blank before footer = 1, help bar = 1
+	fixed := headerLines + footerLines + 7
+	v := termH - fixed
+	if v < 1 {
+		return 1
+	}
+	return v
+}
