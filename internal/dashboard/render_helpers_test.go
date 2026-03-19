@@ -131,53 +131,6 @@ func TestWordWrap_Empty(t *testing.T) {
 	}
 }
 
-func TestRenderViewport_BasicScroll(t *testing.T) {
-	lines := []string{"a", "b", "c", "d", "e"}
-	content, scroll, total := renderViewport(lines, 0, 3)
-	if total != 5 {
-		t.Errorf("expected total=5, got %d", total)
-	}
-	if scroll != 0 {
-		t.Errorf("expected scroll=0, got %d", scroll)
-	}
-	if content != "a\nb\nc" {
-		t.Errorf("unexpected content: %q", content)
-	}
-}
-
-func TestRenderViewport_ScrollClamped(t *testing.T) {
-	lines := []string{"a", "b", "c", "d", "e"}
-	content, scroll, _ := renderViewport(lines, 100, 3)
-	if scroll != 2 { // maxScroll = 5-3 = 2
-		t.Errorf("expected scroll clamped to 2, got %d", scroll)
-	}
-	if content != "c\nd\ne" {
-		t.Errorf("unexpected content: %q", content)
-	}
-}
-
-func TestRenderViewport_NegativeScroll(t *testing.T) {
-	lines := []string{"a", "b"}
-	_, scroll, _ := renderViewport(lines, -5, 3)
-	if scroll != 0 {
-		t.Errorf("expected scroll clamped to 0, got %d", scroll)
-	}
-}
-
-func TestScrollIndicator_AllVisible(t *testing.T) {
-	result := scrollIndicator(0, 10, 5)
-	if result != "" {
-		t.Errorf("expected empty indicator when all visible, got %q", result)
-	}
-}
-
-func TestScrollIndicator_Scrolled(t *testing.T) {
-	result := scrollIndicator(3, 5, 10)
-	if result == "" {
-		t.Error("expected non-empty scroll indicator")
-	}
-}
-
 func TestWordWrap_UTF8ByteSlicing(t *testing.T) {
 	// 30 multi-byte runes, width=10 → should split into rune-safe segments.
 	input := strings.Repeat("日", 30)

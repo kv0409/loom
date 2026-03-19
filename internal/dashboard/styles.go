@@ -6,7 +6,9 @@ import (
 	"regexp"
 	"strings"
 
+	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var wtPrefixRe = regexp.MustCompile(`^LOOM-\d+(?:-\d+)+-`)
@@ -226,21 +228,10 @@ func plural(n int, singular string) string {
 }
 
 func truncate(s string, n int) string {
-	if lipgloss.Width(s) <= n {
-		return s
+	if n <= 0 {
+		return ""
 	}
-	if n <= 3 {
-		return "..."
-	}
-	w := 0
-	for i, r := range s {
-		rw := lipgloss.Width(string(r))
-		if w+rw > n-3 {
-			return s[:i] + "..."
-		}
-		w += rw
-	}
-	return s
+	return ansi.Truncate(s, n, "...")
 }
 
 // panelNoTruncate renders a bordered panel like panel() but skips line
@@ -272,22 +263,6 @@ func panelNoTruncate(title string, content string, width int) string {
 	return s
 }
 
-// hshiftLine shifts a single plain-text line by offset runes to the right,
-// dropping the first offset runes. Returns the remaining string.
-func hshiftLine(line string, offset int) string {
-	if offset <= 0 {
-		return line
-	}
-	runes := []rune(line)
-	if offset >= len(runes) {
-		return ""
-	}
-	return string(runes[offset:])
-}
-
-// diffHScrollStep is the number of columns each left/right press shifts.
-const diffHScrollStep = 8
-
 var (
 	diffAdd    = lipgloss.NewStyle().Foreground(colGreen)
 	diffDel    = lipgloss.NewStyle().Foreground(colRed)
@@ -305,6 +280,9 @@ var (
 
 // searchBoxStyle is used for the inline search input in the help bar.
 var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).Padding(0, 1)
+
+// spinnerStyle is used for the inline loading spinner.
+var spinnerStyle = lipgloss.NewStyle().Foreground(colBlue)
 
 // selectedRow renders line with selectedStyle, replacing the leading two-space
 // indent with a "▸ " prefix so the cursor is visible across all list views.
@@ -333,6 +311,9 @@ var (
 	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
 	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg)
 )
+
+// Tree connector style — subtle foreground for enumerator/indenter glyphs.
+var treeConnectorStyle = lipgloss.NewStyle().Foreground(colSubtle)
 
 // Compose overlay styles
 var (
@@ -402,31 +383,14 @@ func renderEmpty(msg string, width int) string {
 	return centered.Render(emptyMsgStyle.Render(msg)) + "\n"
 }
 
-func renderViewport(lines []string, scroll, viewH int) (string, int, int) {
-	total := len(lines)
-	maxScroll := total - viewH
-	if maxScroll < 0 {
-		maxScroll = 0
-	}
-	if scroll < 0 {
-		scroll = 0
-	}
-	if scroll > maxScroll {
-		scroll = maxScroll
-	}
-	end := scroll + viewH
-	if end > total {
-		end = total
-	}
-	return strings.Join(lines[scroll:end], "\n"), scroll, total
-}
-
-func scrollIndicator(scroll, viewH, total int) string {
-	if total <= viewH {
+func vpScrollIndicator(vp viewport.Model) string {
+	total := vp.TotalLineCount()
+	visible := vp.VisibleLineCount()
+	if total <= visible {
 		return ""
 	}
-	above := scroll
-	below := total - viewH - scroll
+	above := vp.YOffset()
+	below := total - visible - above
 	if below < 0 {
 		below = 0
 	}

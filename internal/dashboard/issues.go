@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/tree"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -192,16 +193,20 @@ func (m Model) renderIssueDetail() string {
 			issueMap[ci.ID] = ci
 		}
 		lines = append(lines, "", "  "+headerStyle.Render("CHILDREN"))
-		for i, cid := range iss.Children {
+		t := tree.New().
+			EnumeratorStyle(treeConnectorStyle).
+			IndenterStyle(treeConnectorStyle)
+		for _, cid := range iss.Children {
 			label := cid
 			if ci, ok := issueMap[cid]; ok {
 				label = fmt.Sprintf("%s %s [%s] %s", statusIndicator(ci.Status), cid, ci.Status, truncate(ci.Title, 30))
 			}
-			prefix := "├──"
-			if i == len(iss.Children)-1 {
-				prefix = "└──"
+			t.Child(label)
+		}
+		for _, line := range splitLines(t.String()) {
+			if line != "" {
+				lines = append(lines, "  "+line)
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s", prefix, label))
 		}
 	}
 
@@ -245,11 +250,12 @@ func (m Model) renderIssueDetail() string {
 		}
 	}
 
-	viewH := scrollViewport(m.height)
-	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
-	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+	vp := m.detailVP
+	vp.SetContentLines(lines)
+	vp.SetYOffset(m.detailYOff)
+	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Issue: "+iss.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
+	return panel("Issue: "+iss.ID+scrollInfo, vp.View()+"\n", panelWidth(m.width))
 }
 
 func (m Model) relatedMemories(issueID string) []*backend.MemoryEntry {

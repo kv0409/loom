@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // tableWidth sums column widths plus inter-column gaps.
@@ -158,22 +159,8 @@ func wordWrap(s string, width int) []string {
 	if width <= 0 || len(s) == 0 {
 		return []string{s}
 	}
-	var segments []string
-	for len(s) > 0 {
-		runes := []rune(s)
-		if len(runes) <= width {
-			segments = append(segments, s)
-			break
-		}
-		cut := width
-		prefix := string(runes[:width])
-		if idx := strings.LastIndex(prefix, " "); idx > 0 {
-			cut = len([]rune(prefix[:idx])) + 1
-		}
-		segments = append(segments, strings.TrimRight(string(runes[:cut]), " "))
-		s = strings.TrimLeft(string(runes[cut:]), " ")
-	}
-	return segments
+	wrapped := ansi.Wrap(s, width, " ")
+	return strings.Split(wrapped, "\n")
 }
 
 // wrapLines word-wraps multi-line text, prefixing each output line with indent.

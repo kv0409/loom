@@ -14,6 +14,10 @@ func testModel(v view) Model {
 	m.width = 120
 	m.height = 40
 	m.view = v
+	m.detailVP.SetWidth(panelWidth(m.width) - 2)
+	m.detailVP.SetHeight(scrollViewport(m.height))
+	m.diffVP.SetWidth(panelWidth(m.width) - 2)
+	m.diffVP.SetHeight(scrollViewport(m.height))
 	return m
 }
 
@@ -415,16 +419,14 @@ func TestSendMailResultMsg_SetsFlash(t *testing.T) {
 	}
 }
 
-func TestClampCursor_EnsuresNonNegativeScroll(t *testing.T) {
+func TestClampCursor_EnsuresNonNegativeCursor(t *testing.T) {
 	m := testModel(viewAgentDetail)
-	m.detailScroll = -5
-	m.diffScroll = -3
+	m.data.Agents = []*backend.Agent{{ID: "a1"}}
+	m.data.AgentTree = []backend.AgentTreeNode{{}}
+	m.cursor = 5
 	m.clampCursor()
-	if m.detailScroll != 0 {
-		t.Errorf("expected detailScroll clamped to 0, got %d", m.detailScroll)
-	}
-	if m.diffScroll != 0 {
-		t.Errorf("expected diffScroll clamped to 0, got %d", m.diffScroll)
+	if m.cursor != 0 {
+		t.Errorf("expected cursor clamped to 0, got %d", m.cursor)
 	}
 }
 
@@ -442,10 +444,10 @@ func TestHandleEnter_MemoryDetail_ResetsScroll(t *testing.T) {
 	if got.view != viewMemoryDetail {
 		t.Fatalf("expected viewMemoryDetail, got %d", got.view)
 	}
-	if got.detailScroll != 0 {
-		t.Fatalf("expected detailScroll=0 on first open, got %d", got.detailScroll)
+	if got.detailYOff != 0 {
+		t.Fatalf("expected detailYOff=0 on first open, got %d", got.detailYOff)
 	}
-	got.detailScroll = 15 // simulate scrolling
+	got.detailYOff = 15 // simulate scrolling
 
 	// Go back to memory list and open second entry.
 	got.switchView(viewMemory)
@@ -455,8 +457,8 @@ func TestHandleEnter_MemoryDetail_ResetsScroll(t *testing.T) {
 	if got2.view != viewMemoryDetail {
 		t.Fatalf("expected viewMemoryDetail, got %d", got2.view)
 	}
-	if got2.detailScroll != 0 {
-		t.Errorf("expected detailScroll reset to 0 on new memory entry, got %d", got2.detailScroll)
+	if got2.detailYOff != 0 {
+		t.Errorf("expected detailYOff reset to 0 on new memory entry, got %d", got2.detailYOff)
 	}
 }
 
@@ -477,8 +479,8 @@ func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := testModel(tt.view)
-			m.detailScroll = 50
-			m.diffScroll = 50
+			m.detailYOff = 50
+			m.diffYOff = 50
 			m.data.Agents = []*backend.Agent{{ID: "a1"}}
 			m.data.AgentTree = []backend.AgentTreeNode{{}}
 
@@ -488,17 +490,17 @@ func TestSnapshotRefresh_ResetsScrollForInactiveViews(t *testing.T) {
 			})
 			got := result.(Model)
 
-			if tt.wantDetailReset && got.detailScroll != 0 {
-				t.Errorf("expected detailScroll reset to 0, got %d", got.detailScroll)
+			if tt.wantDetailReset && got.detailYOff != 0 {
+				t.Errorf("expected detailYOff reset to 0, got %d", got.detailYOff)
 			}
-			if !tt.wantDetailReset && got.detailScroll != 50 {
-				t.Errorf("expected detailScroll preserved at 50, got %d", got.detailScroll)
+			if !tt.wantDetailReset && got.detailYOff != 50 {
+				t.Errorf("expected detailYOff preserved at 50, got %d", got.detailYOff)
 			}
-			if tt.wantDiffReset && got.diffScroll != 0 {
-				t.Errorf("expected diffScroll reset to 0, got %d", got.diffScroll)
+			if tt.wantDiffReset && got.diffYOff != 0 {
+				t.Errorf("expected diffYOff reset to 0, got %d", got.diffYOff)
 			}
-			if !tt.wantDiffReset && got.diffScroll != 50 {
-				t.Errorf("expected diffScroll preserved at 50, got %d", got.diffScroll)
+			if !tt.wantDiffReset && got.diffYOff != 50 {
+				t.Errorf("expected diffYOff preserved at 50, got %d", got.diffYOff)
 			}
 		})
 	}
@@ -531,8 +533,8 @@ func TestHandleEnter_ActivityToAgentDetail_InitializesOutputState(t *testing.T) 
 	if got.agentOutputCache != nil {
 		t.Error("expected agentOutputCache cleared to nil")
 	}
-	if got.detailScroll != 0 {
-		t.Errorf("expected detailScroll=0, got %d", got.detailScroll)
+	if got.detailYOff != 0 {
+		t.Errorf("expected detailYOff=0, got %d", got.detailYOff)
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd for immediate agent output fetch")

@@ -15,12 +15,10 @@ Never hand-roll functionality that a Bubbles component already provides. The lib
 | Columnar data | `bubbles/table` via `newStyledTable()` in `render_helpers.go` | `fmt.Sprintf("%-*s", ...)`, manual `lipgloss.Width()` padding, `strings.Repeat(" ", ...)` for column alignment |
 | Text input | `bubbles/textinput` | Rune-level keyboard handling, manual cursor tracking, character insertion/deletion |
 | Multi-line text editing | `bubbles/textarea` | Custom newline/cursor handling |
-| Scrollable content | `renderViewport()` + integer scroll offset in `Model` (see below) | Manual slice indexing, `strings.Split` + range loops with offset |
+| Scrollable content | `bubbles/viewport` via `detailVP`/`diffVP` in `Model` | Manual slice indexing, `strings.Split` + range loops with offset |
 | Progress bar | `bubbles/progress` | Custom frame-cycling animation |
-| Loading/activity indicator | `bubbles/spinner` | Custom frame-cycling animation |
+| Loading/activity indicator | `bubbles/spinner` via `spinner` in `Model` | Custom frame-cycling animation |
 | Keybindings display | `bubbles/key` + `bubbles/help` | Manual help string construction |
-
-Note: `bubbles/viewport` v2 now has soft wrapping, line gutters, highlighting, and horizontal scrolling — making it even more capable than our hand-rolled `renderViewport()`. Consider migrating detail views to native viewport in the future.
 
 ## All Columnar Rendering Goes Through `newStyledTable()`
 
@@ -84,30 +82,33 @@ lipgloss.JoinVertical(lipgloss.Left, topPanel, bottomPanel)
 
 ## Scrollable Detail Views
 
-The dashboard does **not** use `bubbles/viewport`. Scrolling in detail views is implemented with a plain integer offset in `Model` and the `renderViewport()` helper in `styles.go`.
+The dashboard uses `bubbles/viewport` for all detail views. Two viewport instances live in `Model`:
+- `detailVP` — for agent detail, issue detail, memory detail, mail detail
+- `diffVP` — for diff view (horizontal scrolling enabled via `SetHorizontalStep`)
+
+Scroll position is tracked via offset fields (`detailYOff`, `diffYOff`, `diffXOff`) because the viewport requires content to be set before scroll methods work, and content is only available in the render functions (View has a value receiver).
 
 **Pattern for a new scrollable view:**
 
 ```go
-// 1. Add a scroll field to Model (or reuse detailScroll if appropriate):
-myScroll int
+// 1. In the render function, build lines and set on a viewport copy:
+lines := buildMyDetailLines(m)
+vp := m.detailVP                    // copy (View is value receiver)
+vp.SetContentLines(lines)
+vp.SetYOffset(m.detailYOff)         // apply tracked scroll position
+scrollInfo := vpScrollIndicator(vp) // "↑3 ↓7" or ""
+return panel("Title"+scrollInfo, vp.View(), panelWidth(m.width))
 
-// 2. Handle scroll keys in Update():
-case keyDown:
-    m.myScroll++
-case keyUp:
-    if m.myScroll > 0 {
-        m.myScroll--
-    }
+// 2. Handle scroll keys in handleKey():
+case keyVimDown, keyDown:
+    m.detailYOff++
+    return m, nil
 
-// 3. In View() / renderXxx():
-lines := buildMyDetailLines(m)               // []string, one element per line
-viewH := scrollViewport(m.height)
-content, m.myScroll, total := renderViewport(lines, m.myScroll, viewH)
-hint := scrollIndicator(m.myScroll, viewH, total) // "↑3 ↓7" or ""
+// 3. Reset scroll on view entry (in handleEnter):
+m.detailYOff = 0
 ```
 
-**Always clamp scroll offsets in `clampCursor()`** (called after every data refresh) so stale offsets don't panic on shorter content.
+The diff view uses `StyleLineFunc` for per-line coloring (e.g., green for additions, red for deletions) and native horizontal scrolling.
 
 ## Key Bindings
 
@@ -241,10 +242,8 @@ Bubbles/table v2 requires an explicit width to render data rows. The `newStyledT
 - **Cursor control**: `view.Cursor` — position, shape (block/bar/underline), color, blink
 - **Terminal color queries**: `tea.RequestBackgroundColor`, `tea.RequestForegroundColor` — detect light/dark theme
 - **Progress bar**: `view.ProgressBar` — native terminal progress indicator
-- **Window title**: `view.WindowTitle = "Loom Dashboard"` — set terminal title declaratively
 - **Environment variables**: `tea.EnvMsg` — get client environment (important for SSH/Wish apps)
 - **`tea.WithColorProfile()` and `tea.WithWindowSize()`**: Program options for testing without a real terminal
-- **`bubbles/viewport` v2**: Soft wrapping, line gutters, highlighting, horizontal scrolling, `SetContentLines([]string)` — consider migrating from hand-rolled `renderViewport()`
 
 ## v2 Reference
 

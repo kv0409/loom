@@ -102,7 +102,7 @@ if len(styledStr) > maxW { ... }
 if lipgloss.Width(styledStr) > maxW { ... }
 ```
 
-Use `lipgloss.Width()` any time you measure a string that may contain styles or non-ASCII characters. The `panel()` and `truncate()` functions in `styles.go` do this correctly.
+Use `lipgloss.Width()` any time you measure a string that may contain styles or non-ASCII characters. The `panel()` and `truncate()` functions in `styles.go` do this correctly. Note: `truncate()` uses `ansi.Truncate()` from `charmbracelet/x/ansi` internally, which is ANSI-escape-aware.
 
 ### `.Width()` is a minimum, not a cap
 
@@ -290,7 +290,7 @@ These features are available in Lip Gloss v2 but not yet used in this project. C
 - **Hyperlinks**: `style.Hyperlink(url)` — clickable links in supporting terminals
 - **Curly underlines**: `style.UnderlineStyle(lipgloss.UnderlineCurly)` with `style.UnderlineColor(c)` — useful for error indicators
 - **Border gradient blending**: `style.BorderForegroundBlend(colors...)` — gradient borders
-- **`lipgloss/tree` and `lipgloss/list` sub-packages**: Structured tree/list rendering — could replace hand-built issue dependency trees
+- **`lipgloss/list` sub-package**: Structured list rendering — could replace hand-built bullet lists in detail views
 - **Named ANSI colors**: `lipgloss.Red`, `lipgloss.Green`, etc. — 16 basic ANSI color constants
 - **`lipgloss.Println/Printf/Sprint`**: For standalone (non-Bubble Tea) output with automatic color downsampling. Use in `internal/cli/output.go` instead of `fmt.Println` for proper terminal color handling.
 

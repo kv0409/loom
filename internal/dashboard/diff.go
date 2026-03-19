@@ -78,7 +78,7 @@ func (m Model) renderDiff() string {
 	}
 
 	if m.diffLoading {
-		return panel(title, renderEmpty("Loading diff…", availableWidth(m.width)), panelWidth(m.width))
+		return panel(title, renderEmpty(m.spinner.View()+" Loading diff…", availableWidth(m.width)), panelWidth(m.width))
 	}
 
 	if m.diffContent == "" || m.diffContent == "(no diff available)" || m.diffContent == "(no changes)" {
@@ -87,40 +87,34 @@ func (m Model) renderDiff() string {
 
 	lines := splitLines(m.diffContent)
 
-	// Apply horizontal scroll on raw lines before styling so ANSI codes
-	// are not split mid-sequence.
-	shifted := make([]string, len(lines))
-	for i, l := range lines {
-		shifted[i] = hshiftLine(l, m.diffHScroll)
-	}
-
-	styledLines := make([]string, len(shifted))
-	for i, l := range shifted {
-		// Use original (pre-shift) line for prefix detection so the diff
-		// prefix character (+/-/@@) is always checked even when scrolled.
-		orig := lines[i]
+	vp := m.diffVP
+	vp.StyleLineFunc = func(i int) lipgloss.Style {
+		if i >= len(lines) {
+			return lipgloss.Style{}
+		}
+		line := lines[i]
 		switch {
-		case strings.HasPrefix(orig, "diff --git"), strings.HasPrefix(orig, "+++"), strings.HasPrefix(orig, "---"):
-			styledLines[i] = diffHeader.Render(l)
-		case strings.HasPrefix(orig, "@@"):
-			styledLines[i] = diffHunk.Render(l)
-		case strings.HasPrefix(orig, "+"):
-			styledLines[i] = diffAdd.Render(l)
-		case strings.HasPrefix(orig, "-"):
-			styledLines[i] = diffDel.Render(l)
+		case strings.HasPrefix(line, "diff --git"), strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+			return diffHeader
+		case strings.HasPrefix(line, "@@"):
+			return diffHunk
+		case strings.HasPrefix(line, "+"):
+			return diffAdd
+		case strings.HasPrefix(line, "-"):
+			return diffDel
 		default:
-			styledLines[i] = l
+			return lipgloss.Style{}
 		}
 	}
-
-	viewH := scrollViewport(m.height)
-	viewContent, clampedScroll, total := renderViewport(styledLines, m.diffScroll, viewH)
-	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+	vp.SetContentLines(lines)
+	vp.SetYOffset(m.diffYOff)
+	vp.SetXOffset(m.diffXOff)
+	scrollInfo := vpScrollIndicator(vp)
 
 	hScrollInfo := ""
-	if m.diffHScroll > 0 {
-		hScrollInfo = idleStyle.Render(fmt.Sprintf(" ←%d", m.diffHScroll))
+	if vp.XOffset() > 0 {
+		hScrollInfo = idleStyle.Render(fmt.Sprintf(" ←%d", vp.XOffset()))
 	}
 
-	return panelNoTruncate(title+scrollInfo+hScrollInfo, viewContent+"\n", panelWidth(m.width))
+	return panelNoTruncate(title+scrollInfo+hScrollInfo, vp.View()+"\n", panelWidth(m.width))
 }

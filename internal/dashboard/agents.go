@@ -67,6 +67,8 @@ func (m Model) renderAgents() string {
 		if a.NudgeCount > 0 {
 			hb += fmt.Sprintf(" ↯%d", a.NudgeCount)
 		}
+		// Tree prefix is hand-rolled because it's embedded in table cells;
+		// lipgloss/tree renders a full block and can't produce per-row prefixes.
 		prefix := ""
 		for oi, oa := range m.data.Agents {
 			if oa == a && oi < len(m.data.AgentTree) {
@@ -199,7 +201,7 @@ func (m Model) renderAgentDetail() string {
 		}
 	} else {
 		if m.agentOutputID == a.ID {
-			lines = append(lines, "  (loading output...)")
+			lines = append(lines, "  "+m.spinner.View()+" loading output...")
 		} else {
 			lines = append(lines, "  (waiting for output...)")
 		}
@@ -231,9 +233,10 @@ func (m Model) renderAgentDetail() string {
 	}
 
 	// Apply scroll viewport
-	viewH := scrollViewport(m.height)
-	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
-	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+	vp := m.detailVP
+	vp.SetContentLines(lines)
+	vp.SetYOffset(m.detailYOff)
+	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, viewContent, panelWidth(m.width))
+	return panel("Agent: "+a.ID+" [n]udge"+scrollInfo, vp.View(), panelWidth(m.width))
 }

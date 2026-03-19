@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -71,9 +73,11 @@ type Model struct {
 	backend          backend.Backend
 	lastClickTime    time.Time
 	lastClickRow     int
-	detailScroll     int // scroll offset for agent detail output
-	diffScroll       int // scroll offset for diff view (vertical)
-	diffHScroll      int // scroll offset for diff view (horizontal)
+	detailVP         viewport.Model
+	diffVP           viewport.Model
+	detailYOff       int // desired Y offset for detail viewport
+	diffYOff         int // desired Y offset for diff viewport
+	diffXOff         int // desired X offset for diff viewport
 	flashMsg         string
 	flashIsErr       bool
 	searchMode       bool
@@ -90,6 +94,7 @@ type Model struct {
 	diffLoading      bool               // true while diff is being fetched
 	errorShown       bool               // set after first error flash to avoid repeating
 	heartbeatTimeoutSec int             // from config; used for countdown donut
+	spinner          spinner.Model      // animated spinner for loading states
 }
 
 type tickMsg time.Time
@@ -132,7 +137,16 @@ func New(loomRoot string, heartbeatTimeoutSec int) Model {
 	searchTI := textinput.New()
 	searchTI.Prompt = ""
 
-	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI, heartbeatTimeoutSec: heartbeatTimeoutSec}
+	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(spinnerStyle))
+
+	dvp := viewport.New(viewport.WithWidth(78), viewport.WithHeight(18))
+	dvp.MouseWheelEnabled = true
+
+	dfvp := viewport.New(viewport.WithWidth(78), viewport.WithHeight(18))
+	dfvp.MouseWheelEnabled = true
+	dfvp.SetHorizontalStep(8)
+
+	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI, heartbeatTimeoutSec: heartbeatTimeoutSec, spinner: sp, detailVP: dvp, diffVP: dfvp}
 }
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
@@ -159,7 +173,7 @@ func (m *Model) setFlash(msg string, isErr bool) tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.refresh(), tickCmd(), watchBinary())
+	return tea.Batch(m.refresh(), tickCmd(), watchBinary(), m.spinner.Tick)
 }
 
 // watchBinary polls the loom binary's mtime every 2s and sends binaryReloadMsg when it changes.
@@ -270,6 +284,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.width = msg.Width
 			m.height = msg.Height
 			m.help.SetWidth(msg.Width)
+			vpW := panelWidth(msg.Width) - 2
+			vpH := scrollViewport(msg.Height)
+			m.detailVP.SetWidth(vpW)
+			m.detailVP.SetHeight(vpH)
+			m.diffVP.SetWidth(vpW)
+			m.diffVP.SetHeight(vpH)
 			m.composeForm.WithWidth(min(56, msg.Width-8))
 		case tickMsg:
 			return m, tea.Batch(cmd, m.refresh(), tickCmd())
@@ -286,10 +306,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.clampCursor()
 			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
-				m.detailScroll = 0
+				m.detailYOff = 0
 			}
 			if m.view != viewDiff {
-				m.diffScroll = 0
+				m.diffYOff = 0
+				m.diffXOff = 0
 			}
 			if len(msg.Errors) > 0 && !m.errorShown {
 				m.errorShown = true
@@ -320,6 +341,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.SetWidth(msg.Width)
+		vpW := panelWidth(msg.Width) - 2
+		vpH := scrollViewport(msg.Height)
+		m.detailVP.SetWidth(vpW)
+		m.detailVP.SetHeight(vpH)
+		m.diffVP.SetWidth(vpW)
+		m.diffVP.SetHeight(vpH)
 		return m, nil
 	case tickMsg:
 		cmds := []tea.Cmd{m.refresh(), tickCmd()}
@@ -344,10 +371,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.clampCursor()
 		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
-			m.detailScroll = 0
+			m.detailYOff = 0
 		}
 		if m.view != viewDiff {
-			m.diffScroll = 0
+			m.diffYOff = 0
+			m.diffXOff = 0
 		}
 		if len(msg.Errors) > 0 && !m.errorShown {
 			m.errorShown = true
@@ -370,6 +398,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case sendMailResultMsg:
 		return m, m.setFlash(msg.flash, msg.isErr)
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
 	}
 
 	// Forward to active textinput
@@ -560,7 +592,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a := m.filteredAgents()[m.cursor]
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
-			m.detailScroll = 0
+			m.detailYOff = 0
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
 			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -576,29 +608,29 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.switchView(nextView(m.view))
 		return m, nil
 	case keyVimDown, keyDown:
-		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
-			m.detailScroll++
+		switch m.view {
+		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+			m.detailYOff++
 			return m, nil
-		}
-		if m.view == viewDiff {
-			m.diffScroll++
+		case viewDiff:
+			m.diffYOff++
 			return m, nil
 		}
 		m.cursor++
 		m.clampCursor()
 		return m, nil
 	case keyVimUp, keyUp:
-		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
-			m.detailScroll--
-			if m.detailScroll < 0 {
-				m.detailScroll = 0
+		switch m.view {
+		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+			m.detailYOff--
+			if m.detailYOff < 0 {
+				m.detailYOff = 0
 			}
 			return m, nil
-		}
-		if m.view == viewDiff {
-			m.diffScroll--
-			if m.diffScroll < 0 {
-				m.diffScroll = 0
+		case viewDiff:
+			m.diffYOff--
+			if m.diffYOff < 0 {
+				m.diffYOff = 0
 			}
 			return m, nil
 		}
@@ -609,15 +641,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "h", keyLeft: // diff hscroll left
 		if m.view == viewDiff {
-			m.diffHScroll -= diffHScrollStep
-			if m.diffHScroll < 0 {
-				m.diffHScroll = 0
+			m.diffXOff -= 8
+			if m.diffXOff < 0 {
+				m.diffXOff = 0
 			}
 		}
 		return m, nil
 	case keyRight: // diff hscroll right
 		if m.view == viewDiff {
-			m.diffHScroll += diffHScrollStep
+			m.diffXOff += 8
 		}
 		return m, nil
 	case keyEnter:
@@ -634,7 +666,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			a := agents[m.cursor]
 			m.cursors[m.view] = m.cursor
 			m.view = viewAgentDetail
-			m.detailScroll = 0
+			m.detailYOff = 0
 			m.agentOutputCache = nil
 			m.agentOutputID = a.ID
 			return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -645,7 +677,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if len(m.filteredIssues()) > 0 {
 			m.cursors[m.view] = m.cursor
 			m.view = viewIssueDetail
-			m.detailScroll = 0
+			m.detailYOff = 0
 		}
 	case viewWorktrees:
 		worktrees := m.filteredWorktrees()
@@ -656,8 +688,8 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.diffContent = ""
 			m.diffLoading = true
 			m.view = viewDiff
-			m.diffScroll = 0
-			m.diffHScroll = 0
+			m.diffYOff = 0
+			m.diffXOff = 0
 			m.cursor = 0
 			return m, diffCmd(m.backend, wt.Path)
 		}
@@ -666,7 +698,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor < len(memories) {
 			m.cursors[m.view] = m.cursor
 			m.view = viewMemoryDetail
-			m.detailScroll = 0
+			m.detailYOff = 0
 		}
 	case viewActivity:
 		activity := m.filteredActivity()
@@ -678,7 +710,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 					m.cursors[viewAgents] = i
 					m.cursor = i
 					m.view = viewAgentDetail
-					m.detailScroll = 0
+					m.detailYOff = 0
 					m.agentOutputCache = nil
 					m.agentOutputID = a.ID
 					return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
@@ -724,15 +756,6 @@ func (m *Model) clampCursor() {
 	if m.cursor > max {
 		m.cursor = max
 	}
-	if m.detailScroll < 0 {
-		m.detailScroll = 0
-	}
-	if m.diffScroll < 0 {
-		m.diffScroll = 0
-	}
-	if m.diffHScroll < 0 {
-		m.diffHScroll = 0
-	}
 }
 
 func (m Model) listLen() int {
@@ -768,6 +791,7 @@ func (m Model) View() tea.View {
 		msg := fmt.Sprintf("Terminal too small (%d×%d)\nNeed at least %d×%d", m.width, m.height, minTermWidth, minTermHeight)
 		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 		v.AltScreen = true
+		v.WindowTitle = "Loom Dashboard"
 		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
@@ -894,6 +918,7 @@ func (m Model) View() tea.View {
 	}
 	v := tea.NewView(strings.Join(lines, "\n"))
 	v.AltScreen = true
+	v.WindowTitle = "Loom Dashboard"
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
@@ -928,42 +953,41 @@ func (m Model) helpBar() string {
 }
 
 func (m Model) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	switch m.view {
+	case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.detailYOff--
+			if m.detailYOff < 0 {
+				m.detailYOff = 0
+			}
+		case tea.MouseWheelDown:
+			m.detailYOff++
+		}
+		return m, nil
+	case viewDiff:
+		switch msg.Button {
+		case tea.MouseWheelUp:
+			m.diffYOff--
+			if m.diffYOff < 0 {
+				m.diffYOff = 0
+			}
+		case tea.MouseWheelDown:
+			m.diffYOff++
+		}
+		return m, nil
+	}
+
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
-			m.detailScroll--
-			if m.detailScroll < 0 {
-				m.detailScroll = 0
-			}
-			return m, nil
-		}
-		if m.view == viewDiff {
-			m.diffScroll--
-			if m.diffScroll < 0 {
-				m.diffScroll = 0
-			}
-			return m, nil
-		}
 		m.cursor--
 		if m.cursor < 0 {
 			m.cursor = 0
 		}
-		return m, nil
-
 	case tea.MouseWheelDown:
-		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
-			m.detailScroll++
-			return m, nil
-		}
-		if m.view == viewDiff {
-			m.diffScroll++
-			return m, nil
-		}
 		m.cursor++
 		m.clampCursor()
-		return m, nil
 	}
-
 	return m, nil
 }
 
@@ -990,12 +1014,8 @@ func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Diff/logs: click sets scroll position
+	// Diff/logs: click scrolls viewport
 	if m.view == viewDiff {
-		item := m.mouseToListIndex(y)
-		if item >= 0 {
-			m.diffScroll = item
-		}
 		return m, nil
 	}
 

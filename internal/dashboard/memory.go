@@ -127,11 +127,12 @@ func (m Model) renderMemoryDetail() string {
 		lines = append(lines, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
 	}
 
-	viewH := scrollViewport(m.height)
-	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
-	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+	vp := m.detailVP
+	vp.SetContentLines(lines)
+	vp.SetYOffset(m.detailYOff)
+	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Memory: "+e.ID+scrollInfo, viewContent+"\n", panelWidth(m.width))
+	return panel("Memory: "+e.ID+scrollInfo, vp.View()+"\n", panelWidth(m.width))
 }
 
 

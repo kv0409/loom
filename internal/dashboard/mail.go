@@ -148,9 +148,10 @@ func (m Model) renderMailDetail() string {
 		lines = append(lines, "  (no body)")
 	}
 
-	viewH := scrollViewport(m.height)
-	viewContent, clampedScroll, total := renderViewport(lines, m.detailScroll, viewH)
-	scrollInfo := scrollIndicator(clampedScroll, viewH, total)
+	vp := m.detailVP
+	vp.SetContentLines(lines)
+	vp.SetYOffset(m.detailYOff)
+	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, viewContent+"\n", panelWidth(m.width))
+	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, vp.View()+"\n", panelWidth(m.width))
 }
