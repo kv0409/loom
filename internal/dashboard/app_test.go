@@ -605,7 +605,7 @@ func TestMemoryCursorBounds_DownKeyStopsAtEnd(t *testing.T) {
 		{ID: "M2", Type: "discovery", Title: "Second"},
 	}
 	m.cursor = 1
-	result, _ := m.handleKey(keyMsg("j"))
+	result, _ := m.handleKey(keyMsg("down"))
 	got := result.(Model)
 	if got.cursor != 1 {
 		t.Errorf("expected cursor to stay at 1, got %d", got.cursor)

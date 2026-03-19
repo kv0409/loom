@@ -45,8 +45,7 @@ const (
 	keyUp       = "up"
 	keyLeft     = "left"
 	keyRight    = "right"
-	keyVimDown  = "j"
-	keyVimUp    = "k"
+
 
 	// View-switch shortcuts (shared, work from any non-modal view).
 	keyViewOverview  = "0"

@@ -168,7 +168,7 @@ func panel(title string, content string, width int) string {
 		innerW = 1
 	}
 	content = truncateLines(content, innerW)
-	s := borderStyle.Width(innerW).Render(content)
+	s := borderStyle.Width(width).Render(content)
 	if title != "" {
 		lines := splitLines(s)
 		if len(lines) > 0 {
@@ -269,7 +269,7 @@ func panelNoTruncate(title string, content string, width int) string {
 	// Clamp lines to innerW using MaxWidth so the border isn't broken,
 	// but only AFTER the caller has already shifted content horizontally.
 	content = truncateLines(content, innerW)
-	s := borderStyle.Width(innerW).Render(content)
+	s := borderStyle.Width(width).Render(content)
 	if title != "" {
 		lines := splitLines(s)
 		if len(lines) > 0 {

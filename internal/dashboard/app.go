@@ -433,11 +433,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.nudgeMode = false
 			return m, m.setFlash("Nudge cancelled", false)
-		case "j", "down":
+		case "down":
 			if m.nudgeCursor < len(nudge.Types)-1 {
 				m.nudgeCursor++
 			}
-		case "k", "up":
+		case "up":
 			if m.nudgeCursor > 0 {
 				m.nudgeCursor--
 			}
@@ -640,7 +640,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyTab:
 		m.switchView(nextView(m.view))
 		return m, nil
-	case keyVimDown, keyDown:
+	case keyDown:
 		switch m.view {
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
 			m.detailYOff++
@@ -652,7 +652,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.cursor++
 		m.clampCursor()
 		return m, nil
-	case keyVimUp, keyUp:
+	case keyUp:
 		switch m.view {
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
 			m.detailYOff--
