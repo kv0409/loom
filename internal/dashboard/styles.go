@@ -397,15 +397,12 @@ func agentColor(id string) color.Color {
 	}
 }
 
-// agentPillFor renders a pill displaying displayText but using colorID for the
-// role-based background color. Use this when the display text has been truncated
-// and would no longer match a role in agentColor.
-func agentPillFor(displayText, colorID string) string {
+// agentText renders displayText with the role-based foreground color derived
+// from colorID. Used in non-table contexts (e.g. overview IN FLIGHT band).
+func agentText(displayText, colorID string) string {
 	return lipgloss.NewStyle().
-		Background(agentColor(colorID)).
-		Foreground(colBg).
+		Foreground(agentColor(colorID)).
 		Bold(true).
-		Padding(0, 1).
 		Render(displayText)
 }
 
