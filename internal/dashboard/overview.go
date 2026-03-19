@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
@@ -177,44 +176,18 @@ func suffix(n int) string {
 // Uses 4-column layout (AGENT, TIME, TOOL, DETAIL) matching renderActivity.
 func (m Model) renderActivityOverview(colW, budget int) string {
 	innerW := colW - 2 // panel border (1 each side)
-	const numCols = 4
-	innerW -= numCols * 2 // table cell padding
-
-	agentW := 16 // "orchestrator" (12) + pill padding (2) + cell padding (2) = 16
-	timeW := 7
-	toolW := 5
-	detailW := max(8, innerW-agentW-timeW-toolW)
-
-	cols := []table.Column{
-		{Title: "", Width: agentW},
-		{Title: "", Width: timeW},
-		{Title: "", Width: toolW},
-		{Title: "", Width: detailW},
-	}
 
 	toolLimit := min(budget, len(m.data.Activity))
-	rows := make([]table.Row, 0, toolLimit)
-	var replacements [][2]string
-	ri := 0
+	rows := make([][]string, 0, toolLimit)
 	for i := len(m.data.Activity) - toolLimit; i < len(m.data.Activity); i++ {
 		e := m.data.Activity[i]
-		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
-		styledAgent := agentPillFor(truncAgent, e.AgentID)
-		styledTime := activityTimeStyle.Render(truncate(e.Time, timeW))
 		info := resolveToolInfo(e.Tool)
-		styledTool := activityLabelStyle.Foreground(info.labelColor).Render(truncate(e.Tool, toolW))
-		plainDetail := truncate(e.Detail, detailW)
-
-		phAgent := cellPlaceholder(ri, lipgloss.Width(agentPillPlain(truncAgent)))
-		phTime := cellPlaceholder(ri+1, lipgloss.Width(styledTime))
-		phTool := cellPlaceholder(ri+2, lipgloss.Width(styledTool))
-		rows = append(rows, table.Row{phAgent, phTime, phTool, plainDetail})
-		replacements = append(replacements,
-			[2]string{phAgent, styledAgent},
-			[2]string{phTime, styledTime},
-			[2]string{phTool, styledTool},
-		)
-		ri += 3
+		rows = append(rows, []string{
+			agentPillFor(e.AgentID, e.AgentID),
+			activityTimeStyle.Render(e.Time),
+			activityLabelStyle.Foreground(info.labelColor).Render(e.Tool),
+			e.Detail,
+		})
 	}
 
 	unique := map[string]struct{}{}
@@ -226,8 +199,8 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	if len(rows) == 0 {
 		content = renderEmpty("No recent activity", colW-2)
 	} else {
-		t := newStyledTableHeaderless(cols, rows, len(rows))
-		content = "\n" + styledTableBodyView(t, replacements)
+		t := newLGTableHeaderless(rows, innerW)
+		content = "\n" + t.Render()
 	}
 	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)
 }

@@ -5,7 +5,6 @@ import (
 	"image/color"
 	"strings"
 
-	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
@@ -88,61 +87,31 @@ func resolveToolInfo(label string) toolInfo {
 
 func (m Model) renderActivity() string {
 	entries := m.filteredActivity()
-
 	avail := availableWidth(m.width)
-	const numCols = 4
-	avail -= numCols * 2 // table cell padding
-
-	agentW := proportionalWidth(avail, 14, 8)
-	timeW := proportionalWidth(avail, 10, 7)
-	toolW := proportionalWidth(avail, 8, 5)
-	detailW := max(10, avail-agentW-timeW-toolW)
-
-	cols := []table.Column{
-		{Title: "AGENT", Width: agentW},
-		{Title: "TIME", Width: timeW},
-		{Title: "TOOL", Width: toolW},
-		{Title: "DETAIL", Width: detailW},
-	}
-
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(entries), vRows)
 
-	rows := make([]table.Row, 0, end-start)
-	var replacements [][2]string
-	ri := 0
+	headers := []string{"AGENT", "TIME", "TOOL", "DETAIL"}
+
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		e := entries[i]
-		truncAgent := truncate(e.AgentID, agentW-2) // -2 for agentPill Padding(0,1)
-		styledAgent := agentPillFor(truncAgent, e.AgentID)
-
-		styledTime := activityTimeStyle.Render(truncate(e.Time, timeW))
-
 		info := resolveToolInfo(e.Tool)
-		styledTool := activityLabelStyle.Foreground(info.labelColor).Render(truncate(e.Tool, toolW))
-
-		plainDetail := truncate(e.Detail, detailW)
-
-		phAgent := cellPlaceholder(ri, lipgloss.Width(agentPillPlain(truncAgent)))
-		phTime := cellPlaceholder(ri+1, lipgloss.Width(styledTime))
-		phTool := cellPlaceholder(ri+2, lipgloss.Width(styledTool))
-		rows = append(rows, table.Row{phAgent, phTime, phTool, plainDetail})
-		replacements = append(replacements,
-			[2]string{phAgent, styledAgent},
-			[2]string{phTime, styledTime},
-			[2]string{phTool, styledTool},
-		)
-		ri += 3
+		rows = append(rows, []string{
+			agentPillFor(e.AgentID, e.AgentID),
+			activityTimeStyle.Render(e.Time),
+			activityLabelStyle.Foreground(info.labelColor).Render(e.Tool),
+			e.Detail,
+		})
 	}
 
 	var content string
 	if len(entries) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No activity detected", avail)
+		t := newLGTable(headers, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = styledTableView(t, replacements) + "\n"
+		t := newLGTable(headers, rows, m.cursor-start, avail)
+		content = t.Render() + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
 		}
