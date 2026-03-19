@@ -87,12 +87,12 @@ func (m Model) renderActivity() string {
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(entries), vRows)
 
-	headers := []string{"AGENT", "TIME", "TOOL", "DETAIL"}
+	headers := []string{"AGENT", "TIME", "DETAIL"}
 
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		e := entries[i]
-		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon, e.Detail})
+		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon + " " + e.Detail})
 	}
 
 	styler := func(row, col int, isSelected bool) lipgloss.Style {
@@ -110,19 +110,16 @@ func (m Model) renderActivity() string {
 			return base.Foreground(agentColor(e.AgentID)).Bold(true)
 		case 1: // TIME
 			return base.Foreground(colGray)
-		case 2: // TOOL icon
-			info := resolveToolInfo(e.Tool)
-			return base.Foreground(info.color).Bold(true)
 		}
 		return base
 	}
 
 	var content string
 	if len(entries) == 0 {
-		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8}, ColWidth{2, 4})
+		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8})
 		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8}, ColWidth{2, 4})
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8})
 		content = t.Render() + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
