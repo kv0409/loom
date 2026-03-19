@@ -212,7 +212,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	if len(rows) == 0 {
 		content = renderEmpty("No recent activity", colW-2)
 	} else {
-		t := newLGTableHeaderless(rows, -1, innerW, styler, ColWidth{1, 6}, ColWidth{2, 4})
+		t := newLGTableHeaderless(rows, -1, innerW, styler, ColWidth{0, 16}, ColWidth{1, 6}, ColWidth{2, 4})
 		content = "\n" + t.Render()
 	}
 	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)
