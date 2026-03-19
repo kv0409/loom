@@ -8,6 +8,7 @@ import (
 type keyMap struct {
 	Tab         key.Binding
 	Search      key.Binding
+	Chat        key.Binding
 	Esc         key.Binding
 	Quit        key.Binding
 	GoBottom    key.Binding
@@ -18,6 +19,7 @@ func defaultKeyMap() keyMap {
 	return keyMap{
 		Tab:         key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "cycle")),
 		Search:      key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "search")),
+		Chat:        key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "chat")),
 		Esc:         key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		Quit:        key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "quit")),
 		GoBottom:    key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "bottom")),
@@ -26,7 +28,7 @@ func defaultKeyMap() keyMap {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Tab, k.Search, k.Esc, k.Quit}
+	return []key.Binding{k.Tab, k.Search, k.Chat, k.Esc, k.Quit}
 }
 func (k keyMap) FullHelp() [][]key.Binding { return [][]key.Binding{k.ShortHelp()} }
 
@@ -50,6 +52,9 @@ const (
 	keyLeft     = "left"
 	keyRight    = "right"
 
+
+	// Chat pane.
+	keyChat = ":"
 
 	// View-switch shortcuts (shared, work from any non-modal view).
 	keyViewOverview  = "0"

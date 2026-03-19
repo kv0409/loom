@@ -60,16 +60,18 @@ func (m Model) renderChatPane() string {
 		lines = lines[len(lines)-historyBudget:]
 	}
 
-	// Append prompt line.
-	prompt := chatPromptStyle.Render("❯ ") + m.chatInput()
-	lines = append(lines, prompt)
+	// Append prompt line (chatTI renders its own '❯ ' prompt).
+	lines = append(lines, m.chatInput())
 
 	content := strings.Join(lines, "\n") + "\n"
 	return panel("CHAT", content, panelWidth(m.width))
 }
 
-// chatInput returns the current chat text input display. When chat input mode
-// is not active, it shows a placeholder hint.
+// chatInput returns the current chat text input display. When chat mode
+// is active, it renders the live textinput; otherwise shows a placeholder.
 func (m Model) chatInput() string {
-	return emptyMsgStyle.Render("press C to chat")
+	if m.chatMode {
+		return m.chatTI.View()
+	}
+	return emptyMsgStyle.Render("press : to chat")
 }

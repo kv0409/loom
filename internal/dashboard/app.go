@@ -92,6 +92,9 @@ type Model struct {
 	issueComposeMode bool
 	issueComposeForm *huh.Form
 	issueComposeData *issueComposeData
+	chatMode         bool            // true when chat pane is open
+	chatTI           textinput.Model // text input for chat pane
+	chatYOff         int             // scroll offset for chat history
 	agentOutputCache []backend.ACPEvent // cached events for current agent detail
 	agentOutputID    string             // agent ID the cache belongs to
 	diffLoading      bool               // true while diff is being fetched
@@ -145,6 +148,10 @@ func New(loomRoot string, heartbeatTimeoutSec int) Model {
 	searchTI := textinput.New()
 	searchTI.Prompt = ""
 
+	chatTI := textinput.New()
+	chatTI.Prompt = "❯ "
+	chatTI.Placeholder = "message orchestrator..."
+
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(spinnerStyle))
 
 	dvp := viewport.New(viewport.WithWidth(78), viewport.WithHeight(18))
@@ -154,7 +161,7 @@ func New(loomRoot string, heartbeatTimeoutSec int) Model {
 	dfvp.MouseWheelEnabled = true
 	dfvp.SetHorizontalStep(8)
 
-	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI, heartbeatTimeoutSec: heartbeatTimeoutSec, spinner: sp, detailVP: dvp, diffVP: dfvp}
+	return Model{loomRoot: loomRoot, width: 80, height: 24, backend: backend.NewFileBackend(loomRoot), cursors: make(map[view]int), help: h, keys: defaultKeyMap(), messageTI: msgTI, searchTI: searchTI, chatTI: chatTI, heartbeatTimeoutSec: heartbeatTimeoutSec, spinner: sp, detailVP: dvp, diffVP: dfvp}
 }
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
@@ -500,6 +507,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messageTI, cmd = m.messageTI.Update(msg)
 	} else if m.searchMode {
 		m.searchTI, cmd = m.searchTI.Update(msg)
+	} else if m.chatMode {
+		m.chatTI, cmd = m.chatTI.Update(msg)
 	}
 	return m, cmd
 }
@@ -610,6 +619,26 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Chat mode captures all input
+	if m.chatMode {
+		switch msg.String() {
+		case "enter":
+			text := m.chatTI.Value()
+			if text != "" {
+				m.chatTI.SetValue("")
+				return m, sendMailCmd(m.backend, m.loomRoot, "dashboard", "orchestrator", text, "", "task", "normal", "")
+			}
+		case "esc":
+			m.chatMode = false
+			m.chatTI.Blur()
+		default:
+			var cmd tea.Cmd
+			m.chatTI, cmd = m.chatTI.Update(msg)
+			return m, cmd
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case keyQuit, keyQuitCtrl:
 		return m, tea.Quit
@@ -714,6 +743,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.searchTI.Focus()
 			return m, nil
 		}
+	case keyChat:
+		m.chatMode = true
+		m.chatTI.SetValue("")
+		m.chatTI.Focus()
+		m.chatYOff = 0
+		return m, nil
 	case keyTab:
 		m.switchView(nextView(m.view))
 		return m, nil
@@ -972,6 +1007,13 @@ func (m Model) View() tea.View {
 		return v
 	}
 
+	// When chat pane is active, reduce height for render functions only.
+	// Save original for renderChatPane(), padding calc, and final truncation.
+	fullHeight := m.height
+	if m.chatMode {
+		m.height = fullHeight - chatPaneHeight(fullHeight)
+	}
+
 	var content string
 	switch m.view {
 	case viewOverview:
@@ -1001,6 +1043,9 @@ func (m Model) View() tea.View {
 	case viewKanban:
 		content = m.renderKanban()
 	}
+
+	// Restore original height for chat pane, padding, and truncation.
+	m.height = fullHeight
 
 	// Full-width title bar. titleStyle has Padding(0,2) adding 4 horizontal
 	// chars, so content area is m.width-4 to fill the terminal exactly.
@@ -1050,6 +1095,9 @@ func (m Model) View() tea.View {
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
 	}
+	if m.chatMode {
+		help = helpStyle.Render(" Chat: [Enter]send [Esc]close")
+	}
 
 	// Flash messages on their own line above help bar
 	flashLine := ""
@@ -1074,6 +1122,12 @@ func (m Model) View() tea.View {
 	}
 	top += content
 
+	// Chat pane: append below main content when active
+	chatPane := ""
+	if m.chatMode {
+		chatPane = m.renderChatPane()
+	}
+
 	// Build bottom section (optional flash + help), pinned to terminal bottom
 	bottom := ""
 	if flashLine != "" {
@@ -1083,8 +1137,9 @@ func (m Model) View() tea.View {
 
 	// Pad between top and bottom so help bar sits at the last line
 	topLines := splitLines(top)
+	chatLines := splitLines(chatPane)
 	bottomLines := splitLines(bottom)
-	totalUsed := len(topLines) + len(bottomLines)
+	totalUsed := len(topLines) + len(chatLines) + len(bottomLines)
 	pad := m.height - totalUsed
 	if pad < 0 {
 		pad = 0
@@ -1095,6 +1150,7 @@ func (m Model) View() tea.View {
 	for i := 0; i < pad; i++ {
 		lines = append(lines, "")
 	}
+	lines = append(lines, chatLines...)
 	lines = append(lines, bottomLines...)
 
 	// Compose modal overlay replaces normal output.
