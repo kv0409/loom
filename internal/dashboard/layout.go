@@ -83,6 +83,19 @@ func sectionCursor(cursor, start, end int) (row int, selected bool) {
 	return cursor - start, true
 }
 
+// chatPaneHeight returns the row budget for the chat pane (~8-10 lines from
+// terminal height). Enforces a minimum of 4 and a maximum of 12.
+func chatPaneHeight(h int) int {
+	v := h / 3
+	if v < 4 {
+		return 4
+	}
+	if v > 12 {
+		return 12
+	}
+	return v
+}
+
 // agentDetailVPHeight returns the viewport height for the scrollable output
 // section in agent detail, subtracting the fixed header lines, footer lines,
 // panel border (2), output section header (1), and blank separators (2).

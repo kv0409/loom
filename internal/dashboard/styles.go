@@ -207,6 +207,8 @@ func panelIcon(title string) string {
 		return "⌥ "
 	case strings.Contains(t, "KANBAN"), strings.Contains(t, "BOARD"):
 		return "▦ "
+	case strings.Contains(t, "CHAT"):
+		return "▸ "
 	default:
 		return ""
 	}
@@ -357,6 +359,14 @@ var (
 	composeTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colBlue).MarginBottom(1)
 	composeHintStyle  = lipgloss.NewStyle().Foreground(colGray)
 	composeKeyStyle   = lipgloss.NewStyle().Foreground(colFg).Bold(true)
+)
+
+// Chat pane styles
+var (
+	chatUserStyle         = lipgloss.NewStyle().Foreground(colBlue).Bold(true)
+	chatOrchestratorStyle = lipgloss.NewStyle().Foreground(colMagenta).Bold(true)
+	chatPromptStyle       = lipgloss.NewStyle().Foreground(colCyan)
+	chatPaneTitle         = lipgloss.NewStyle().Bold(true).Foreground(colCyan)
 )
 
 // agentColor returns the role-based color for an agent ID.
