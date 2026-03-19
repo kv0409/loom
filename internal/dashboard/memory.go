@@ -3,50 +3,32 @@ package dashboard
 import (
 	"fmt"
 	"strings"
-
-	"charm.land/bubbles/v2/table"
 )
 
 func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
-
 	avail := availableWidth(m.width)
-	const numCols = 4
-	avail -= numCols * 2
-
-	idW := proportionalWidth(avail, 12, 8)
-	typeW := proportionalWidth(avail, 12, 8)
-	titleW := proportionalWidth(avail, 36, 12)
-	snippetW := max(10, avail-idW-typeW-titleW)
-
-	cols := []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "TYPE", Width: typeW},
-		{Title: "TITLE", Width: titleW},
-		{Title: "DETAIL", Width: snippetW},
-	}
 
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(memories), vRows)
 
-	rows := make([]table.Row, 0, end-start)
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		e := memories[i]
 		snippet := m.backend.MemorySnippet(e)
 		if snippet == "" {
 			snippet = e.Title
 		}
-		rows = append(rows, table.Row{e.ID, e.Type, truncate(e.Title, titleW), truncate(snippet, snippetW)})
+		rows = append(rows, []string{e.ID, e.Type, e.Title, snippet})
 	}
 
 	var content string
 	if len(memories) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No memory entries yet", avail)
+		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No memory entries yet", avail)
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = fixSelectedRowBg(t.View()) + "\n"
+		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, rows, m.cursor-start, avail)
+		content = t.Render() + "\n"
 	}
 
 	title := fmt.Sprintf("[d] MEMORY (%d entries)", len(m.data.Memories))

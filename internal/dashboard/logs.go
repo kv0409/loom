@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"charm.land/bubbles/v2/table"
-	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -131,30 +129,17 @@ func (m Model) renderLogs() string {
 	visible := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(lines), visible)
 
-	tagW := 10
-	const numColsLogs = 2
-	textW := m.width - tagW - 8 - numColsLogs*2
-	if textW < 10 {
-		textW = 10
-	}
-	cols := []table.Column{
-		{Title: "CAT", Width: tagW},
-		{Title: "MESSAGE", Width: textW},
-	}
-	rows := make([]table.Row, 0, end-start)
-	var replacements [][2]string
+	avail := availableWidth(m.width)
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		l := lines[i]
 		cat := l.Category
 		if cat == "" {
 			cat = "info"
 		}
-		styledCat := categoryTag(cat)
-		ph := cellPlaceholder(i-start, lipgloss.Width(styledCat))
-		rows = append(rows, table.Row{ph, truncate(l.Text, textW)})
-		replacements = append(replacements, [2]string{ph, styledCat})
+		rows = append(rows, []string{categoryTag(cat), l.Text})
 	}
-	t := newStyledTable(cols, rows, end-start)
+	t := newLGTable([]string{"CAT", "MESSAGE"}, rows, m.cursor-start, avail)
 
 	content := header
 	content += fmt.Sprintf("  %d errors · %d warnings · %d events\n", errorsCount, warnCount, len(lines))
@@ -168,7 +153,7 @@ func (m Model) renderLogs() string {
 		content += "\n"
 	}
 	content += "  " + headerStyle.Render("RECENT INCIDENTS") + "\n"
-	content += styledTableView(t, replacements)
+	content += t.Render()
 	return panel(fmt.Sprintf("[l] INVESTIGATION (%d events)", len(lines)), content, panelWidth(m.width))
 }
 
