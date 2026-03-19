@@ -12,7 +12,7 @@ Never hand-roll functionality that a Bubbles component already provides. The lib
 
 | Need | Use | Never hand-roll |
 |------|-----|-----------------|
-| Columnar data | `bubbles/table` via `newStyledTable()` in `render_helpers.go` | `fmt.Sprintf("%-*s", ...)`, manual `lipgloss.Width()` padding, `strings.Repeat(" ", ...)` for column alignment |
+| Columnar data | `lipgloss/table` via `newLGTable()` in `render_helpers.go` | `fmt.Sprintf("%-*s", ...)`, manual `lipgloss.Width()` padding, `strings.Repeat(" ", ...)` for column alignment |
 | Text input | `bubbles/textinput` | Rune-level keyboard handling, manual cursor tracking, character insertion/deletion |
 | Multi-line text editing | `bubbles/textarea` | Custom newline/cursor handling |
 | Scrollable content | `bubbles/viewport` via `detailVP`/`diffVP` in `Model` | Manual slice indexing, `strings.Split` + range loops with offset |
@@ -20,23 +20,24 @@ Never hand-roll functionality that a Bubbles component already provides. The lib
 | Loading/activity indicator | `bubbles/spinner` via `spinner` in `Model` | Custom frame-cycling animation |
 | Keybindings display | `bubbles/key` + `bubbles/help` | Manual help string construction |
 
-## All Columnar Rendering Goes Through `newStyledTable()`
+## All Columnar Rendering Goes Through `newLGTable()`
 
-Every view that renders columns — whether it has headers or not — must use `newStyledTable()` from `render_helpers.go`. This is the single interface for all tabular/columnar content in the dashboard.
+Every view that renders columns — whether it has headers or not — must use `newLGTable()` or `newLGTableHeaderless()` from `render_helpers.go`. These are the single interface for all tabular/columnar content in the dashboard, backed by `lipgloss/table`.
 
-- Full table views (agents list, issues list, mail, memory, activity, diff): use `newStyledTable()` with headers.
-- Compact panel sections (overview agent band, overview activity): use `newStyledTableHeaderless()` + `tableBodyView()`.
-- No view should calculate column widths or pad cells manually. If `newStyledTable()` doesn't support a layout you need, extend it — don't bypass it.
+- Full table views (agents list, issues list, mail, memory, activity, diff): use `newLGTable()` with headers.
+- Compact panel sections (overview agent band, overview activity): use `newLGTableHeaderless()`.
+- No view should calculate column widths or pad cells manually. If `newLGTable()` doesn't support a layout you need, extend it — don't bypass it.
 
-**Tables are rebuilt every frame.** `table.Model` is not stored in `Model` and does not receive `Update()` calls. The cursor is injected after construction:
+**Tables are rebuilt every frame.** `lipgloss/table` is a static renderer — it has no `Update()` method and is not stored in `Model`. The selected row index is passed to `newLGTable()` which applies highlight styling via `StyleFunc`:
 
 ```go
-t := newStyledTable(cols, rows, vRows)
-t.SetCursor(m.cursor - start)   // start = listViewport window start
-return t.View()
+start, end := listViewport(m.cursor, len(items), vRows)
+rows := buildRows(items[start:end])
+t := newLGTable(headers, rows, m.cursor-start, availableWidth(m.width))
+return t.Render()
 ```
 
-This is intentional — it keeps state flat. Do not add `table.Model` fields to `Model`.
+This is intentional — it keeps state flat. Do not store table instances in `Model`.
 
 ## Styling Through `styles.go`
 
@@ -201,7 +202,7 @@ When introducing a new stateful Bubbles component (textinput, spinner, progress,
 4. Style it consistently with the Tokyo Night palette from `styles.go`.
 5. If it has a width/height setter, sync it in the `tea.WindowSizeMsg` handler.
 
-**Exception — `table.Model`:** do not follow this guide for tables. Tables are rebuilt per frame via `newStyledTable()`. See the columnar rendering rule above.
+**Exception — tables:** do not follow this guide for tables. Tables are rebuilt per frame via `newLGTable()` / `newLGTableHeaderless()`. See the columnar rendering rule above.
 
 ## View Return Type
 
@@ -231,10 +232,6 @@ Button constants: `tea.MouseLeft`, `tea.MouseRight`, `tea.MouseMiddle`, `tea.Mou
 
 The dashboard handles clicks in `handleMouseClick()` and wheel events in `handleMouseWheel()`.
 
-## Table Width Requirement
-
-Bubbles/table v2 requires an explicit width to render data rows. The `newStyledTable()` and `newStyledTableHeaderless()` helpers in `render_helpers.go` handle this automatically via `tableWidth()`, which sums column widths plus padding. If you create tables outside these helpers, you must call `table.WithWidth(w)` or `t.SetWidth(w)`.
-
 ## New in v2 (Available but not yet adopted)
 
 - **Progressive keyboard enhancements**: `shift+enter`, `ctrl+h`, key releases. Set `view.KeyboardEnhancements.ReportEventTypes = true` for key release events. Listen for `tea.KeyboardEnhancementsMsg` to detect support.
@@ -252,7 +249,6 @@ For API details, use `go doc` from the project root:
 - `go doc charm.land/bubbletea/v2.View` — View struct fields
 - `go doc charm.land/bubbletea/v2.KeyPressMsg` — Key press message
 - `go doc charm.land/bubbletea/v2.MouseClickMsg` — Mouse click message
-- `go doc charm.land/bubbles/v2/table` — Table component
 - `go doc charm.land/bubbles/v2/help` — Help component
 - `go doc charm.land/bubbles/v2/key` — Key binding
 

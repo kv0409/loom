@@ -3,8 +3,6 @@ package dashboard
 import (
 	"strings"
 	"testing"
-
-	"charm.land/lipgloss/v2"
 )
 
 func TestListViewport_CursorAtStart(t *testing.T) {
@@ -149,18 +147,6 @@ func TestWordWrap_UTF8ByteSlicing(t *testing.T) {
 	// Reassembled content must equal original.
 	if got := strings.Join(segs, ""); got != input {
 		t.Errorf("reassembled segments don't match original")
-	}
-}
-
-func TestCellPlaceholder_WidthMatchesRequested(t *testing.T) {
-	for _, width := range []int{5, 10, 15, 20} {
-		for idx := 0; idx < 20; idx++ {
-			ph := cellPlaceholder(idx, width)
-			got := lipgloss.Width(ph)
-			if got != width {
-				t.Errorf("cellPlaceholder(%d, %d): lipgloss.Width=%d, want %d", idx, width, got, width)
-			}
-		}
 	}
 }
 

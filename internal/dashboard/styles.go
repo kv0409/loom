@@ -327,17 +327,7 @@ var (
 	activityIconStyle  = lipgloss.NewStyle().Bold(true).Width(2)
 )
 
-// Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
-var (
-	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
-	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
-	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSelBg)
-	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
-	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg)
-)
-
-// lipgloss/table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.
-// These mirror the bubbles/table styles above but are tuned for the StyleFunc pattern.
+// Table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.
 var (
 	lgTableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
 	lgTableCellStyle     = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
