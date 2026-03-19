@@ -44,7 +44,6 @@ var (
 	reviewStyle   = lipgloss.NewStyle().Foreground(colCyan)
 	deadStyle     = lipgloss.NewStyle().Foreground(colRed)
 	idleStyle     = lipgloss.NewStyle().Foreground(colGray)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg)
 	helpStyle     = lipgloss.NewStyle().Foreground(colSubtle)
 	flashOkStyle  = lipgloss.NewStyle().Bold(true).Foreground(colGreen)
 	flashErrStyle = lipgloss.NewStyle().Bold(true).Foreground(colRed)
@@ -308,16 +307,6 @@ var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).
 // spinnerStyle is used for the inline loading spinner.
 var spinnerStyle = lipgloss.NewStyle().Foreground(colBlue)
 
-// selectedRow renders line with selectedStyle, replacing the leading two-space
-// indent with a "▸ " prefix so the cursor is visible across all list views.
-func selectedRow(line string) string {
-	runes := []rune(line)
-	if len(runes) >= 2 {
-		return selectedStyle.Render("▸" + string(runes[1:]))
-	}
-	return selectedStyle.Render(line)
-}
-
 var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 
 // Activity view styles
@@ -410,12 +399,6 @@ func agentPillFor(displayText, colorID string) string {
 		Render(displayText)
 }
 
-// agentPillPlain returns a plain-text string with the same visual width as agentPill(id).
-// The pill's Padding(0,1) adds 1 space each side, so we mirror that here.
-func agentPillPlain(id string) string {
-	return " " + id + " "
-}
-
 func renderEmpty(msg string, width int) string {
 	centered := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
 	return centered.Render(emptyMsgStyle.Render(msg)) + "\n"
@@ -433,12 +416,6 @@ func vpScrollIndicator(vp viewport.Model) string {
 		below = 0
 	}
 	return idleStyle.Render(fmt.Sprintf(" ↑%d ↓%d", above, below))
-}
-
-const statusPillWidth = 13
-
-func statusPill(status string) string {
-	return statusPillStyle(status).Width(statusPillWidth).Render(status)
 }
 
 // listViewport returns the start and end indices for a cursor-following list

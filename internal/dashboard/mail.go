@@ -99,22 +99,6 @@ func mailPriorityWeight(priority string) int {
 	}
 }
 
-func mailPriorityTag(priority string) string {
-	label := priority
-	style := idleStyle
-	switch priority {
-	case "critical":
-		style = deadStyle
-	case "normal":
-		style = reviewStyle
-	case "low":
-		style = idleStyle
-	default:
-		label = "unknown"
-	}
-	return style.Render(label)
-}
-
 func (m Model) renderMailDetail() string {
 	messages := m.sortedMessages()
 	if m.cursor >= len(messages) {

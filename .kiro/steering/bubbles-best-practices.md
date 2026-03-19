@@ -28,12 +28,39 @@ Every view that renders columns — whether it has headers or not — must use `
 - Compact panel sections (overview agent band, overview activity): use `newLGTableHeaderless()`.
 - No view should calculate column widths or pad cells manually. If `newLGTable()` doesn't support a layout you need, extend it — don't bypass it.
 
+### Table cells must contain plain text only
+
+Never put pre-styled ANSI strings into table cells. All cell coloring goes through the `CellStyler` callback passed to `newLGTable()` / `newLGTableHeaderless()`. Pre-styled content contains ANSI reset codes (`\x1b[0m`) that destroy the selection background applied by `StyleFunc`, leaving visual holes in highlighted rows (see charmbracelet/lipgloss#520).
+
+```go
+// Wrong — pre-styled cell content breaks selection highlighting:
+rows = append(rows, []string{agentPillFor(a.ID, a.ID), statusPill(a.Status)})
+t := newLGTable(headers, rows, cursor, width, nil)
+
+// Correct — plain text cells + CellStyler for all coloring:
+rows = append(rows, []string{a.ID, a.Status})
+styler := func(row, col int, selected bool) lipgloss.Style {
+    base := lgTableCellStyle
+    if selected {
+        base = lgTableSelectedStyle
+    }
+    switch col {
+    case 0:
+        return base.Foreground(agentColor(agents[start+row].ID))
+    case 1:
+        return base.Foreground(statusColors[agents[start+row].Status])
+    }
+    return base
+}
+t := newLGTable(headers, rows, cursor, width, styler)
+```
+
 **Tables are rebuilt every frame.** `lipgloss/table` is a static renderer — it has no `Update()` method and is not stored in `Model`. The selected row index is passed to `newLGTable()` which applies highlight styling via `StyleFunc`:
 
 ```go
 start, end := listViewport(m.cursor, len(items), vRows)
 rows := buildRows(items[start:end])
-t := newLGTable(headers, rows, m.cursor-start, availableWidth(m.width))
+t := newLGTable(headers, rows, m.cursor-start, availableWidth(m.width), nil)
 return t.Render()
 ```
 
@@ -44,8 +71,8 @@ This is intentional — it keeps state flat. Do not store table instances in `Mo
 All lipgloss styles live in `internal/dashboard/styles.go`. Never create inline `lipgloss.NewStyle()` calls in view files.
 
 - Define named styles in `styles.go` and reference them in views.
-- Agent colors use `agentPill(id)` for background-filled badges and `agentColor(id)` for the raw color value.
-- Status rendering uses `statusPill(status)` — fixed-width, background-filled.
+- Agent colors use `agentPillFor(displayText, colorID)` for background-filled badges in non-table contexts (detail views, overview compact band) and `agentColor(id)` for the raw color value used in `CellStyler` callbacks.
+- Status rendering in detail views uses `statusIndicator(status)` for glyphs and `statusPillStyle(status)` for styled text. In table cells, use plain text and apply colors via `CellStyler` with `statusColors[status]`.
 - **All bordered panel containers use `panel(title, content, width)`** — the single wrapper for every boxed section. Never construct border styles inline.
 - Horizontal dividers inside panels use `separator(w)` — never `strings.Repeat("─", ...)` inline.
 

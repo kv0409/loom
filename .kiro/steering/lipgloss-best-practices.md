@@ -138,7 +138,7 @@ The `borderStyle` variable uses `RoundedBorder()`. Always use it via `panel()` �
 `.Padding(0, 1)` adds 1 cell on each side. When combined with `.Width(n)`, the padding is **included** in the total width — content gets `n - 2` usable cells:
 
 ```go
-// statusPill has Width(13) and Padding(0,1):
+// A fixed-width pill with Width(13) and Padding(0,1):
 // → 13 total cells = 1 left pad + 11 content + 1 right pad
 lipgloss.NewStyle().Width(13).Padding(0, 1).Render(status)
 ```
