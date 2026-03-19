@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/dashboard/backend"
+	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/nudge"
 )
 
@@ -88,6 +89,9 @@ type Model struct {
 	composeMode      bool
 	composeForm      *huh.Form
 	composeData      *composeData
+	issueComposeMode bool
+	issueComposeForm *huh.Form
+	issueComposeData *issueComposeData
 	agentOutputCache []backend.ACPEvent // cached events for current agent detail
 	agentOutputID    string             // agent ID the cache belongs to
 	diffLoading      bool               // true while diff is being fetched
@@ -116,6 +120,11 @@ type agentOutputMsg struct {
 }
 
 type sendMailResultMsg struct {
+	flash string
+	isErr bool
+}
+
+type createIssueResultMsg struct {
 	flash string
 	isErr bool
 }
@@ -331,6 +340,82 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
+	// Issue compose modal captures all input while active.
+	if m.issueComposeMode && m.issueComposeForm != nil {
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+			switch keyMsg.String() {
+			case "ctrl+s":
+				return m.issueComposeSubmit()
+			case "esc":
+				m.issueComposeMode = false
+				return m, m.setFlash("Create cancelled", false)
+			}
+		}
+
+		form, cmd := m.issueComposeForm.Update(msg)
+		if f, ok := form.(*huh.Form); ok {
+			m.issueComposeForm = f
+		}
+		switch m.issueComposeForm.State {
+		case huh.StateCompleted:
+			return m.issueComposeSubmit()
+		case huh.StateAborted:
+			m.issueComposeMode = false
+			return m, m.setFlash("Create cancelled", false)
+		}
+		switch msg := msg.(type) {
+		case tea.WindowSizeMsg:
+			m.width = msg.Width
+			m.height = msg.Height
+			m.help.SetWidth(msg.Width)
+			vpW := panelWidth(msg.Width) - 2
+			vpH := scrollViewport(msg.Height)
+			m.detailVP.SetWidth(vpW)
+			m.detailVP.SetHeight(vpH)
+			m.diffVP.SetWidth(vpW)
+			m.diffVP.SetHeight(vpH)
+			m.issueComposeForm.WithWidth(min(56, msg.Width-8))
+		case tickMsg:
+			return m, tea.Batch(cmd, m.refresh(), tickCmd())
+		case watchBinaryTickMsg:
+			return m, tea.Batch(cmd, watchBinaryFrom(msg.mtime))
+		case binaryReloadMsg:
+			m.reloading = true
+			return m, tea.Quit
+		case backend.Snapshot:
+			m.data = msg
+			m.refreshed = true
+			if msg.HeartbeatTimeoutSec > 0 {
+				m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
+			}
+			m.clampCursor()
+			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail && m.view != viewMailDetail {
+				m.detailYOff = 0
+			}
+			if m.view != viewDiff {
+				m.diffYOff = 0
+				m.diffXOff = 0
+			}
+			if len(msg.Errors) > 0 && !m.errorShown {
+				m.errorShown = true
+			}
+		case daemonResultMsg:
+			return m, m.setFlash(msg.flash, msg.isErr)
+		case diffResultMsg:
+			m.diffContent = msg.content
+			m.diffLoading = false
+		case agentOutputMsg:
+			if m.view == viewAgentDetail && msg.agentID == m.agentOutputID {
+				m.agentOutputCache = msg.events
+			}
+		case createIssueResultMsg:
+			return m, m.setFlash(msg.flash, msg.isErr)
+		case sendMailResultMsg:
+			return m, m.setFlash(msg.flash, msg.isErr)
+		}
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
@@ -400,6 +485,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case sendMailResultMsg:
+		return m, m.setFlash(msg.flash, msg.isErr)
+	case createIssueResultMsg:
 		return m, m.setFlash(msg.flash, msg.isErr)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -595,9 +682,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.killConfirm = true
 			return m, nil
 		}
-	case keyMailCompose:
+	case keyMailCompose: // also keyIssueCreate (same key, different view)
 		if m.view == viewMail || m.view == viewMailDetail {
 			return m.openCompose("")
+		}
+		if m.view == viewIssues {
+			return m.openIssueCompose()
 		}
 	case keyMailReply:
 		if m.view == viewMailDetail {
@@ -789,6 +879,49 @@ func (m Model) openCompose(replyTo string) (tea.Model, tea.Cmd) {
 	return m, m.composeForm.Init()
 }
 
+func (m Model) openIssueCompose() (tea.Model, tea.Cmd) {
+	var ids []string
+	for _, iss := range m.data.Issues {
+		ids = append(ids, iss.ID)
+	}
+	cd := &issueComposeData{}
+	m.issueComposeData = cd
+	m.issueComposeForm = newIssueForm(cd, ids).WithWidth(min(56, m.width-8))
+	m.issueComposeMode = true
+	return m, m.issueComposeForm.Init()
+}
+
+func (m Model) issueComposeSubmit() (tea.Model, tea.Cmd) {
+	m.issueComposeMode = false
+	if strings.TrimSpace(m.issueComposeData.Title) == "" {
+		return m, m.setFlash("Create failed: 'Title' is required", true)
+	}
+	cd := m.issueComposeData
+	lr := m.loomRoot
+	var deps []string
+	if cd.DependsOn != "" {
+		for _, d := range strings.Split(cd.DependsOn, ",") {
+			d = strings.TrimSpace(d)
+			if d != "" {
+				deps = append(deps, d)
+			}
+		}
+	}
+	return m, func() tea.Msg {
+		iss, err := issue.Create(lr, cd.Title, issue.CreateOpts{
+			Type:        cd.Type,
+			Priority:    cd.Priority,
+			Description: cd.Description,
+			Parent:      cd.Parent,
+			DependsOn:   deps,
+		})
+		if err != nil {
+			return createIssueResultMsg{flash: fmt.Sprintf("Create failed: %s", err), isErr: true}
+		}
+		return createIssueResultMsg{flash: fmt.Sprintf("Created %s", iss.ID), isErr: false}
+	}
+}
+
 func (m *Model) clampCursor() {
 	max := m.listLen() - 1
 	if max < 0 {
@@ -973,6 +1106,15 @@ func (m Model) View() tea.View {
 		}
 	}
 
+	// Issue compose modal overlay replaces normal output.
+	if m.issueComposeMode && m.issueComposeForm != nil {
+		output := renderIssueComposeOverlay(m.issueComposeForm, m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
+	}
+
 	if len(lines) > m.height {
 		lines = lines[:m.height]
 	}
@@ -999,7 +1141,7 @@ func (m Model) helpBar() string {
 	case viewAgents:
 		ctx = "[n]udge [m]essage [o]utput [x]kill [Enter]detail"
 	case viewIssues:
-		ctx = "[Enter]detail"
+		ctx = "[c]reate [Enter]detail"
 	case viewWorktrees:
 		ctx = "[Enter]diff"
 	case viewMemory:

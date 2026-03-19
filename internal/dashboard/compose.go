@@ -148,3 +148,90 @@ func renderComposeOverlay(form *huh.Form, width, height int) string {
 	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
+
+// issueComposeData holds the form field values bound to the issue compose form.
+type issueComposeData struct {
+	Title       string
+	Type        string
+	Priority    string
+	Description string
+	Parent      string
+	DependsOn   string
+}
+
+// issueTypes are the allowed issue types.
+var issueTypes = []huh.Option[string]{
+	huh.NewOption("task", "task"),
+	huh.NewOption("epic", "epic"),
+	huh.NewOption("bug", "bug"),
+	huh.NewOption("spike", "spike"),
+}
+
+// issuePriorities are the allowed priority levels for issues.
+var issuePriorities = []huh.Option[string]{
+	huh.NewOption("normal", "normal"),
+	huh.NewOption("critical", "critical"),
+	huh.NewOption("high", "high"),
+	huh.NewOption("low", "low"),
+}
+
+// newIssueForm builds a huh.Form for creating an issue.
+// issueIDs provides autocomplete suggestions for Parent and DependsOn fields.
+func newIssueForm(cd *issueComposeData, issueIDs []string) *huh.Form {
+	cd.Type = "task"
+	cd.Priority = "normal"
+
+	f := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Title").
+				Value(&cd.Title).
+				Placeholder("issue title (required)"),
+			huh.NewSelect[string]().
+				Title("Type").
+				Options(issueTypes...).
+				Value(&cd.Type),
+			huh.NewSelect[string]().
+				Title("Priority").
+				Options(issuePriorities...).
+				Value(&cd.Priority),
+			huh.NewText().
+				Title("Description").
+				Value(&cd.Description).
+				Placeholder("description (optional)").
+				Lines(6),
+			huh.NewInput().
+				Title("Parent").
+				Value(&cd.Parent).
+				Placeholder("parent issue ID (optional)").
+				Suggestions(issueIDs),
+			huh.NewInput().
+				Title("Depends On").
+				Value(&cd.DependsOn).
+				Placeholder("comma-separated IDs (optional)").
+				Suggestions(issueIDs),
+		),
+	).WithTheme(loomTheme{}).WithKeyMap(composeKeyMap())
+
+	return f
+}
+
+// renderIssueComposeOverlay renders the issue compose form as a centered overlay.
+func renderIssueComposeOverlay(form *huh.Form, width, height int) string {
+	formW := min(60, width-4)
+	formView := form.View()
+
+	title := composeTitleStyle.Render("📋 CREATE ISSUE")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, formView)
+	box := overlayStyle.Width(formW).Render(content)
+
+	hint := composeHintStyle.Render("  ") +
+		composeKeyStyle.Render("tab") + composeHintStyle.Render(" next/accept suggestion · ") +
+		composeKeyStyle.Render("shift+tab") + composeHintStyle.Render(" prev · ") +
+		composeKeyStyle.Render("ctrl+s") + composeHintStyle.Render(" create · ") +
+		composeKeyStyle.Render("esc") + composeHintStyle.Render(" cancel")
+
+	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
+}
