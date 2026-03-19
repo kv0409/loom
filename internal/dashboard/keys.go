@@ -56,7 +56,6 @@ const (
 	keyViewMemory    = "d"
 	keyViewWorktrees = "w"
 	keyViewActivity  = "t"
-	keyViewLogs      = "l"
 )
 
 // View-specific shortcuts — only meaningful in the named context.
@@ -69,8 +68,4 @@ const (
 	// Mail view.
 	keyMailCompose = "c"
 	keyMailReply   = "r"
-
-	// Logs view.
-	keyLogFilter      = "f"
-	keyLogAgentFilter = "F"
 )

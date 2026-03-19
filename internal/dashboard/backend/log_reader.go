@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -78,11 +79,11 @@ func (r *logReader) read() []LogLine {
 		if trimmed == "" {
 			continue
 		}
-		cat, t, ok := classifyLogLine(trimmed)
+		cat, t, ok := ClassifyLogLine(trimmed)
 		if !ok {
 			continue
 		}
-		r.lines = append(r.lines, LogLine{Category: cat, Agent: extractAgent(trimmed), Text: t})
+		r.lines = append(r.lines, LogLine{Category: cat, Agent: ExtractAgent(trimmed), Text: t})
 	}
 
 	if len(r.lines) > maxLogLines {
@@ -99,8 +100,8 @@ func (r *logReader) snapshot() []LogLine {
 	return cp
 }
 
-// classifyLogLine returns (category, display text, keep).
-func classifyLogLine(line string) (string, string, bool) {
+// ClassifyLogLine returns (category, display text, keep).
+func ClassifyLogLine(line string) (string, string, bool) {
 	if strings.Contains(line, "[acp-notif]") {
 		return "", "", false
 	}
@@ -125,8 +126,8 @@ func classifyLogLine(line string) (string, string, bool) {
 	return "", "", false
 }
 
-// extractAgent pulls an agent identifier from a log line.
-func extractAgent(line string) string {
+// ExtractAgent pulls an agent identifier from a log line.
+func ExtractAgent(line string) string {
 	m := agentRe.FindStringSubmatch(line)
 	if m == nil {
 		return ""
@@ -135,4 +136,69 @@ func extractAgent(line string) string {
 		return m[1]
 	}
 	return m[2]
+}
+
+// ReadDaemonLog reads the daemon log file and returns all classified lines.
+func ReadDaemonLog(loomRoot string) []LogLine {
+	data, err := os.ReadFile(filepath.Join(loomRoot, "logs", "daemon.log"))
+	if err != nil {
+		return nil
+	}
+	var lines []LogLine
+	for _, raw := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		cat, text, ok := ClassifyLogLine(trimmed)
+		if !ok {
+			continue
+		}
+		lines = append(lines, LogLine{Category: cat, Agent: ExtractAgent(trimmed), Text: text})
+	}
+	return lines
+}
+
+// AgentCount pairs an agent ID with its event count.
+type AgentCount struct {
+	Agent string
+	Count int
+}
+
+// Summary holds aggregate stats for a set of log lines.
+type Summary struct {
+	Errors    int
+	Warnings  int
+	Total     int
+	HotAgents []AgentCount
+}
+
+// LogSummary computes aggregate stats from classified log lines.
+func LogSummary(lines []LogLine) Summary {
+	s := Summary{Total: len(lines)}
+	counts := map[string]int{}
+	for _, l := range lines {
+		switch l.Category {
+		case "error", "stderr":
+			s.Errors++
+		case "warn":
+			s.Warnings++
+		}
+		if l.Agent != "" {
+			counts[l.Agent]++
+		}
+	}
+	for agent, c := range counts {
+		s.HotAgents = append(s.HotAgents, AgentCount{agent, c})
+	}
+	sort.Slice(s.HotAgents, func(i, j int) bool {
+		if s.HotAgents[i].Count != s.HotAgents[j].Count {
+			return s.HotAgents[i].Count > s.HotAgents[j].Count
+		}
+		return s.HotAgents[i].Agent < s.HotAgents[j].Agent
+	})
+	if len(s.HotAgents) > 3 {
+		s.HotAgents = s.HotAgents[:3]
+	}
+	return s
 }

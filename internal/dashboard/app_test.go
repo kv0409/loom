@@ -637,3 +637,26 @@ func TestMemoryListLen_MatchesFilteredMemories(t *testing.T) {
 		t.Errorf("listLen()=%d != len(filteredMemories())=%d", m.listLen(), len(m.filteredMemories()))
 	}
 }
+
+func TestViewLogs_RemovedFromViewOrder(t *testing.T) {
+	for _, v := range viewOrder {
+		if v == viewLogs {
+			t.Error("viewLogs should not be in viewOrder")
+		}
+	}
+}
+
+func TestViewLogs_RemovedFromIsListView(t *testing.T) {
+	if isListView(viewLogs) {
+		t.Error("viewLogs should not be a list view")
+	}
+}
+
+func TestKeyL_DoesNotSwitchToLogs(t *testing.T) {
+	m := testModel(viewOverview)
+	result, _ := m.handleKey(keyMsg("l"))
+	got := result.(Model)
+	if got.view == viewLogs {
+		t.Error("pressing 'l' should not switch to viewLogs")
+	}
+}

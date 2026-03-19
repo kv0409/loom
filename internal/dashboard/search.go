@@ -99,15 +99,3 @@ func (m Model) filteredActivity() []backend.ActivityEntry {
 	return out
 }
 
-func (m Model) filteredLogs() []backend.LogLine {
-	if m.searchTI.Value() == "" {
-		return m.data.Logs
-	}
-	var out []backend.LogLine
-	for _, entry := range m.data.Logs {
-		if searchMatch(m.searchTI.Value(), entry.Category, entry.Agent, entry.Text) {
-			out = append(out, entry)
-		}
-	}
-	return out
-}

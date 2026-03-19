@@ -37,7 +37,7 @@ const (
 	viewKanban
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewWorktrees}
 
 const (
 	// listHeaderRows is the number of fixed rows above list items in the screen layout:
@@ -59,8 +59,6 @@ type Model struct {
 	cursors          map[view]int // per-view cursor positions
 	width            int
 	height           int
-	logFilter        int // 0=all, 1=lifecycle, 2=error, 3=stderr, 4=warn
-	logAgentFilter   int // 0=all, 1..N = specific agent
 	nudgeMode        bool
 	nudgeCursor      int
 	messageMode      bool
@@ -575,9 +573,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyViewMail:
 		m.switchView(viewMail)
 		return m, nil
-	case keyViewLogs:
-		m.switchView(viewLogs)
-		return m, nil
 	case keyViewWorktrees:
 		m.switchView(viewWorktrees)
 		return m, nil
@@ -605,20 +600,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if m.cursor < len(messages) {
 				return m.openCompose(messages[m.cursor].From)
 			}
-		}
-	case keyLogFilter:
-		if m.view == viewLogs {
-			m.logFilter = (m.logFilter + 1) % 5
-			m.cursor = 0
-			m.clampCursor()
-			return m, nil
-		}
-	case keyLogAgentFilter:
-		if m.view == viewLogs {
-			m.logAgentFilter = (m.logAgentFilter + 1) % (m.countLogAgents() + 1)
-			m.cursor = 0
-			m.clampCursor()
-			return m, nil
 		}
 	case keyAgentOutput:
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
@@ -808,8 +789,6 @@ func (m Model) listLen() int {
 		return len(m.filteredMemories())
 	case viewMail, viewMailDetail:
 		return len(m.sortedMessages())
-	case viewLogs:
-		return len(m.filteredLogLines())
 	case viewWorktrees:
 		return len(m.filteredWorktrees())
 	case viewActivity:
@@ -862,8 +841,6 @@ func (m Model) View() tea.View {
 		content = m.renderMailDetail()
 	case viewActivity:
 		content = m.renderActivity()
-	case viewLogs:
-		content = m.renderLogs()
 	case viewWorktrees:
 		content = m.renderWorktrees()
 	case viewDiff:
@@ -937,28 +914,45 @@ func (m Model) View() tea.View {
 		daemonBanner = flashErrStyle.Render(" ⚠ daemon restarting — reconnecting...")
 	}
 
-	// Build final output
-	var output string
-	if daemonBanner != "" && flashLine != "" {
-		output = fmt.Sprintf("%s\n%s\n%s\n%s\n%s", titleBar, daemonBanner, content, flashLine, help)
-	} else if daemonBanner != "" {
-		output = fmt.Sprintf("%s\n%s\n%s\n%s", titleBar, daemonBanner, content, help)
-	} else if flashLine != "" {
-		output = fmt.Sprintf("%s\n%s\n%s\n%s", titleBar, content, flashLine, help)
-	} else {
-		output = fmt.Sprintf("%s\n%s\n%s", titleBar, content, help)
+	// Build top section (title + optional banner + content)
+	top := titleBar + "\n"
+	if daemonBanner != "" {
+		top += daemonBanner + "\n"
 	}
+	top += content
+
+	// Build bottom section (optional flash + help), pinned to terminal bottom
+	bottom := ""
+	if flashLine != "" {
+		bottom = flashLine + "\n"
+	}
+	bottom += help
+
+	// Pad between top and bottom so help bar sits at the last line
+	topLines := splitLines(top)
+	bottomLines := splitLines(bottom)
+	totalUsed := len(topLines) + len(bottomLines)
+	pad := m.height - totalUsed
+	if pad < 0 {
+		pad = 0
+	}
+
+	lines := make([]string, 0, m.height)
+	lines = append(lines, topLines...)
+	for i := 0; i < pad; i++ {
+		lines = append(lines, "")
+	}
+	lines = append(lines, bottomLines...)
 
 	// Compose modal overlay replaces normal output.
 	if m.composeMode && m.composeForm != nil {
-		output = renderComposeOverlay(m.composeForm, m.width, m.height)
+		output := renderComposeOverlay(m.composeForm, m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
 	}
 
-	// Full-screen background fill
-	lines := splitLines(output)
-	for len(lines) < m.height {
-		lines = append(lines, "")
-	}
 	if len(lines) > m.height {
 		lines = lines[:m.height]
 	}
@@ -994,8 +988,6 @@ func (m Model) helpBar() string {
 		ctx = "[c]ompose [Enter]detail"
 	case viewMailDetail:
 		ctx = "[c]ompose [r]eply [j/k]scroll"
-	case viewLogs:
-		ctx = "[f]ilter [F]agent"
 	case viewActivity:
 		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMemoryDetail:
@@ -1082,7 +1074,7 @@ func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 func isListView(v view) bool {
 	switch v {
-	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity, viewLogs:
+	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity:
 		return true
 	}
 	return false

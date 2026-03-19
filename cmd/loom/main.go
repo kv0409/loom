@@ -26,6 +26,7 @@ import (
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/dashboard"
+	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
@@ -349,6 +350,9 @@ func main() {
 		RunE:  runLog,
 	}
 	logCmd.Flags().Bool("all", false, "Show all logs interleaved")
+	logCmd.Flags().Bool("summary", false, "Print error/warning counts and top 3 hot agents")
+	logCmd.Flags().String("category", "", "Filter by category (error, stderr, warn, lifecycle)")
+	logCmd.Flags().String("agent", "", "Filter by agent ID")
 
 	logsDaemonCmd := &cobra.Command{
 		Use:   "daemon",
@@ -2001,6 +2005,40 @@ func runLog(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	all, _ := cmd.Flags().GetBool("all")
+	summary, _ := cmd.Flags().GetBool("summary")
+	category, _ := cmd.Flags().GetString("category")
+	agentFlag, _ := cmd.Flags().GetString("agent")
+
+	// --summary / --category / --agent operate on the daemon log's classified lines.
+	if summary || category != "" || agentFlag != "" {
+		lines := backend.ReadDaemonLog(root)
+		// Apply filters.
+		if category != "" || agentFlag != "" {
+			var filtered []backend.LogLine
+			for _, l := range lines {
+				if category != "" && l.Category != category {
+					continue
+				}
+				if agentFlag != "" && l.Agent != agentFlag {
+					continue
+				}
+				filtered = append(filtered, l)
+			}
+			lines = filtered
+		}
+		if summary {
+			s := backend.LogSummary(lines)
+			fmt.Printf("%d errors  %d warnings  %d events\n", s.Errors, s.Warnings, s.Total)
+			for _, a := range s.HotAgents {
+				fmt.Printf("  %s  %d events\n", a.Agent, a.Count)
+			}
+			return nil
+		}
+		for _, l := range lines {
+			fmt.Println(l.Text)
+		}
+		return nil
+	}
 
 	logsDir := filepath.Join(root, "logs")
 
@@ -2024,7 +2062,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("specify an agent name or use --all")
+		return fmt.Errorf("specify an agent name, use --all, or use --summary/--category/--agent")
 	}
 
 	logFile := filepath.Join(logsDir, args[0]+".log")
