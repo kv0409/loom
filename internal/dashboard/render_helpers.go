@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
+	lgtable "charm.land/lipgloss/v2/table"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -152,6 +153,52 @@ func styledTableBodyView(t table.Model, replacements [][2]string) string {
 		return out[i+1:]
 	}
 	return out
+}
+
+// newLGTable creates a borderless lipgloss/table with headers, styled via StyleFunc.
+// selectedRow is the data-row index (0-based) that should be highlighted, or -1 for none.
+// width is the total available width (typically availableWidth(m.width)).
+func newLGTable(headers []string, rows [][]string, selectedRow, width int) *lgtable.Table {
+	return lgtable.New().
+		Headers(headers...).
+		Rows(rows...).
+		Width(width).
+		Wrap(false).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderHeader(false).
+		BorderColumn(false).
+		BorderRow(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == lgtable.HeaderRow {
+				return lgTableHeaderStyle
+			}
+			if row == selectedRow {
+				return lgTableSelectedStyle
+			}
+			return lgTableCellStyle
+		})
+}
+
+// newLGTableHeaderless creates a borderless lipgloss/table with no headers.
+// width is the total available width.
+func newLGTableHeaderless(rows [][]string, width int) *lgtable.Table {
+	return lgtable.New().
+		Rows(rows...).
+		Width(width).
+		Wrap(false).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderHeader(false).
+		BorderColumn(false).
+		BorderRow(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			return lgTableCellStyle
+		})
 }
 
 // wordWrap splits s into segments of at most width runes, breaking on spaces where possible.

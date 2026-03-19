@@ -336,6 +336,14 @@ var (
 	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg)
 )
 
+// lipgloss/table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.
+// These mirror the bubbles/table styles above but are tuned for the StyleFunc pattern.
+var (
+	lgTableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	lgTableCellStyle     = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	lgTableSelectedStyle = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg).Padding(0, 1)
+)
+
 // Tree connector style — subtle foreground for enumerator/indenter glyphs.
 var treeConnectorStyle = lipgloss.NewStyle().Foreground(colSubtle)
 
