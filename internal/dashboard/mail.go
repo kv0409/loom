@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"charm.land/bubbles/v2/table"
-	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -32,54 +30,30 @@ func (m Model) renderMail() string {
 	messages := m.sortedMessages()
 
 	avail := availableWidth(m.width)
-	const numCols = 6
-	avail -= numCols * 2
-
-	prioW := proportionalWidth(avail, 8, 6)
-	fromW := proportionalWidth(avail, 14, 8)
-	toW := proportionalWidth(avail, 14, 8)
-	typeW := proportionalWidth(avail, 10, 6)
-	timeW := proportionalWidth(avail, 10, 7)
-	subjW := max(10, avail-prioW-fromW-toW-typeW-timeW)
-
-	cols := []table.Column{
-		{Title: "PRIO", Width: prioW},
-		{Title: "FROM", Width: fromW},
-		{Title: "TO", Width: toW},
-		{Title: "TYPE", Width: typeW},
-		{Title: "TIME", Width: timeW},
-		{Title: "SUBJECT", Width: subjW},
-	}
-
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(messages), vRows)
 
-	rows := make([]table.Row, 0, end-start)
-	var replacements [][2]string
-	ri := 0
+	headers := []string{"PRIO", "FROM", "TO", "TYPE", "TIME", "SUBJECT"}
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		msg := messages[i]
 		styledPrio := mailPriorityTag(msg.Priority)
-		phPrio := cellPlaceholder(ri, lipgloss.Width(styledPrio))
 
 		subj := msg.Subject
 		if !msg.Read {
 			subj = "● " + subj
 		}
 
-		rows = append(rows, table.Row{phPrio, msg.From, msg.To, msg.Type, fmtTime(msg.Timestamp, false), truncate(subj, subjW)})
-		replacements = append(replacements, [2]string{phPrio, styledPrio})
-		ri++
+		rows = append(rows, []string{styledPrio, msg.From, msg.To, msg.Type, fmtTime(msg.Timestamp, false), subj})
 	}
 
 	var content string
 	if len(messages) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No queued messages", avail)
+		t := newLGTable(headers, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No queued messages", avail)
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = styledTableView(t, replacements) + "\n"
+		t := newLGTable(headers, rows, m.cursor-start, avail)
+		content = t.Render() + "\n"
 	}
 
 	var unread int

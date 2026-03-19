@@ -4,64 +4,27 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/table"
-	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 func (m Model) renderAgents() string {
 	agents := m.filteredAgents()
 
-	// Compute ID column width from actual tree data.
-	idWidth := 16
-	for _, a := range agents {
-		w := len(a.ID)
-		for oi, oa := range m.data.Agents {
-			if oa == a && oi < len(m.data.AgentTree) {
-				w += m.data.AgentTree[oi].Depth * 2
-				break
-			}
-		}
-		if w > idWidth {
-			idWidth = w
-		}
-	}
-
 	avail := availableWidth(m.width)
-	const numColsAgents = 6
-	avail -= numColsAgents * 2
-	idW := min(max(idWidth+2, 16), avail*25/100)
-	rem := avail - idW
-	roleW := proportionalWidth(rem, 12, 14)
-	statusW := statusPillWidth + 4
-	issueW := proportionalWidth(rem, 20, 10)
-	hbW := 10
-	wtW := max(8, rem-roleW-statusW-issueW-hbW)
-
-	cols := []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "ROLE", Width: roleW},
-		{Title: "STATUS", Width: statusW},
-		{Title: "WORKTREE", Width: wtW},
-		{Title: "ISSUES", Width: issueW},
-		{Title: "HEARTBEAT", Width: hbW},
-	}
-
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(agents), vRows)
 
-	rows := make([]table.Row, 0, end-start)
-	var replacements [][2]string
-	ri := 0
+	headers := []string{"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		a := agents[i]
 		wt := "—"
 		if a.WorktreeName != "" {
-			wt = truncate(slugFromWorktree(a.WorktreeName), wtW)
+			wt = slugFromWorktree(a.WorktreeName)
 		}
 		issues := "—"
 		if len(a.AssignedIssues) > 0 {
-			issues = truncate(strings.Join(a.AssignedIssues, ","), issueW)
+			issues = strings.Join(a.AssignedIssues, ",")
 		}
 		hb := fmtTime(a.Heartbeat, false)
 		if a.NudgeCount > 0 {
@@ -91,24 +54,19 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		truncID := truncate(a.ID, idW-2) // -2 leaves room for agentPill's Padding(0,1)
-		styledID := prefix + agentPillFor(truncID, a.ID)
-		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
-		phID := cellPlaceholder(ri, lipgloss.Width(prefix+agentPillPlain(truncID)))
-		phStatus := cellPlaceholder(ri+1, lipgloss.Width(styledStatus))
-		rows = append(rows, table.Row{phID, a.Role, phStatus, wt, issues, hb})
-		replacements = append(replacements, [2]string{phID, styledID}, [2]string{phStatus, styledStatus})
-		ri += 2
+		selected := i == m.cursor
+		styledID := prefix + agentPillForRow(a.ID, selected)
+		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPillForRow(a.Status, selected))
+		rows = append(rows, []string{styledID, a.Role, styledStatus, wt, issues, hb})
 	}
 
 	var content string
 	if len(agents) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No agents running — loom spawn to start", avail)
+		t := newLGTable(headers, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No agents running — loom spawn to start", avail)
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = styledTableView(t, replacements) + "\n"
+		t := newLGTable(headers, rows, m.cursor-start, avail)
+		content = t.Render() + "\n"
 	}
 
 	title := fmt.Sprintf("[a] AGENTS (%d)", len(m.data.Agents))

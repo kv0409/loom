@@ -410,6 +410,23 @@ func agentPillPlain(id string) string {
 	return " " + id + " "
 }
 
+// agentPillForRow returns the agent pill styled for normal or selected rows.
+// Selected rows use foreground-only so the table selection background shows through.
+func agentPillForRow(id string, selected bool) string {
+	if selected {
+		return agentPillSelected(id, id)
+	}
+	return agentPillFor(id, id)
+}
+
+// statusPillForRow returns the status pill styled for normal or selected rows.
+func statusPillForRow(status string, selected bool) string {
+	if selected {
+		return statusPillSelected(status)
+	}
+	return statusPill(status)
+}
+
 func renderEmpty(msg string, width int) string {
 	centered := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
 	return centered.Render(emptyMsgStyle.Render(msg)) + "\n"
