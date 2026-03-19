@@ -83,10 +83,10 @@ var statusGlyphs = map[string]string{
 
 // typeGlyphs maps issue types to single-width Unicode icons.
 var typeGlyphs = map[string]string{
+	"task":  "·",
+	"bug":   "⚠",
 	"epic":  "◈",
-	"task":  "●",
-	"bug":   "✦",
-	"spike": "◇",
+	"spike": "?",
 }
 
 func statusStyle(status string) lipgloss.Style {

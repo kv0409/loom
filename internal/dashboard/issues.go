@@ -60,11 +60,7 @@ func (m Model) renderIssues() string {
 		rows := make([][]string, 0, to-from)
 		for i := from; i < to; i++ {
 			iss := display[i]
-			sg := statusGlyphs[iss.Status]
-			if sg == "" {
-				sg = "●"
-			}
-			rows = append(rows, []string{sg + typeGlyph(iss.Type) + " " + iss.ID, iss.Assignee, iss.Title})
+			rows = append(rows, []string{typeGlyph(iss.Type) + " " + iss.ID, iss.Assignee, iss.Title})
 		}
 		return rows
 	}
