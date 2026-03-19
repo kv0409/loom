@@ -333,6 +333,10 @@ func (d *Daemon) watchACPOutput() {
 
 func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	log.Printf("[acp] activating agent %s (role=%s)", a.ID, a.Role)
+
+	// Truncate stale .output so the dashboard only shows events from this session.
+	os.Truncate(filepath.Join(d.LoomRoot, "agents", a.ID+".output"), 0)
+
 	projectRoot := filepath.Dir(d.LoomRoot)
 
 	env := append(os.Environ(),
