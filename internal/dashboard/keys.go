@@ -64,7 +64,6 @@ const (
 	keyViewMail      = "M"
 	keyViewMemory    = "d"
 	keyViewWorktrees = "w"
-	keyViewActivity  = "t"
 )
 
 // View-specific shortcuts — only meaningful in the named context.

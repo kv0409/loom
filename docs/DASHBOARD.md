@@ -22,10 +22,9 @@ The dashboard has these views, accessible via keyboard shortcuts or Tab cycling:
 | Agents | `a` | Agent list with status, role, heartbeat |
 | Issues | `i` | Issue list with status, assignee, priority |
 | Memory | `d` | Decisions, discoveries, conventions |
-| Activity | `t` | Recent agent activity and tool usage |
 | Worktrees | `w` | Active worktrees with diff stats |
 
-Tab cycles through: Overview → Agents → Issues → Memory → Activity → Worktrees.
+Tab cycles through: Overview → Agents → Issues → Memory → Worktrees.
 
 Additional views accessible via drill-down (Enter):
 - **Agent Detail** — from Agents view, shows assigned issues, worktree, mail, output
@@ -44,7 +43,6 @@ Additional views accessible via drill-down (Enter):
 | `a` | Switch to Agents view |
 | `i` | Switch to Issues view |
 | `d` | Switch to Memory/Decisions view |
-| `t` | Switch to Activity view |
 | `w` | Switch to Worktrees view |
 | `Tab` | Cycle through views |
 | `Enter` | Drill into selected item |

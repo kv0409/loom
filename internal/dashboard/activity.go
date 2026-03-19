@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"fmt"
 	"image/color"
 	"strings"
 
@@ -79,62 +78,4 @@ func resolveToolInfo(label string) toolInfo {
 		return info
 	}
 	return toolInfo{"·", colGray}
-}
-
-func (m Model) renderActivity() string {
-	entries := m.filteredActivity()
-	avail := availableWidth(m.width)
-	vRows := visibleRows(m.height, 9)
-	start, end := listViewport(m.cursor, len(entries), vRows)
-
-	headers := []string{"AGENT", "TIME", "TOOL", "DETAIL"}
-
-	rows := make([][]string, 0, end-start)
-	for i := start; i < end; i++ {
-		e := entries[i]
-		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon, e.Detail})
-	}
-
-	styler := func(row, col int, isSelected bool) lipgloss.Style {
-		base := lgTableCellStyle
-		if isSelected {
-			base = lgTableSelectedStyle
-		}
-		dataIdx := start + row
-		if dataIdx >= len(entries) {
-			return base
-		}
-		e := entries[dataIdx]
-		switch col {
-		case 0: // AGENT
-			return base.Foreground(agentColor(e.AgentID)).Bold(true)
-		case 1: // TIME
-			return base.Foreground(colGray)
-		case 2: // TOOL icon
-			return base.Foreground(resolveToolInfo(e.Tool).color).Bold(true)
-		}
-		return base
-	}
-
-	var content string
-	if len(entries) == 0 {
-		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8}, ColWidth{2, 6})
-		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
-	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8}, ColWidth{2, 6})
-		content = t.Render() + "\n"
-		if len(entries) > vRows {
-			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
-		}
-	}
-
-	uniqueAgents := make(map[string]struct{}, len(entries))
-	for _, e := range entries {
-		uniqueAgents[e.AgentID] = struct{}{}
-	}
-	title := fmt.Sprintf("[t] ACTIVITY (%d agents)", len(uniqueAgents))
-	if m.searchTI.Value() != "" {
-		title = fmt.Sprintf("[t] ACTIVITY (%d/%d) filter: %s", len(entries), len(m.data.Activity), m.searchTI.Value())
-	}
-	return panel(title, content, panelWidth(m.width))
 }

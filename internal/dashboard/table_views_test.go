@@ -76,25 +76,7 @@ func TestRenderWorktrees_WithData(t *testing.T) {
 
 // --- renderActivity ---
 
-func TestRenderActivity_Empty(t *testing.T) {
-	m := testModel(viewActivity)
-	out := m.renderActivity()
-	if out == "" {
-		t.Error("renderActivity with empty data returned empty string")
-	}
-}
-
-func TestRenderActivity_WithData(t *testing.T) {
-	m := testModel(viewActivity)
-	m.data.Activity = []backend.ActivityEntry{
-		{AgentID: "builder-1", Line: "Called execute_bash: go build"},
-		{AgentID: "builder-2", Line: "Called fs_read: main.go"},
-	}
-	out := m.renderActivity()
-	if !strings.Contains(out, "ACTIVITY") {
-		t.Error("renderActivity missing ACTIVITY title")
-	}
-}
+// --- renderActivity removed (tab removed from dashboard) ---
 
 func TestRenderOverview_ShowsAttentionSections(t *testing.T) {
 	m := testModel(viewOverview)

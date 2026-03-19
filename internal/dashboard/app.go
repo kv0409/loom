@@ -38,7 +38,7 @@ const (
 	viewKanban
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewWorktrees}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees}
 
 const (
 	// listHeaderRows is the number of fixed rows above list items in the screen layout:
@@ -173,10 +173,6 @@ func (m *Model) switchView(target view) {
 	m.cursors[m.view] = m.cursor
 	m.view = target
 	m.cursor = m.cursors[target]
-	// Activity view: auto-scroll to bottom (latest entries) on first open.
-	if target == viewActivity && m.cursor == 0 && len(m.data.Activity) > 0 {
-		m.cursor = len(m.data.Activity) - 1
-	}
 	m.searchTI.SetValue("")
 	m.searchMode = false
 }
@@ -697,9 +693,6 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyViewWorktrees:
 		m.switchView(viewWorktrees)
 		return m, nil
-	case keyViewActivity:
-		m.switchView(viewActivity)
-		return m, nil
 	case keyAgentNudge:
 		if (m.view == viewAgents || m.view == viewAgentDetail) && len(m.filteredAgents()) > 0 {
 			m.nudgeMode = true
@@ -865,24 +858,6 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.view = viewMailDetail
 			m.detailYOff = 0
 		}
-	case viewActivity:
-		activity := m.filteredActivity()
-		if m.cursor < len(activity) {
-			aid := activity[m.cursor].AgentID
-			m.searchTI.SetValue("")
-			for i, a := range m.data.Agents {
-				if a.ID == aid {
-					m.cursors[viewAgents] = i
-					m.cursor = i
-					m.view = viewAgentDetail
-					m.detailYOff = 0
-					m.detailAutoScroll = true
-					m.agentOutputCache = nil
-					m.agentOutputID = a.ID
-					return m, agentOutputCmd(m.backend, m.loomRoot, a.ID)
-				}
-			}
-		}
 	}
 	return m, nil
 }
@@ -979,8 +954,6 @@ func (m Model) listLen() int {
 		return len(m.sortedMessages())
 	case viewWorktrees:
 		return len(m.filteredWorktrees())
-	case viewActivity:
-		return len(m.filteredActivity())
 	case viewDiff:
 		return 0
 	}
@@ -1034,8 +1007,6 @@ func (m Model) View() tea.View {
 		content = m.renderMail()
 	case viewMailDetail:
 		content = m.renderMailDetail()
-	case viewActivity:
-		content = m.renderActivity()
 	case viewWorktrees:
 		content = m.renderWorktrees()
 	case viewDiff:
@@ -1206,8 +1177,6 @@ func (m Model) helpBar() string {
 		ctx = "[c]ompose [Enter]detail"
 	case viewMailDetail:
 		ctx = "[c]ompose [r]eply [j/k]scroll"
-	case viewActivity:
-		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMemoryDetail:
 		ctx = "[j/k]scroll"
 	case viewDiff:
@@ -1295,7 +1264,7 @@ func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 func isListView(v view) bool {
 	switch v {
-	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity:
+	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees:
 		return true
 	}
 	return false
