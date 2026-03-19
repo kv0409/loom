@@ -3,6 +3,7 @@ package dashboard
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
@@ -106,27 +107,38 @@ func (m Model) renderMailDetail() string {
 	}
 	msg := messages[m.cursor]
 
-	var lines []string
-	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(msg.Subject)))
-	lines = append(lines, fmt.Sprintf("  From: %-16s To: %s", msg.From, msg.To))
-	lines = append(lines, fmt.Sprintf("  Type: %-16s Time: %s", msg.Type, fmtTimeFull(msg.Timestamp)))
+	// --- Fixed header: metadata ---
+	var header []string
+	header = append(header, fmt.Sprintf("  %s", titleStyle.Render(msg.Subject)))
+	header = append(header, fmt.Sprintf("  From: %-16s To: %s", msg.From, msg.To))
+	header = append(header, fmt.Sprintf("  Type: %-16s Time: %s", msg.Type, fmtTimeFull(msg.Timestamp)))
 	if msg.Ref != "" {
-		lines = append(lines, fmt.Sprintf("  Ref: %s", msg.Ref))
+		header = append(header, fmt.Sprintf("  Ref: %s", msg.Ref))
 	}
 
-	lines = append(lines, "")
-	lines = append(lines, "  "+headerStyle.Render("BODY"))
+	// --- Scrollable body ---
+	var body []string
+	body = append(body, "  "+headerStyle.Render("BODY"))
 	if msg.Body != "" {
 		maxW := detailContentWidth(m.width)
-		lines = append(lines, wrapLines(msg.Body, maxW, "  ")...)
+		body = append(body, wrapLines(msg.Body, maxW, "  ")...)
 	} else {
-		lines = append(lines, "  (no body)")
+		body = append(body, "  (no body)")
+	}
+
+	headerStr := strings.Join(header, "\n")
+	headerLines := strings.Count(headerStr, "\n") + 1
+	vpH := scrollViewport(m.height) - headerLines
+	if vpH < 1 {
+		vpH = 1
 	}
 
 	vp := m.detailVP
-	vp.SetContentLines(lines)
+	vp.SetHeight(vpH)
+	vp.SetContentLines(body)
 	vp.SetYOffset(m.detailYOff)
 	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, vp.View()+"\n", panelWidth(m.width))
+	content := headerStr + "\n" + vp.View()
+	return panel("Mail: "+truncate(msg.Subject, 40)+scrollInfo, content, panelWidth(m.width))
 }

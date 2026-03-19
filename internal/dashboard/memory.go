@@ -45,76 +45,88 @@ func (m Model) renderMemoryDetail() string {
 	}
 	e := memories[m.cursor]
 
-	var lines []string
-	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(e.Title)))
-	lines = append(lines, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, m.backend.MemoryByField(e)))
-	lines = append(lines, fmt.Sprintf("  Time: %s", fmtTimeFull(e.Timestamp)))
+	// --- Fixed header: metadata ---
+	var header []string
+	header = append(header, fmt.Sprintf("  %s", titleStyle.Render(e.Title)))
+	header = append(header, fmt.Sprintf("  ID: %-12s Type: %-12s By: %s", e.ID, e.Type, m.backend.MemoryByField(e)))
+	header = append(header, fmt.Sprintf("  Time: %s", fmtTimeFull(e.Timestamp)))
 
+	// --- Scrollable body ---
 	maxW := detailContentWidth(m.width)
+	var body []string
 	switch e.Type {
 	case "decision":
 		if e.Context != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("CONTEXT"))
-			lines = append(lines, wrapLines(e.Context, maxW, "    ")...)
+			body = append(body, "  "+headerStyle.Render("CONTEXT"))
+			body = append(body, wrapLines(e.Context, maxW, "    ")...)
 		}
 		if e.Decision != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("DECISION"))
-			lines = append(lines, wrapLines(e.Decision, maxW, "    ")...)
+			body = append(body, "", "  "+headerStyle.Render("DECISION"))
+			body = append(body, wrapLines(e.Decision, maxW, "    ")...)
 		}
 		if e.Rationale != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("RATIONALE"))
-			lines = append(lines, wrapLines(e.Rationale, maxW, "    ")...)
+			body = append(body, "", "  "+headerStyle.Render("RATIONALE"))
+			body = append(body, wrapLines(e.Rationale, maxW, "    ")...)
 		}
 		if len(e.Alternatives) > 0 {
-			lines = append(lines, "", "  "+headerStyle.Render("ALTERNATIVES"))
+			body = append(body, "", "  "+headerStyle.Render("ALTERNATIVES"))
 			for _, alt := range e.Alternatives {
-				lines = append(lines, fmt.Sprintf("    • %s", alt.Option))
+				body = append(body, fmt.Sprintf("    • %s", alt.Option))
 				if alt.RejectedBecause != "" {
-					lines = append(lines, fmt.Sprintf("      Rejected: %s", alt.RejectedBecause))
+					body = append(body, fmt.Sprintf("      Rejected: %s", alt.RejectedBecause))
 				}
 			}
 		}
 	case "discovery":
 		if e.Location != "" {
-			lines = append(lines, fmt.Sprintf("  Location: %s", e.Location))
+			body = append(body, fmt.Sprintf("  Location: %s", e.Location))
 		}
 		if e.Finding != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("FINDING"))
-			lines = append(lines, wrapLines(e.Finding, maxW, "    ")...)
+			body = append(body, "", "  "+headerStyle.Render("FINDING"))
+			body = append(body, wrapLines(e.Finding, maxW, "    ")...)
 		}
 		if e.Implications != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("IMPLICATIONS"))
-			lines = append(lines, wrapLines(e.Implications, maxW, "    ")...)
+			body = append(body, "", "  "+headerStyle.Render("IMPLICATIONS"))
+			body = append(body, wrapLines(e.Implications, maxW, "    ")...)
 		}
 	case "convention":
 		if e.Rule != "" {
-			lines = append(lines, "", "  "+headerStyle.Render("RULE"))
-			lines = append(lines, wrapLines(e.Rule, maxW, "    ")...)
+			body = append(body, "", "  "+headerStyle.Render("RULE"))
+			body = append(body, wrapLines(e.Rule, maxW, "    ")...)
 		}
 		if e.AppliesTo != "" {
-			lines = append(lines, fmt.Sprintf("  Applies to: %s", e.AppliesTo))
+			body = append(body, fmt.Sprintf("  Applies to: %s", e.AppliesTo))
 		}
 		if len(e.Examples) > 0 {
-			lines = append(lines, "", "  "+headerStyle.Render("EXAMPLES"))
+			body = append(body, "", "  "+headerStyle.Render("EXAMPLES"))
 			for _, ex := range e.Examples {
-				lines = append(lines, fmt.Sprintf("    • %s", ex))
+				body = append(body, fmt.Sprintf("    • %s", ex))
 			}
 		}
 	}
 
 	if len(e.Affects) > 0 {
-		lines = append(lines, "", fmt.Sprintf("  Affects: %s", strings.Join(e.Affects, ", ")))
+		body = append(body, "", fmt.Sprintf("  Affects: %s", strings.Join(e.Affects, ", ")))
 	}
 	if len(e.Tags) > 0 {
-		lines = append(lines, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
+		body = append(body, fmt.Sprintf("  Tags: %s", strings.Join(e.Tags, ", ")))
+	}
+
+	headerStr := strings.Join(header, "\n")
+	headerLines := strings.Count(headerStr, "\n") + 1
+	vpH := scrollViewport(m.height) - headerLines
+	if vpH < 1 {
+		vpH = 1
 	}
 
 	vp := m.detailVP
-	vp.SetContentLines(lines)
+	vp.SetHeight(vpH)
+	vp.SetContentLines(body)
 	vp.SetYOffset(m.detailYOff)
 	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Memory: "+e.ID+scrollInfo, vp.View()+"\n", panelWidth(m.width))
+	content := headerStr + "\n" + vp.View()
+	return panel("Memory: "+e.ID+scrollInfo, content, panelWidth(m.width))
 }
 
 

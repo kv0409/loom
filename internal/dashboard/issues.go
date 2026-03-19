@@ -130,36 +130,39 @@ func (m Model) renderIssueDetail() string {
 	relatedMessages := m.relatedMessages(iss.ID)
 	relatedWorktree := m.relatedWorktree(iss)
 
-	var lines []string
-	lines = append(lines, fmt.Sprintf("  %s", titleStyle.Render(iss.Title)))
-	lines = append(lines, fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s",
+	// --- Fixed header: metadata ---
+	var header []string
+	header = append(header, fmt.Sprintf("  %s", titleStyle.Render(iss.Title)))
+	header = append(header, fmt.Sprintf("  Type: %-8s Priority: %-8s Status: %s %s",
 		iss.Type, iss.Priority, statusIndicator(iss.Status), statusPillStyle(iss.Status).Render(iss.Status)))
 	if iss.Assignee != "" {
-		lines = append(lines, fmt.Sprintf("  Assignee: %s", iss.Assignee))
+		header = append(header, fmt.Sprintf("  Assignee: %s", iss.Assignee))
 	}
-	lines = append(lines, "", "  "+headerStyle.Render("NEXT ACTION"))
-	lines = append(lines, fmt.Sprintf("  %s", m.issueNextAction(iss, relatedWorktree, len(relatedMessages))))
+	header = append(header, "", "  "+headerStyle.Render("NEXT ACTION"))
+	header = append(header, fmt.Sprintf("  %s", m.issueNextAction(iss, relatedWorktree, len(relatedMessages))))
 
+	// --- Scrollable body ---
+	var body []string
 	if iss.Description != "" {
-		lines = append(lines, "", "  "+headerStyle.Render("DESCRIPTION"))
-		lines = append(lines, fmt.Sprintf("  %s", iss.Description))
+		body = append(body, "  "+headerStyle.Render("DESCRIPTION"))
+		body = append(body, fmt.Sprintf("  %s", iss.Description))
 	}
 	if iss.Parent != "" {
-		lines = append(lines, fmt.Sprintf("  Parent: %s", iss.Parent))
+		body = append(body, fmt.Sprintf("  Parent: %s", iss.Parent))
 	}
 	if len(iss.DependsOn) > 0 {
-		lines = append(lines, fmt.Sprintf("  Depends: %s", strings.Join(iss.DependsOn, ", ")))
+		body = append(body, fmt.Sprintf("  Depends: %s", strings.Join(iss.DependsOn, ", ")))
 	}
 
 	if len(iss.Dispatch) > 0 {
-		lines = append(lines, "", "  "+headerStyle.Render("DISPATCH"))
+		body = append(body, "", "  "+headerStyle.Render("DISPATCH"))
 		keys := make([]string, 0, len(iss.Dispatch))
 		for k := range iss.Dispatch {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			lines = append(lines, fmt.Sprintf("  %s=%s", k, iss.Dispatch[k]))
+			body = append(body, fmt.Sprintf("  %s=%s", k, iss.Dispatch[k]))
 		}
 	}
 
@@ -168,7 +171,7 @@ func (m Model) renderIssueDetail() string {
 		for _, ci := range m.data.Issues {
 			issueMap[ci.ID] = ci
 		}
-		lines = append(lines, "", "  "+headerStyle.Render("CHILDREN"))
+		body = append(body, "", "  "+headerStyle.Render("CHILDREN"))
 		t := tree.New().
 			EnumeratorStyle(treeConnectorStyle).
 			IndenterStyle(treeConnectorStyle)
@@ -181,57 +184,66 @@ func (m Model) renderIssueDetail() string {
 		}
 		for _, line := range splitLines(t.String()) {
 			if line != "" {
-				lines = append(lines, "  "+line)
+				body = append(body, "  "+line)
 			}
 		}
 	}
 
 	if relatedWorktree != nil {
-		lines = append(lines, "", "  "+headerStyle.Render("WORKTREE"))
-		lines = append(lines, fmt.Sprintf("  %s", relatedWorktree.Name))
-		lines = append(lines, fmt.Sprintf("  Branch: %s", relatedWorktree.Branch))
+		body = append(body, "", "  "+headerStyle.Render("WORKTREE"))
+		body = append(body, fmt.Sprintf("  %s", relatedWorktree.Name))
+		body = append(body, fmt.Sprintf("  Branch: %s", relatedWorktree.Branch))
 		if relatedWorktree.Agent != "" {
-			lines = append(lines, fmt.Sprintf("  Agent: %s", relatedWorktree.Agent))
+			body = append(body, fmt.Sprintf("  Agent: %s", relatedWorktree.Agent))
 		}
 	}
 
 	if len(relatedMemories) > 0 {
-		lines = append(lines, "", "  "+headerStyle.Render("RELATED MEMORY"))
+		body = append(body, "", "  "+headerStyle.Render("RELATED MEMORY"))
 		for _, entry := range relatedMemories[:min(3, len(relatedMemories))] {
 			snippet := m.backend.MemorySnippet(entry)
 			if snippet == "" {
 				snippet = entry.Title
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s", entry.ID, truncate(entry.Title, 48)))
-			lines = append(lines, fmt.Sprintf("    %s", truncate(snippet, detailContentWidth(m.width)-4)))
+			body = append(body, fmt.Sprintf("  %s %s", entry.ID, truncate(entry.Title, 48)))
+			body = append(body, fmt.Sprintf("    %s", truncate(snippet, detailContentWidth(m.width)-4)))
 		}
 	}
 
 	if len(relatedMessages) > 0 {
-		lines = append(lines, "", "  "+headerStyle.Render("RELATED MAIL"))
+		body = append(body, "", "  "+headerStyle.Render("RELATED MAIL"))
 		for _, msg := range relatedMessages[:min(3, len(relatedMessages))] {
-			lines = append(lines, fmt.Sprintf("  %s %s → %s", fmtTime(msg.Timestamp, false), msg.From, msg.To))
-			lines = append(lines, fmt.Sprintf("    %s", truncate(msg.Subject, detailContentWidth(m.width)-4)))
+			body = append(body, fmt.Sprintf("  %s %s → %s", fmtTime(msg.Timestamp, false), msg.From, msg.To))
+			body = append(body, fmt.Sprintf("    %s", truncate(msg.Subject, detailContentWidth(m.width)-4)))
 		}
 	}
 
 	if len(iss.History) > 0 {
-		lines = append(lines, "", "  "+headerStyle.Render("HISTORY"))
+		body = append(body, "", "  "+headerStyle.Render("HISTORY"))
 		for _, h := range iss.History {
 			detail := ""
 			if h.Detail != "" {
 				detail = " — " + h.Detail
 			}
-			lines = append(lines, fmt.Sprintf("  %s %s %s%s", fmtTime(h.At, false), h.By, h.Action, detail))
+			body = append(body, fmt.Sprintf("  %s %s %s%s", fmtTime(h.At, false), h.By, h.Action, detail))
 		}
 	}
 
+	headerStr := strings.Join(header, "\n")
+	headerLines := strings.Count(headerStr, "\n") + 1
+	vpH := scrollViewport(m.height) - headerLines
+	if vpH < 1 {
+		vpH = 1
+	}
+
 	vp := m.detailVP
-	vp.SetContentLines(lines)
+	vp.SetHeight(vpH)
+	vp.SetContentLines(body)
 	vp.SetYOffset(m.detailYOff)
 	scrollInfo := vpScrollIndicator(vp)
 
-	return panel("Issue: "+iss.ID+scrollInfo, vp.View()+"\n", panelWidth(m.width))
+	content := headerStr + "\n" + vp.View()
+	return panel("Issue: "+iss.ID+scrollInfo, content, panelWidth(m.width))
 }
 
 func (m Model) relatedMemories(issueID string) []*backend.MemoryEntry {
