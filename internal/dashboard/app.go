@@ -430,6 +430,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.SetWidth(msg.Width)
+		m.chatTI.SetWidth(panelWidth(msg.Width) - 6)
 		vpW := panelWidth(msg.Width) - 2
 		vpH := scrollViewport(msg.Height)
 		m.detailVP.SetWidth(vpW)
