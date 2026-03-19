@@ -868,6 +868,8 @@ func (m Model) View() tea.View {
 		content = m.renderWorktrees()
 	case viewDiff:
 		content = m.renderDiff()
+	case viewKanban:
+		content = m.renderKanban()
 	}
 
 	// Full-width title bar. titleStyle has Padding(0,2) adding 4 horizontal
