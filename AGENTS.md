@@ -22,10 +22,11 @@ This keeps the local binary and remote repo in sync. Chats, the orchestrator, an
 ## Releasing
 
 ```bash
-./scripts/release.sh <major|minor|patch>   # Maintainer-only. Bumps VERSION in Makefile, commits, tags, pushes. GitHub Actions + goreleaser builds binaries.
+./scripts/release.sh <major|minor|patch>            # Bumps version, tags, pushes, waits for goreleaser
+./scripts/release.sh --no-wait <major|minor|patch>   # Same but doesn't wait for goreleaser — use when you don't need to block
 ```
 
-Run periodically after a batch of changes lands on main to cut a new patch release. End users update via `loom update`, which downloads pre-built binaries from GitHub Releases — no git/make/Go required.
+Run periodically after a batch of changes lands on main to cut a new patch release. The script builds and installs locally immediately regardless of `--no-wait`. End users update via `loom update`, which downloads pre-built binaries from GitHub Releases — no git/make/Go required.
 
 ## Conventions
 
