@@ -322,9 +322,8 @@ var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
 
 // Activity view styles
 var (
-	activityTimeStyle  = lipgloss.NewStyle().Foreground(colGray)
-	activityLabelStyle = lipgloss.NewStyle().Bold(true).Width(5)
-	activityIconStyle  = lipgloss.NewStyle().Bold(true).Width(2)
+	activityTimeStyle = lipgloss.NewStyle().Foreground(colGray)
+	activityIconStyle = lipgloss.NewStyle().Bold(true).Width(2)
 )
 
 // Table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.

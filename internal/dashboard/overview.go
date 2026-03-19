@@ -185,7 +185,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 		rows = append(rows, []string{
 			agentPillFor(e.AgentID, e.AgentID),
 			activityTimeStyle.Render(e.Time),
-			activityLabelStyle.Foreground(info.labelColor).Render(e.Tool),
+			activityIconStyle.Foreground(info.color).Render(info.icon),
 			e.Detail,
 		})
 	}

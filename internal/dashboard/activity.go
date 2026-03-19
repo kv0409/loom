@@ -9,26 +9,33 @@ import (
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
-// toolInfo maps a raw tool name to a display icon, icon color, compact label, and label color.
+// toolInfo maps a tool label to a display icon and color.
 type toolInfo struct {
-	icon       string
-	color      color.Color
-	label      string
-	labelColor color.Color
+	icon  string
+	color color.Color
 }
 
+// toolMap maps uppercase tool labels (as produced by backend.parseToolFields)
+// to a single-cell icon and color.
 var toolMap = map[string]toolInfo{
-	"shell":        {"$", colCyan, "SHELL", colBlue},
-	"execute_bash": {"$", colCyan, "SHELL", colBlue},
-	"read":         {"r", colGreen, "READ", colGreen},
-	"fs_read":      {"r", colGreen, "READ", colGreen},
-	"write":        {"w", colYellow, "WRITE", colYellow},
-	"fs_write":     {"w", colYellow, "WRITE", colYellow},
-	"grep":         {"s", colMagenta, "FIND", colCyan},
-	"glob":         {"s", colMagenta, "FIND", colCyan},
-	"code":         {"<>", colBlue, "CODE", colBlue},
-	"use_aws":      {"☁", colOrange, "AWS", colOrange},
-	"aws":          {"☁", colOrange, "AWS", colOrange},
+	"SHELL": {"❯", colCyan},
+	"READ":  {"←", colGreen},
+	"WRITE": {"✎", colYellow},
+	"FIND":  {"⌕", colCyan},
+	"CODE":  {"◆", colBlue},
+	"AWS":   {"☁", colOrange},
+	"LOOM":  {"⚙", colMagenta},
+}
+
+// rawToolLabel maps raw tool names (as they appear in .tools files) to the
+// uppercase labels used as toolMap keys.
+var rawToolLabel = map[string]string{
+	"shell": "SHELL", "execute_bash": "SHELL",
+	"read": "READ", "fs_read": "READ",
+	"write": "WRITE", "fs_write": "WRITE",
+	"grep": "FIND", "glob": "FIND",
+	"code":    "CODE",
+	"use_aws": "AWS", "aws": "AWS",
 }
 
 // formatToolLine parses a .tools line ("TIMESTAMP tool: args") and returns a
@@ -43,46 +50,35 @@ func formatToolLine(line string, width int, projectRoot string) string {
 		args = rest[idx+2:]
 	}
 
-	info, ok := toolMap[toolName]
-	if !ok {
-		if strings.HasPrefix(toolName, "loom") {
-			info = toolInfo{"◆", colMagenta, "LOOM", colMagenta}
-		} else if strings.HasPrefix(toolName, "@") || strings.Contains(toolName, "/") {
-			info = toolInfo{"~", colTeal, "TOOL", colGray}
-		} else {
-			info = toolInfo{"·", colGray, "TOOL", colGray}
-		}
+	label := "TOOL"
+	if l, ok := rawToolLabel[toolName]; ok {
+		label = l
+	} else if strings.HasPrefix(toolName, "loom") {
+		label = "LOOM"
 	}
+	info := resolveToolInfo(label)
 
 	args = backend.CleanArgs(args, projectRoot)
 
 	timePart := activityTimeStyle.Render(backend.RelativeTime(timeStr))
 	icon := activityIconStyle.Foreground(info.color).Render(info.icon)
-	label := activityLabelStyle.Foreground(info.labelColor).Render(info.label)
 
-	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(icon) + 1 + lipgloss.Width(label) + 1
+	usedW := lipgloss.Width(timePart) + 1 + lipgloss.Width(icon) + 1
 	argW := width - usedW
 	if argW < 4 {
 		argW = 4
 	}
 	argPart := truncate(args, argW)
 
-	return timePart + " " + icon + " " + label + " " + argPart
+	return timePart + " " + icon + " " + argPart
 }
 
-// resolveToolInfo returns the toolInfo for a given label.
+// resolveToolInfo returns the toolInfo for a given tool label.
 func resolveToolInfo(label string) toolInfo {
-	for _, info := range toolMap {
-		if info.label == label {
-			return info
-		}
+	if info, ok := toolMap[label]; ok {
+		return info
 	}
-	switch label {
-	case "LOOM":
-		return toolInfo{"◆", colMagenta, "LOOM", colMagenta}
-	default:
-		return toolInfo{"·", colGray, "TOOL", colGray}
-	}
+	return toolInfo{"·", colGray}
 }
 
 func (m Model) renderActivity() string {
@@ -100,7 +96,7 @@ func (m Model) renderActivity() string {
 		rows = append(rows, []string{
 			agentPillFor(e.AgentID, e.AgentID),
 			activityTimeStyle.Render(e.Time),
-			activityLabelStyle.Foreground(info.labelColor).Render(e.Tool),
+			activityIconStyle.Foreground(info.color).Render(info.icon),
 			e.Detail,
 		})
 	}
