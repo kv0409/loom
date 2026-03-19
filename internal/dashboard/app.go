@@ -37,7 +37,7 @@ const (
 	viewKanban
 )
 
-var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMemory, viewActivity, viewWorktrees}
+var viewOrder = []view{viewOverview, viewAgents, viewIssues, viewMail, viewMemory, viewActivity, viewLogs, viewWorktrees}
 
 const (
 	// listHeaderRows is the number of fixed rows above list items in the screen layout:
@@ -305,7 +305,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
 			}
 			m.clampCursor()
-			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
+			if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail && m.view != viewMailDetail {
 				m.detailYOff = 0
 			}
 			if m.view != viewDiff {
@@ -370,7 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
 		}
 		m.clampCursor()
-		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail {
+		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail && m.view != viewMailDetail {
 			m.detailYOff = 0
 		}
 		if m.view != viewDiff {
@@ -531,6 +531,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.switchView(viewIssues)
 		case viewMemoryDetail:
 			m.switchView(viewMemory)
+		case viewMailDetail:
+			m.switchView(viewMail)
 		case viewDiff:
 			m.view = viewWorktrees
 			m.cursor = 0
@@ -570,6 +572,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyViewMemory:
 		m.switchView(viewMemory)
 		return m, nil
+	case keyViewMail:
+		m.switchView(viewMail)
+		return m, nil
+	case keyViewLogs:
+		m.switchView(viewLogs)
+		return m, nil
 	case keyViewWorktrees:
 		m.switchView(viewWorktrees)
 		return m, nil
@@ -585,6 +593,31 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyAgentKill:
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.killConfirm = true
+			return m, nil
+		}
+	case keyMailCompose:
+		if m.view == viewMail || m.view == viewMailDetail {
+			return m.openCompose("")
+		}
+	case keyMailReply:
+		if m.view == viewMailDetail {
+			messages := m.sortedMessages()
+			if m.cursor < len(messages) {
+				return m.openCompose(messages[m.cursor].From)
+			}
+		}
+	case keyLogFilter:
+		if m.view == viewLogs {
+			m.logFilter = (m.logFilter + 1) % 5
+			m.cursor = 0
+			m.clampCursor()
+			return m, nil
+		}
+	case keyLogAgentFilter:
+		if m.view == viewLogs {
+			m.logAgentFilter = (m.logAgentFilter + 1) % (m.countLogAgents() + 1)
+			m.cursor = 0
+			m.clampCursor()
 			return m, nil
 		}
 	case keyAgentOutput:
@@ -700,6 +733,13 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 			m.view = viewMemoryDetail
 			m.detailYOff = 0
 		}
+	case viewMail:
+		messages := m.sortedMessages()
+		if m.cursor < len(messages) {
+			m.cursors[m.view] = m.cursor
+			m.view = viewMailDetail
+			m.detailYOff = 0
+		}
 	case viewActivity:
 		activity := m.filteredActivity()
 		if m.cursor < len(activity) {
@@ -766,6 +806,10 @@ func (m Model) listLen() int {
 		return len(m.filteredIssues())
 	case viewMemory, viewMemoryDetail:
 		return len(m.filteredMemories())
+	case viewMail, viewMailDetail:
+		return len(m.sortedMessages())
+	case viewLogs:
+		return len(m.filteredLogLines())
 	case viewWorktrees:
 		return len(m.filteredWorktrees())
 	case viewActivity:
@@ -812,8 +856,14 @@ func (m Model) View() tea.View {
 		content = m.renderMemory()
 	case viewMemoryDetail:
 		content = m.renderMemoryDetail()
+	case viewMail:
+		content = m.renderMail()
+	case viewMailDetail:
+		content = m.renderMailDetail()
 	case viewActivity:
 		content = m.renderActivity()
+	case viewLogs:
+		content = m.renderLogs()
 	case viewWorktrees:
 		content = m.renderWorktrees()
 	case viewDiff:
@@ -938,6 +988,12 @@ func (m Model) helpBar() string {
 		ctx = "[Enter]diff"
 	case viewMemory:
 		ctx = "[Enter]detail"
+	case viewMail:
+		ctx = "[c]ompose [Enter]detail"
+	case viewMailDetail:
+		ctx = "[c]ompose [r]eply [j/k]scroll"
+	case viewLogs:
+		ctx = "[f]ilter [F]agent"
 	case viewActivity:
 		ctx = "[Enter]agent"
 	case viewIssueDetail, viewMemoryDetail:
@@ -1024,7 +1080,7 @@ func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 
 func isListView(v view) bool {
 	switch v {
-	case viewAgents, viewIssues, viewMemory, viewWorktrees, viewActivity:
+	case viewAgents, viewIssues, viewMail, viewMemory, viewWorktrees, viewActivity, viewLogs:
 		return true
 	}
 	return false
