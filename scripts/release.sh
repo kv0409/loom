@@ -36,47 +36,54 @@ sed -i '' "s/^VERSION=.*/VERSION=${next}/" Makefile
 git add Makefile
 git commit -m "chore: bump version to ${next}"
 git tag -a "$tag" -m "Release ${tag}"
-git push origin main
-git push origin "$tag"
+
+# Push commit and tag in a single round-trip
+git push origin main "$tag"
+
+# Build locally immediately — no need to wait for goreleaser
+echo "Building locally..."
+make install
+echo "Installed ${tag} locally."
+
+# Restart daemon if running
+if command -v loom &>/dev/null; then
+  loom restart 2>/dev/null && echo "Daemon restarted." || true
+fi
 
 echo "Released ${tag}"
 
 if [[ "$no_wait" == true ]]; then
-  echo "Skipping build poll (--no-wait). Run 'loom update' later to fetch the binary."
+  echo "Goreleaser building in background. Run 'gh run watch' to monitor."
   exit 0
 fi
 
-echo "Waiting for goreleaser..."
+echo "Waiting for goreleaser (for GitHub Releases)..."
 
-# Wait for the tag-triggered run to appear
-sleep 5
-
-# Find the run ID for this specific tag
+# Poll for the workflow run — no artificial sleep
 run_id=""
 for i in $(seq 1 30); do
   run_id=$(gh run list --limit 5 --json databaseId,headBranch,status -q ".[] | select(.headBranch==\"${tag}\") | .databaseId")
   if [[ -n "$run_id" ]]; then break; fi
-  sleep 5
+  sleep 3
 done
 if [[ -z "$run_id" ]]; then
   echo "Could not find workflow run for ${tag}. Check GitHub Actions." >&2
   exit 1
 fi
 
-# Poll that specific run
+# Poll every 5s instead of 10s
 while true; do
   result=$(gh run view "$run_id" --json status,conclusion -q '.status + " " + .conclusion')
   status="${result%% *}"
   conclusion="${result#* }"
   if [[ "$status" == "completed" ]]; then
     if [[ "$conclusion" == "success" ]]; then
-      echo "Build succeeded. Updating local binary..."
-      loom update
+      echo "Goreleaser succeeded. GitHub Release binaries are live."
       break
     else
-      echo "Build failed (${conclusion}). Check GitHub Actions." >&2
+      echo "Goreleaser failed (${conclusion}). Check GitHub Actions." >&2
       exit 1
     fi
   fi
-  sleep 10
+  sleep 5
 done
