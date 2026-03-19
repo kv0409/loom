@@ -183,8 +183,9 @@ func newLGTable(headers []string, rows [][]string, selectedRow, width int) *lgta
 }
 
 // newLGTableHeaderless creates a borderless lipgloss/table with no headers.
+// selectedRow is the data-row index (0-based) that should be highlighted, or -1 for none.
 // width is the total available width.
-func newLGTableHeaderless(rows [][]string, width int) *lgtable.Table {
+func newLGTableHeaderless(rows [][]string, selectedRow, width int) *lgtable.Table {
 	return lgtable.New().
 		Rows(rows...).
 		Width(width).
@@ -197,6 +198,9 @@ func newLGTableHeaderless(rows [][]string, width int) *lgtable.Table {
 		BorderColumn(false).
 		BorderRow(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == selectedRow {
+				return lgTableSelectedStyle
+			}
 			return lgTableCellStyle
 		})
 }

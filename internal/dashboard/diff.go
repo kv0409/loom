@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 )
 
@@ -12,56 +11,30 @@ func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
 	avail := availableWidth(m.width)
-	const numColsDiff = 5
-	avail -= numColsDiff * 2
-	nameW := proportionalWidth(avail, 25, 10)
-	branchW := proportionalWidth(avail, 25, 10)
-	agentW := proportionalWidth(avail, 14, 8)
-	issueW := proportionalWidth(avail, 14, 6)
-	diffW := max(6, avail-nameW-branchW-agentW-issueW)
-
-	cols := []table.Column{
-		{Title: "NAME", Width: nameW},
-		{Title: "BRANCH", Width: branchW},
-		{Title: "AGENT", Width: agentW},
-		{Title: "ISSUE", Width: issueW},
-		{Title: "DIFF", Width: diffW},
-	}
-
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(worktrees), vRows)
 
-	rows := make([]table.Row, 0, end-start)
-	var replacements [][2]string
-	ri := 0
+	headers := []string{"NAME", "BRANCH", "AGENT", "ISSUE", "DIFF"}
+
+	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
-		ds := m.data.DiffStats[wt.Name]
-		if ds != nil && ds.FilesChanged > 0 {
-			styledDiff := fmt.Sprintf("%df ", ds.FilesChanged) +
+		diff := ""
+		if ds := m.data.DiffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
+			diff = fmt.Sprintf("%df ", ds.FilesChanged) +
 				diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions)) +
 				diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
-			ph := cellPlaceholder(ri, lipgloss.Width(styledDiff))
-			rows = append(rows, table.Row{
-				slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, ph,
-			})
-			replacements = append(replacements, [2]string{ph, styledDiff})
-			ri++
-		} else {
-			rows = append(rows, table.Row{
-				slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, "",
-			})
 		}
+		rows = append(rows, []string{slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, diff})
 	}
 
 	var content string
 	if len(worktrees) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No worktrees — builders create them automatically", avail)
+		t := newLGTable(headers, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No worktrees — builders create them automatically", avail)
 	} else {
-		t := newStyledTable(cols, rows, vRows)
-		t.SetCursor(m.cursor - start)
-		content = styledTableView(t, replacements) + "\n"
+		t := newLGTable(headers, rows, m.cursor-start, avail)
+		content = t.Render() + "\n"
 	}
 
 	title := fmt.Sprintf("[w] WORKTREES (%d) — [Enter] view diff", len(m.data.Worktrees))

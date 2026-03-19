@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/table"
-	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/tree"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
@@ -42,18 +40,6 @@ func (m Model) renderIssues() string {
 	}
 
 	avail := availableWidth(m.width)
-	const numColsIssues = 3
-	avail -= numColsIssues * 2
-	idW := proportionalWidth(avail, 20, 16)
-	assignW := proportionalWidth(avail, 15, 8)
-	titleW := max(10, avail-idW-assignW)
-
-	cols := []table.Column{
-		{Title: "ID", Width: idW},
-		{Title: "ASSIGNEE", Width: assignW},
-		{Title: "TITLE", Width: titleW},
-	}
-
 	vRows := visibleRows(m.height, 9)
 	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
 
@@ -67,73 +53,47 @@ func (m Model) renderIssues() string {
 		doneStart = activeCount
 	}
 
-	ri := 0
-	buildRows := func(from, to int) ([]table.Row, [][2]string) {
-		rows := make([]table.Row, 0, to-from)
-		var replacements [][2]string
+	headers := []string{"ID", "ASSIGNEE", "TITLE"}
+
+	buildRows := func(from, to int) [][]string {
+		rows := make([][]string, 0, to-from)
 		for i := from; i < to; i++ {
 			iss := display[i]
 			sg := statusGlyphs[iss.Status]
 			if sg == "" {
 				sg = "●"
 			}
-			plainID := sg + typeGlyph(iss.Type) + " " + iss.ID
-			styledID := statusStyle(iss.Status).Render(plainID)
-			ph := cellPlaceholder(ri, lipgloss.Width(styledID))
-			rows = append(rows, table.Row{ph, truncate(iss.Assignee, assignW), truncate(iss.Title, titleW)})
-			replacements = append(replacements, [2]string{ph, styledID})
-			ri++
+			styledID := statusStyle(iss.Status).Render(sg + typeGlyph(iss.Type) + " " + iss.ID)
+			rows = append(rows, []string{styledID, iss.Assignee, iss.Title})
 		}
-		return rows, replacements
+		return rows
 	}
 
 	var content string
 	if len(display) == 0 {
-		t := newStyledTable(cols, nil, vRows)
-		content = t.View() + "\n" + renderEmpty("No issues — loom issue create to add one", avail)
+		t := newLGTable(headers, nil, -1, avail)
+		content = t.Render() + "\n" + renderEmpty("No issues — loom issue create to add one", avail)
 	} else {
 		// Active section.
-		activeRows, activeRepl := buildRows(start, activeEnd)
+		activeRows := buildRows(start, activeEnd)
 		activeCursor, activeSelected := sectionCursor(m.cursor, start, activeEnd)
-		t := newStyledTable(cols, activeRows, len(activeRows))
+		sel := -1
 		if activeSelected {
-			t.SetCursor(activeCursor)
-		} else {
-			t.SetStyles(table.Styles{
-				Header:   tableHeaderStyle,
-				Cell:     tableCellStyle,
-				Selected: tableHeaderlessSelectedStyle,
-			})
+			sel = activeCursor
 		}
-		content = styledTableView(t, activeRepl) + "\n"
+		content = newLGTable(headers, activeRows, sel, avail).Render() + "\n"
 
 		// Done section with separator (headerless — avoids duplicate column headers).
 		if doneStart < end {
 			content += "\n  " + headerStyle.Render("RECENTLY DONE") + "\n"
 			content += separator(m.width)
-			doneRows, doneRepl := buildRows(doneStart, end)
+			doneRows := buildRows(doneStart, end)
 			doneCursor, doneSelected := sectionCursor(m.cursor, doneStart, end)
-			dt := newStyledTableHeaderless(cols, doneRows, len(doneRows))
+			doneSel := -1
 			if doneSelected {
-				dt.Focus()
-				dt.SetCursor(doneCursor)
-				dt.SetStyles(table.Styles{
-					Header:   tableHeaderlessHeaderStyle,
-					Cell:     tableCellStyle,
-					Selected: tableSelectedStyle,
-				})
-			} else {
-				dt.SetStyles(table.Styles{
-					Header:   tableHeaderlessHeaderStyle,
-					Cell:     tableCellStyle,
-					Selected: tableHeaderlessSelectedStyle,
-				})
+				doneSel = doneCursor
 			}
-			doneView := tableBodyView(dt)
-			for _, r := range doneRepl {
-				doneView = strings.Replace(doneView, r[0], r[1], 1)
-			}
-			content += fixSelectedRowBg(doneView) + "\n"
+			content += newLGTableHeaderless(doneRows, doneSel, avail).Render() + "\n"
 		}
 	}
 
