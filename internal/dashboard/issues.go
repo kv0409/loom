@@ -145,7 +145,7 @@ func (m Model) renderIssueDetail() string {
 	var body []string
 	if iss.Description != "" {
 		body = append(body, "  "+headerStyle.Render("DESCRIPTION"))
-		body = append(body, fmt.Sprintf("  %s", iss.Description))
+		body = append(body, wrapLines(iss.Description, detailContentWidth(m.width), "  ")...)
 	}
 	if iss.Parent != "" {
 		body = append(body, fmt.Sprintf("  Parent: %s", iss.Parent))
