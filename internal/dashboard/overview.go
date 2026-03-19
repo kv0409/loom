@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -116,10 +115,11 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 }
 
 func (m Model) renderFlightOverview(fullW, budget int) string {
-	projectRoot := filepath.Dir(m.loomRoot)
 	lastActivity := map[string]string{}
 	for _, e := range m.data.Activity {
-		lastActivity[e.AgentID] = e.Line
+		if e.Detail != "" {
+			lastActivity[e.AgentID] = e.Detail
+		}
 	}
 
 	activeIssues := 0
@@ -130,38 +130,100 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 	}
 
 	statsText := fmt.Sprintf("  %d active issue%s · %d running agent%s · %d worktree%s", activeIssues, suffix(activeIssues), len(m.data.Agents), suffix(len(m.data.Agents)), len(m.data.Worktrees), suffix(len(m.data.Worktrees)))
-	lines := []string{
-		statsLineStyle.Render(statsText),
-		strings.TrimRight(separator(fullW), "\n"),
-	}
+	header := statsLineStyle.Render(statsText) + "\n" + strings.TrimRight(separator(fullW), "\n")
 
-	shown := 0
+	type flightAgent struct {
+		agent       *backend.Agent
+		hasActivity bool
+	}
+	var agents []flightAgent
+	maxRows := budget - 2
+	if maxRows < 1 {
+		maxRows = 1
+	}
 	for _, a := range m.data.Agents {
 		if a.Status == "dead" || a.Status == "error" {
 			continue
 		}
-		indicator := statusIndicator(a.Status)
-		if a.Status == "active" || a.Status == "in-progress" {
-			indicator = heartbeatDonut(time.Since(a.Heartbeat), time.Duration(m.heartbeatTimeoutSec)*time.Second)
-		}
-		label := indicator + " " + agentText(truncate(a.ID, 16), a.ID)
-		focus := idleStyle.Render("idle")
-		if line, ok := lastActivity[a.ID]; ok && line != "" {
-			focus = activeStyle.Render(truncate(formatToolLine(line, fullW-26, projectRoot), fullW-26))
-		} else if len(a.AssignedIssues) > 0 {
-			focus = activeStyle.Render(strings.Join(a.AssignedIssues, ", "))
-		}
-		lines = append(lines, fmt.Sprintf("  %s  %s", label, focus))
-		shown++
-		if shown >= budget-2 {
+		_, hasAct := lastActivity[a.ID]
+		agents = append(agents, flightAgent{agent: a, hasActivity: hasAct})
+		if len(agents) >= maxRows {
 			break
 		}
 	}
-	if shown == 0 {
-		lines = append(lines, "  No active agents yet.")
+
+	if len(agents) == 0 {
+		return panel("IN FLIGHT", header+"\n  No active agents yet.\n", fullW)
 	}
 
-	return panel("IN FLIGHT", capContent(lines, budget), fullW)
+	timeout := time.Duration(m.heartbeatTimeoutSec) * time.Second
+	rows := make([][]string, len(agents))
+	for i, fa := range agents {
+		a := fa.agent
+		// Glyph: heartbeat donut for active/in-progress, statusGlyph otherwise
+		glyph := statusGlyphs[a.Status]
+		if glyph == "" {
+			glyph = "●"
+		}
+		if a.Status == "active" || a.Status == "in-progress" {
+			glyph = heartbeatGlyph(time.Since(a.Heartbeat), timeout)
+		}
+		// HB
+		hb := fmtTime(a.Heartbeat, true)
+		// Issues
+		issues := "—"
+		if len(a.AssignedIssues) > 0 {
+			issues = strings.Join(a.AssignedIssues, ",")
+		}
+		// Focus
+		focus := "idle"
+		if detail, ok := lastActivity[a.ID]; ok {
+			focus = detail
+		} else if len(a.AssignedIssues) > 0 {
+			focus = strings.Join(a.AssignedIssues, ", ")
+		}
+		rows[i] = []string{glyph, truncate(a.ID, 16), hb, issues, focus}
+	}
+
+	styler := func(row, col int, _ bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if row >= len(agents) {
+			return base
+		}
+		a := agents[row].agent
+		switch col {
+		case 0: // glyph
+			if a.Status == "active" || a.Status == "in-progress" {
+				return base.Foreground(heartbeatColor(time.Since(a.Heartbeat), timeout))
+			}
+			if c, ok := statusColors[a.Status]; ok {
+				return base.Foreground(c)
+			}
+		case 1: // agent ID
+			return base.Foreground(agentColor(a.ID)).Bold(true)
+		case 2: // HB
+			if a.Status == "active" || a.Status == "in-progress" {
+				elapsed := time.Since(a.Heartbeat)
+				if timeout > 0 && float64(elapsed)/float64(timeout) >= 0.8 {
+					return base.Foreground(colRed)
+				}
+			}
+			return base.Foreground(colGray)
+		case 3: // issues
+			return base.Foreground(colFg)
+		case 4: // focus
+			if agents[row].hasActivity {
+				return base.Foreground(colGreen)
+			}
+			return base.Foreground(colGray)
+		}
+		return base
+	}
+
+	innerW := fullW - 2
+	t := newLGTableHeaderless(rows, -1, innerW, styler, ColWidth{0, 3}, ColWidth{1, 18}, ColWidth{2, 5}, ColWidth{3, 14})
+	content := header + "\n" + t.Render()
+	return panel("IN FLIGHT", content, fullW)
 }
 
 func suffix(n int) string {

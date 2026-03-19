@@ -39,7 +39,6 @@ var (
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 2)
 	headerStyle   = lipgloss.NewStyle().Bold(true).Background(colSelBg).Foreground(colFg).Padding(0, 1)
-	activeStyle   = lipgloss.NewStyle().Foreground(colGreen)
 	blockedStyle  = lipgloss.NewStyle().Foreground(colRed)
 	reviewStyle   = lipgloss.NewStyle().Foreground(colCyan)
 	deadStyle     = lipgloss.NewStyle().Foreground(colRed)
@@ -141,6 +140,44 @@ func heartbeatDonut(elapsed, timeout time.Duration) string {
 		glyph, c = "○", colRed
 	}
 	return lipgloss.NewStyle().Foreground(c).Render(glyph)
+}
+
+// heartbeatColor returns the color for a heartbeat fraction (elapsed/timeout).
+// Used by CellStyler callbacks that need the raw color without a rendered glyph.
+func heartbeatColor(elapsed, timeout time.Duration) color.Color {
+	if timeout <= 0 {
+		return colGreen
+	}
+	frac := float64(elapsed) / float64(timeout)
+	switch {
+	case frac < 0.4:
+		return colGreen
+	case frac < 0.8:
+		return colYellow
+	default:
+		return colRed
+	}
+}
+
+// heartbeatGlyph returns a plain donut glyph based on elapsed/timeout fraction.
+// Used in table cells where CellStyler handles coloring separately.
+func heartbeatGlyph(elapsed, timeout time.Duration) string {
+	if timeout <= 0 {
+		return "●"
+	}
+	frac := float64(elapsed) / float64(timeout)
+	switch {
+	case frac < 0.2:
+		return "●"
+	case frac < 0.4:
+		return "◕"
+	case frac < 0.6:
+		return "◑"
+	case frac < 0.8:
+		return "◔"
+	default:
+		return "○"
+	}
 }
 
 func typeGlyph(issueType string) string {
@@ -310,12 +347,6 @@ var searchBoxStyle = lipgloss.NewStyle().Background(colSelBg).Foreground(colFg).
 var spinnerStyle = lipgloss.NewStyle().Foreground(colBlue)
 
 var emptyMsgStyle = lipgloss.NewStyle().Foreground(colGray).Italic(true)
-
-// Activity view styles
-var (
-	activityTimeStyle = lipgloss.NewStyle().Foreground(colGray)
-	activityIconStyle = lipgloss.NewStyle().Bold(true).Width(2)
-)
 
 // mailPriorityColor returns the foreground color for a mail priority level.
 func mailPriorityColor(priority string) color.Color {
