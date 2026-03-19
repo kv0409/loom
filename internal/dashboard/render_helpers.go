@@ -5,9 +5,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 )
+
+// tableWidth sums column widths plus inter-column gaps.
+// bubbles/table v2 requires an explicit width to render data rows.
+func tableWidth(cols []table.Column) int {
+	w := 0
+	for _, c := range cols {
+		w += c.Width + 2 // +2 matches Padding(0,1) in tableCellStyle / tableHeaderStyle
+	}
+	return w
+}
 
 // newStyledTable creates a bubbles/table.Model styled with Tokyo Night colors.
 // It is used render-only: rebuilt each frame, not persisted in the dashboard Model.
@@ -16,6 +26,7 @@ func newStyledTable(cols []table.Column, rows []table.Row, height int) table.Mod
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithHeight(height+1), // +1 for header row
+		table.WithWidth(tableWidth(cols)),
 		table.WithFocused(true),
 	)
 	t.SetStyles(table.Styles{
@@ -33,6 +44,7 @@ func newStyledTableHeaderless(cols []table.Column, rows []table.Row, height int)
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithHeight(height+1), // +1: invisible header still occupies one viewport line
+		table.WithWidth(tableWidth(cols)),
 		table.WithFocused(false),
 	)
 	t.SetStyles(table.Styles{

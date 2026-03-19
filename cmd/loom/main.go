@@ -19,7 +19,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/karanagi/loom/agents"
 	"github.com/karanagi/loom/internal/agent"
 	cliout "github.com/karanagi/loom/internal/cli"
@@ -507,7 +507,7 @@ func launchDashboard(root string) error {
 			hbTimeout = cfg.Limits.HeartbeatTimeoutSeconds
 		}
 		m := dashboard.New(root, hbTimeout)
-		p := tea.NewProgram(m, dashboard.ProgramOptions()...)
+		p := tea.NewProgram(m)
 		finalModel, err := p.Run()
 		os.Remove(dashPidFile(root))
 		if err != nil {

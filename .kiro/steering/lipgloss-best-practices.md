@@ -4,13 +4,13 @@ inclusion: always
 
 # Lip Gloss Best Practices
 
-The dashboard uses **Lip Gloss v1** (`github.com/charmbracelet/lipgloss v1.1.0`). Do not copy v2 API patterns — `charm.land/lipgloss/v2`, `lipgloss.Println`, `lipgloss.Blend*`, the `Renderer`-first API, and `lipgloss/list` / `lipgloss/tree` sub-packages are all v2-only and unavailable here.
+The dashboard uses **Lip Gloss v2** (`charm.land/lipgloss/v2`).
 
 All project lipgloss code lives in `internal/dashboard/styles.go`. View and render files are consumers only — they call helpers from `styles.go`, never construct styles themselves.
 
 ## Color Palette
 
-All colors are defined as package-level `var` at the top of `styles.go` using the **Tokyo Night** truecolor palette:
+All colors are defined as package-level `var` at the top of `styles.go` using the **Tokyo Night** truecolor palette. In v2, `lipgloss.Color()` is a function returning `color.Color` (from `image/color`), not a distinct type. The call syntax `lipgloss.Color("#1A1B26")` is unchanged, but maps or function return types that previously used `lipgloss.Color` as a type must use `color.Color` instead (e.g., `statusColors map[string]color.Color`, `agentColor() color.Color`):
 
 ```go
 var (
@@ -265,18 +265,43 @@ func statusIndicator(status string) string {
 
 ## Testing
 
-Lip Gloss strips all ANSI codes when output is not a TTY, which includes unit tests. If a test asserts on styled output (e.g., checking for color or bold), force the color profile in `TestMain` or the test setup:
+Lip Gloss strips all ANSI codes when output is not a TTY, which includes unit tests. If a test asserts on styled output (e.g., checking for color or bold), force the color profile via `tea.WithColorProfile` when creating the program:
 
 ```go
 import (
-    "github.com/charmbracelet/lipgloss"
-    "github.com/muesli/termenv"
+    "github.com/charmbracelet/colorprofile"
+    tea "charm.land/bubbletea/v2"
 )
 
-func TestMain(m *testing.M) {
-    lipgloss.SetColorProfile(termenv.TrueColor)
-    os.Exit(m.Run())
-}
+// In test setup, use tea.WithColorProfile:
+p := tea.NewProgram(model, tea.WithColorProfile(colorprofile.TrueColor))
 ```
 
+For standalone lipgloss testing outside Bubble Tea, color downsampling is handled at the output layer — the `muesli/termenv` import is no longer needed.
+
+Note: Our current tests don't use `SetColorProfile`, so this is informational.
+
 Most dashboard tests avoid asserting on ANSI codes and instead test plain-text content or `lipgloss.Width()` of rendered output. Prefer this approach — it avoids fragile ANSI string comparisons.
+
+## New in v2 (Available but not yet adopted)
+
+These features are available in Lip Gloss v2 but not yet used in this project. Consider adopting them when the use case arises:
+
+- **Hyperlinks**: `style.Hyperlink(url)` — clickable links in supporting terminals
+- **Curly underlines**: `style.UnderlineStyle(lipgloss.UnderlineCurly)` with `style.UnderlineColor(c)` — useful for error indicators
+- **Border gradient blending**: `style.BorderForegroundBlend(colors...)` — gradient borders
+- **`lipgloss/tree` and `lipgloss/list` sub-packages**: Structured tree/list rendering — could replace hand-built issue dependency trees
+- **Named ANSI colors**: `lipgloss.Red`, `lipgloss.Green`, etc. — 16 basic ANSI color constants
+- **`lipgloss.Println/Printf/Sprint`**: For standalone (non-Bubble Tea) output with automatic color downsampling. Use in `internal/cli/output.go` instead of `fmt.Println` for proper terminal color handling.
+
+## v2 Reference
+
+For API details beyond what's covered here, use `go doc` from the project root (requires v2 deps in go.mod):
+- `go doc charm.land/lipgloss/v2` — package overview
+- `go doc charm.land/lipgloss/v2.Style` — Style type and methods
+- `go doc charm.land/lipgloss/v2.Color` — Color function
+
+Upstream docs:
+- [Upgrade Guide](https://github.com/charmbracelet/lipgloss/blob/main/UPGRADE_GUIDE_V2.md)
+- [What's New](https://github.com/charmbracelet/lipgloss/discussions/506)
+- [API Reference](https://pkg.go.dev/charm.land/lipgloss/v2)

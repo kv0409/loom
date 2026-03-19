@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 	"github.com/karanagi/loom/internal/nudge"
@@ -194,12 +194,6 @@ func watchBinaryFrom(mtime time.Time) tea.Cmd {
 
 type watchBinaryTickMsg struct{ mtime time.Time }
 
-// ProgramOptions returns the tea.ProgramOption set needed by the dashboard,
-// including alt-screen and mouse support.
-func ProgramOptions() []tea.ProgramOption {
-	return []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
-}
-
 func tickCmd() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
@@ -248,7 +242,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Resize, tick, and data messages are also handled for the dashboard.
 	if m.composeMode && m.composeForm != nil {
 		// Intercept keys before huh sees them.
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 			switch keyMsg.String() {
 			case "ctrl+s":
 				return m.composeSend()
@@ -275,7 +269,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.WindowSizeMsg:
 			m.width = msg.Width
 			m.height = msg.Height
-			m.help.Width = msg.Width
+			m.help.SetWidth(msg.Width)
 			m.composeForm.WithWidth(min(56, msg.Width-8))
 		case tickMsg:
 			return m, tea.Batch(cmd, m.refresh(), tickCmd())
@@ -316,14 +310,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
-	case tea.MouseMsg:
-		return m.handleMouse(msg)
+	case tea.MouseClickMsg:
+		return m.handleMouseClick(msg)
+	case tea.MouseWheelMsg:
+		return m.handleMouseWheel(msg)
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.help.Width = msg.Width
+		m.help.SetWidth(msg.Width)
 		return m, nil
 	case tickMsg:
 		cmds := []tea.Cmd{m.refresh(), tickCmd()}
@@ -386,7 +382,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Nudge mode: selection menu
 	if m.nudgeMode {
 		switch msg.String() {
@@ -766,11 +762,14 @@ func nextView(v view) view {
 	return viewOverview
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	// Minimum terminal size guard
 	if m.width < minTermWidth || m.height < minTermHeight {
 		msg := fmt.Sprintf("Terminal too small (%d×%d)\nNeed at least %d×%d", m.width, m.height, minTermWidth, minTermHeight)
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
+		v := tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
+		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
 	var content string
@@ -893,7 +892,10 @@ func (m Model) View() string {
 			lines[i] = l + strings.Repeat(" ", m.width-w)
 		}
 	}
-	return strings.Join(lines, "\n")
+	v := tea.NewView(strings.Join(lines, "\n"))
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 func (m Model) helpBar() string {
@@ -925,11 +927,9 @@ func (m Model) helpBar() string {
 	return base
 }
 
-func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	_, y := msg.X, msg.Y
-
-	switch {
-	case msg.Button == tea.MouseButtonWheelUp:
+func (m Model) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	switch msg.Button {
+	case tea.MouseWheelUp:
 		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll--
 			if m.detailScroll < 0 {
@@ -950,7 +950,7 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case msg.Button == tea.MouseButtonWheelDown:
+	case tea.MouseWheelDown:
 		if m.view == viewAgentDetail || m.view == viewIssueDetail || m.view == viewMemoryDetail {
 			m.detailScroll++
 			return m, nil
@@ -962,33 +962,41 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.cursor++
 		m.clampCursor()
 		return m, nil
+	}
 
-	case msg.Button == tea.MouseButtonLeft:
-		// Click on list items in list views
-		if isListView(m.view) {
-			item := m.mouseToListIndex(y)
-			if item >= 0 && item < m.listLen() {
-				now := time.Now()
-				doubleClick := item == m.lastClickRow && now.Sub(m.lastClickTime) < 400*time.Millisecond
-				m.cursor = item
-				m.lastClickRow = item
-				m.lastClickTime = now
-				if doubleClick {
-					return m.handleEnter()
-				}
+	return m, nil
+}
+
+func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
+	if msg.Button != tea.MouseLeft {
+		return m, nil
+	}
+
+	y := msg.Y
+
+	// Click on list items in list views
+	if isListView(m.view) {
+		item := m.mouseToListIndex(y)
+		if item >= 0 && item < m.listLen() {
+			now := time.Now()
+			doubleClick := item == m.lastClickRow && now.Sub(m.lastClickTime) < 400*time.Millisecond
+			m.cursor = item
+			m.lastClickRow = item
+			m.lastClickTime = now
+			if doubleClick {
+				return m.handleEnter()
 			}
-			return m, nil
 		}
+		return m, nil
+	}
 
-		// Diff/logs: click sets scroll position
-		if m.view == viewDiff {
-			item := m.mouseToListIndex(y)
-			if item >= 0 {
-				m.diffScroll = item
-			}
-			return m, nil
+	// Diff/logs: click sets scroll position
+	if m.view == viewDiff {
+		item := m.mouseToListIndex(y)
+		if item >= 0 {
+			m.diffScroll = item
 		}
-
+		return m, nil
 	}
 
 	return m, nil

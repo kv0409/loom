@@ -1,9 +1,9 @@
 package dashboard
 
 import (
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // composeData holds the form field values bound to the huh form.
@@ -68,7 +68,7 @@ func newComposeForm(cd *composeData, agentIDs []string, replyTo string) *huh.For
 				Placeholder("message body (optional)").
 				Lines(4),
 		),
-	).WithTheme(composeTheme()).WithKeyMap(composeKeyMap())
+	).WithTheme(loomTheme{}).WithKeyMap(composeKeyMap())
 
 	return f
 }
@@ -85,9 +85,11 @@ func composeKeyMap() *huh.KeyMap {
 	return km
 }
 
-// composeTheme returns a huh theme styled to match the Tokyo Night palette.
-func composeTheme() *huh.Theme {
-	t := huh.ThemeBase()
+// loomTheme implements huh.Theme for the Tokyo Night palette.
+type loomTheme struct{}
+
+func (loomTheme) Theme(isDark bool) *huh.Styles {
+	t := huh.ThemeBase(isDark)
 
 	t.Focused.Base = lipgloss.NewStyle().
 		PaddingLeft(1).

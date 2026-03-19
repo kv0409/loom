@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -225,7 +225,7 @@ func TestTitleBarWidth(t *testing.T) {
 		m.width = w
 		// Extract title bar (first line of View output)
 		output := m.View()
-		firstLine := strings.SplitN(output, "\n", 2)[0]
+		firstLine := strings.SplitN(output.Content, "\n", 2)[0]
 		got := lipgloss.Width(firstLine)
 		if got != w {
 			t.Errorf("width=%d: title bar width=%d, want %d", w, got, w)
@@ -233,8 +233,8 @@ func TestTitleBarWidth(t *testing.T) {
 	}
 }
 
-func keyMsg(s string) tea.KeyMsg {
-	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s), Alt: false}
+func keyMsg(s string) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Text: s}
 }
 
 func TestHandleEnter_WorktreeReturnsCmd(t *testing.T) {
@@ -311,7 +311,7 @@ func TestEscFromDiff_RestoresCursorByName(t *testing.T) {
 
 	// Now press Esc — search is cleared by switchView, so cursor should find beta at index 1
 	m.searchTI.SetValue("") // search cleared on view switch
-	result, _ = m.handleKey(tea.KeyMsg{Type: tea.KeyEscape})
+	result, _ = m.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	got := result.(Model)
 
 	if got.view != viewWorktrees {
@@ -618,7 +618,7 @@ func TestMemoryMouseClick_SelectsCorrectItem(t *testing.T) {
 		{ID: "M3", Type: "convention", Title: "Third"},
 	}
 	// Click on the third row (listHeaderRows + 2)
-	result, _ := m.handleMouse(tea.MouseMsg{X: 5, Y: listHeaderRows + 2, Button: tea.MouseButtonLeft})
+	result, _ := m.handleMouseClick(tea.MouseClickMsg{X: 5, Y: listHeaderRows + 2, Button: tea.MouseLeft})
 	got := result.(Model)
 	if got.cursor != 2 {
 		t.Errorf("expected cursor=2 after clicking third row, got %d", got.cursor)

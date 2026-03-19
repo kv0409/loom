@@ -2,10 +2,11 @@ package dashboard
 
 import (
 	"fmt"
+	"image/color"
 	"regexp"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 var wtPrefixRe = regexp.MustCompile(`^LOOM-\d+(?:-\d+)+-`)
@@ -52,7 +53,7 @@ var (
 var panelTitle = lipgloss.NewStyle().Bold(true).Background(colBlue).Foreground(colBg).Padding(0, 1)
 
 // Status-specific colors and glyphs
-var statusColors = map[string]lipgloss.Color{
+var statusColors = map[string]color.Color{
 	"open":        colFg,
 	"assigned":    colBlue,
 	"in-progress": colTeal,
@@ -342,7 +343,7 @@ var (
 
 // agentColor returns the role-based color for an agent ID.
 // Role is the prefix before the first dash-digit sequence (e.g. "builder" from "builder-001").
-func agentColor(id string) lipgloss.Color {
+func agentColor(id string) color.Color {
 	role := id
 	for i := 1; i < len(id); i++ {
 		if id[i-1] == '-' && id[i] >= '0' && id[i] <= '9' {

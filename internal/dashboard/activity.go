@@ -2,19 +2,20 @@ package dashboard
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/table"
+	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 // toolInfo maps a raw tool name to a display icon, icon color, compact label, and label color.
 type toolInfo struct {
 	icon       string
-	color      lipgloss.Color
+	color      color.Color
 	label      string
-	labelColor lipgloss.Color
+	labelColor color.Color
 }
 
 var toolMap = map[string]toolInfo{

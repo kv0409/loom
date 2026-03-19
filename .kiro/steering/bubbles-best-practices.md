@@ -4,7 +4,7 @@ inclusion: always
 
 # Bubbles Best Practices
 
-The dashboard uses [Bubble Tea v1](https://github.com/charmbracelet/bubbletea) (`github.com/charmbracelet/bubbletea v1.3.x`) with [Bubbles v1](https://github.com/charmbracelet/bubbles) components and [Lip Gloss v1](https://github.com/charmbracelet/lipgloss) for styling. **Do not copy v2 API patterns from upstream docs** — `tea.NewView`, `tea.KeyPressMsg`, `charm.land/*` import paths do not apply here.
+The dashboard uses [Bubble Tea v2](https://github.com/charmbracelet/bubbletea) (`charm.land/bubbletea/v2`) with [Bubbles v2](https://github.com/charmbracelet/bubbles) (`charm.land/bubbles/v2`) components and [Lip Gloss v2](https://github.com/charmbracelet/lipgloss) (`charm.land/lipgloss/v2`) for styling.
 
 ## Rule: Use Native Bubbles Components
 
@@ -19,6 +19,8 @@ Never hand-roll functionality that a Bubbles component already provides. The lib
 | Progress bar | `bubbles/progress` | Custom frame-cycling animation |
 | Loading/activity indicator | `bubbles/spinner` | Custom frame-cycling animation |
 | Keybindings display | `bubbles/key` + `bubbles/help` | Manual help string construction |
+
+Note: `bubbles/viewport` v2 now has soft wrapping, line gutters, highlighting, and horizontal scrolling — making it even more capable than our hand-rolled `renderViewport()`. Consider migrating detail views to native viewport in the future.
 
 ## All Columnar Rendering Goes Through `newStyledTable()`
 
@@ -131,7 +133,7 @@ MyAction: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 func (k keyMap) ShortHelp() []key.Binding { return []key.Binding{..., k.MyAction} }
 ```
 
-**3. Dispatch via raw string `case` in `handleKey()`** — never use `key.Matches()`:
+**3. Dispatch via raw string `case` in `handleKey()`** — never use `key.Matches()`. In v2, key events arrive as `tea.KeyPressMsg` (not `tea.KeyMsg`), but the `msg.String()` dispatch pattern is unchanged:
 
 ```go
 case keyMyAction:
@@ -178,14 +180,15 @@ The dashboard stores terminal dimensions from `tea.WindowSizeMsg` and derives al
 // In Update():
 case tea.WindowSizeMsg:
     m.width, m.height = msg.Width, msg.Height
-    m.help.Width = msg.Width   // propagate to help component
-    return m, nil              // no Cmd needed
+    m.help.SetWidth(msg.Width)   // propagate to help component
+    return m, nil                // no Cmd needed
 ```
 
 - All sizing in `View()` and render functions must derive from `m.width` and `m.height`.
 - **Never hardcode widths or heights.**
 - The minimum supported terminal size is 60×15. `View()` renders a centered error message below this threshold — no layout logic runs.
 - If a new Bubbles component has a `SetWidth` / `SetHeight` method, call it in the `WindowSizeMsg` handler.
+- Bubbles v2 uses getter/setter methods instead of direct field access for Width/Height on help, table, textinput, viewport, etc. (e.g., `m.help.SetWidth(w)` not `m.help.Width = w`).
 
 ## Adding New Bubbles Components
 
@@ -198,3 +201,65 @@ When introducing a new stateful Bubbles component (textinput, spinner, progress,
 5. If it has a width/height setter, sync it in the `tea.WindowSizeMsg` handler.
 
 **Exception — `table.Model`:** do not follow this guide for tables. Tables are rebuilt per frame via `newStyledTable()`. See the columnar rendering rule above.
+
+## View Return Type
+
+The dashboard's `View()` method returns `tea.View` (not `string`). Terminal features are set declaratively as View fields:
+
+```go
+func (m Model) View() tea.View {
+    // ... build content string ...
+    v := tea.NewView(content)
+    v.AltScreen = true
+    v.MouseMode = tea.MouseModeCellMotion
+    return v
+}
+```
+
+Child components and render functions still return `string` — only the top-level `View()` returns `tea.View`. The `tea.View` struct has fields for: `Content`, `AltScreen`, `MouseMode`, `ReportFocus`, `WindowTitle`, `Cursor`, `BackgroundColor`, `ForegroundColor`, `ProgressBar`, `KeyboardEnhancements`.
+
+## Mouse Messages
+
+Mouse events are split into separate types in v2:
+- `tea.MouseClickMsg` — button clicks (`.Button`, `.X`, `.Y`)
+- `tea.MouseWheelMsg` — scroll events (`.Button` is `tea.MouseWheelUp`/`tea.MouseWheelDown`, `.X`, `.Y`)
+- `tea.MouseMotionMsg` — movement events
+- `tea.MouseReleaseMsg` — button releases
+
+Button constants: `tea.MouseLeft`, `tea.MouseRight`, `tea.MouseMiddle`, `tea.MouseWheelUp`, `tea.MouseWheelDown`.
+
+The dashboard handles clicks in `handleMouseClick()` and wheel events in `handleMouseWheel()`.
+
+## Table Width Requirement
+
+Bubbles/table v2 requires an explicit width to render data rows. The `newStyledTable()` and `newStyledTableHeaderless()` helpers in `render_helpers.go` handle this automatically via `tableWidth()`, which sums column widths plus padding. If you create tables outside these helpers, you must call `table.WithWidth(w)` or `t.SetWidth(w)`.
+
+## New in v2 (Available but not yet adopted)
+
+- **Progressive keyboard enhancements**: `shift+enter`, `ctrl+h`, key releases. Set `view.KeyboardEnhancements.ReportEventTypes = true` for key release events. Listen for `tea.KeyboardEnhancementsMsg` to detect support.
+- **Native clipboard**: `tea.SetClipboard(text)`, `tea.ReadClipboard()` — works over SSH via OSC52
+- **Cursor control**: `view.Cursor` — position, shape (block/bar/underline), color, blink
+- **Terminal color queries**: `tea.RequestBackgroundColor`, `tea.RequestForegroundColor` — detect light/dark theme
+- **Progress bar**: `view.ProgressBar` — native terminal progress indicator
+- **Window title**: `view.WindowTitle = "Loom Dashboard"` — set terminal title declaratively
+- **Environment variables**: `tea.EnvMsg` — get client environment (important for SSH/Wish apps)
+- **`tea.WithColorProfile()` and `tea.WithWindowSize()`**: Program options for testing without a real terminal
+- **`bubbles/viewport` v2**: Soft wrapping, line gutters, highlighting, horizontal scrolling, `SetContentLines([]string)` — consider migrating from hand-rolled `renderViewport()`
+
+## v2 Reference
+
+For API details, use `go doc` from the project root:
+- `go doc charm.land/bubbletea/v2` — Bubble Tea package
+- `go doc charm.land/bubbletea/v2.View` — View struct fields
+- `go doc charm.land/bubbletea/v2.KeyPressMsg` — Key press message
+- `go doc charm.land/bubbletea/v2.MouseClickMsg` — Mouse click message
+- `go doc charm.land/bubbles/v2/table` — Table component
+- `go doc charm.land/bubbles/v2/help` — Help component
+- `go doc charm.land/bubbles/v2/key` — Key binding
+
+Upstream docs:
+- [Bubble Tea Upgrade Guide](https://github.com/charmbracelet/bubbletea/blob/main/UPGRADE_GUIDE_V2.md)
+- [Bubble Tea What's New](https://github.com/charmbracelet/bubbletea/discussions/1374)
+- [Bubbles Upgrade Guide](https://github.com/charmbracelet/bubbles/blob/main/UPGRADE_GUIDE_V2.md)
+- [Bubble Tea API](https://pkg.go.dev/charm.land/bubbletea/v2)
+- [Bubbles API](https://pkg.go.dev/charm.land/bubbles/v2)
