@@ -4,8 +4,20 @@
 
 ```bash
 make build    # REQUIRED — injects version/commit via ldflags. Plain `go build` produces a versionless binary.
+make install  # build + install to $GOBIN — keeps the local binary up to date
 make vet      # go vet ./... — run after every change
 ```
+
+## After completing work
+
+When no active work remains (all issues done, no pending changes):
+
+```bash
+make install              # update local binary to latest commit
+git push                  # push all commits to remote
+```
+
+This keeps the local binary and remote repo in sync. Chats, the orchestrator, and the dashboard all use the installed binary — stale binaries cause confusing behavior.
 
 ## Releasing
 
@@ -13,7 +25,7 @@ make vet      # go vet ./... — run after every change
 ./scripts/release.sh <major|minor|patch>   # Maintainer-only. Bumps VERSION in Makefile, commits, tags, pushes. GitHub Actions + goreleaser builds binaries.
 ```
 
-End users update via `loom update`, which downloads pre-built binaries from GitHub Releases — no git/make/Go required.
+Run periodically after a batch of changes lands on main to cut a new patch release. End users update via `loom update`, which downloads pre-built binaries from GitHub Releases — no git/make/Go required.
 
 ## Conventions
 
