@@ -11,7 +11,7 @@ type AgentTreeNode struct {
 type ActivityEntry struct {
 	AgentID string
 	Line    string // original raw line (kept for search/filter)
-	Time    string // display-ready relative time (e.g. "3s ago")
+	Time    string // display-ready relative time (e.g. "3s")
 	Tool    string // tool label (e.g. "SHELL", "READ")
 	Detail  string // cleaned-up args / summary
 }

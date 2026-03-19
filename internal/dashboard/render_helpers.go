@@ -10,27 +10,22 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// fmtTime formats a time as a human-readable "ago" string.
+// fmtTime formats a time as a human-readable relative string.
 // short=true → "30s", "5m", "2h"  (used in overview compact cells)
-// short=false → "30s ago", "5m ago", "2h ago"  (used in detail/table views)
+// short=false → "30s", "5m", "2h"  (used in detail/table views)
 func fmtTime(t time.Time, short bool) string {
 	if t.IsZero() {
 		return "never"
 	}
 	d := time.Since(t)
-	var s string
 	switch {
 	case d < time.Minute:
-		s = fmt.Sprintf("%ds", int(d.Seconds()))
+		return fmt.Sprintf("%ds", int(d.Seconds()))
 	case d < time.Hour:
-		s = fmt.Sprintf("%dm", int(d.Minutes()))
+		return fmt.Sprintf("%dm", int(d.Minutes()))
 	default:
-		s = fmt.Sprintf("%dh", int(d.Hours()))
+		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
-	if short {
-		return s
-	}
-	return s + " ago"
 }
 
 // fmtTimeFull formats a time as an absolute timestamp string.

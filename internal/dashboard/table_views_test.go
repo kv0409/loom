@@ -110,7 +110,7 @@ func TestRenderOverview_ShowsAttentionSections(t *testing.T) {
 	m.data.AgentTree = []backend.AgentTreeNode{{}, {}}
 	m.data.Messages = []*backend.Message{{From: "lead-001", To: "builder-001", Subject: "Need status", Timestamp: time.Now()}}
 	m.data.Unread = 2
-	m.data.Activity = []backend.ActivityEntry{{AgentID: "reviewer-001", Tool: "READ", Detail: "reviewing auth middleware", Time: "1m ago"}}
+	m.data.Activity = []backend.ActivityEntry{{AgentID: "reviewer-001", Tool: "READ", Detail: "reviewing auth middleware", Time: "1m"}}
 
 	out := m.renderOverview()
 	for _, expected := range []string{"NEEDS ATTENTION", "IN FLIGHT", "LATEST SIGNAL", "blocked", "review", "2 unread"} {
