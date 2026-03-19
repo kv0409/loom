@@ -333,6 +333,14 @@ var (
 // handle selection background uniformly.
 type CellStyler func(row, col int, isSelected bool) lipgloss.Style
 
+// ColWidth pins a table column to a fixed cell width. The lipgloss/table
+// resizer honours Style.Width and excludes fixed columns from proportional
+// expansion/shrinking, so remaining space flows to flexible columns.
+type ColWidth struct {
+	Col   int
+	Width int
+}
+
 // Table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.
 var (
 	lgTableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)

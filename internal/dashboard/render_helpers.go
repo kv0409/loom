@@ -42,7 +42,10 @@ func fmtTimeFull(t time.Time) string {
 // styler is an optional CellStyler callback; when non-nil it controls per-cell styling
 // (the view decides foreground colors based on data). When nil, the default header/cell/selected
 // styles are applied.
-func newLGTable(headers []string, rows [][]string, selectedRow, width int, styler CellStyler) *lgtable.Table {
+// Variadic ColWidth hints pin specific columns to a fixed width; the resizer
+// excludes them from proportional expansion so remaining space flows to flexible columns.
+func newLGTable(headers []string, rows [][]string, selectedRow, width int, styler CellStyler, fixedCols ...ColWidth) *lgtable.Table {
+	fixed := colWidthMap(fixedCols)
 	return lgtable.New().
 		Headers(headers...).
 		Rows(rows...).
@@ -56,16 +59,20 @@ func newLGTable(headers []string, rows [][]string, selectedRow, width int, style
 		BorderColumn(false).
 		BorderRow(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
+			var base lipgloss.Style
 			if row == lgtable.HeaderRow {
-				return lgTableHeaderStyle
+				base = lgTableHeaderStyle
+			} else if styler != nil {
+				base = styler(row, col, row == selectedRow)
+			} else if row == selectedRow {
+				base = lgTableSelectedStyle
+			} else {
+				base = lgTableCellStyle
 			}
-			if styler != nil {
-				return styler(row, col, row == selectedRow)
+			if w, ok := fixed[col]; ok {
+				base = base.Width(w)
 			}
-			if row == selectedRow {
-				return lgTableSelectedStyle
-			}
-			return lgTableCellStyle
+			return base
 		})
 }
 
@@ -73,7 +80,9 @@ func newLGTable(headers []string, rows [][]string, selectedRow, width int, style
 // selectedRow is the data-row index (0-based) that should be highlighted, or -1 for none.
 // width is the total available width.
 // styler is an optional CellStyler callback; when non-nil it controls per-cell styling.
-func newLGTableHeaderless(rows [][]string, selectedRow, width int, styler CellStyler) *lgtable.Table {
+// Variadic ColWidth hints pin specific columns to a fixed width.
+func newLGTableHeaderless(rows [][]string, selectedRow, width int, styler CellStyler, fixedCols ...ColWidth) *lgtable.Table {
+	fixed := colWidthMap(fixedCols)
 	return lgtable.New().
 		Rows(rows...).
 		Width(width).
@@ -86,14 +95,31 @@ func newLGTableHeaderless(rows [][]string, selectedRow, width int, styler CellSt
 		BorderColumn(false).
 		BorderRow(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
+			var base lipgloss.Style
 			if styler != nil {
-				return styler(row, col, row == selectedRow)
+				base = styler(row, col, row == selectedRow)
+			} else if row == selectedRow {
+				base = lgTableSelectedStyle
+			} else {
+				base = lgTableCellStyle
 			}
-			if row == selectedRow {
-				return lgTableSelectedStyle
+			if w, ok := fixed[col]; ok {
+				base = base.Width(w)
 			}
-			return lgTableCellStyle
+			return base
 		})
+}
+
+// colWidthMap converts a slice of ColWidth hints into a col→width lookup.
+func colWidthMap(cw []ColWidth) map[int]int {
+	if len(cw) == 0 {
+		return nil
+	}
+	m := make(map[int]int, len(cw))
+	for _, c := range cw {
+		m[c.Col] = c.Width
+	}
+	return m
 }
 
 // wordWrap splits s into segments of at most width runes, breaking on spaces where possible.
