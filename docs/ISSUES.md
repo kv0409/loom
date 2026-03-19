@@ -75,10 +75,10 @@ history:
 ```
                 ┌──────┐
                 │ open │ ◄── created by human or agent
-                └──┬───┘
-                   │ assign
-                ┌──▼──────┐
-                │ assigned │
+                └──┬───┘          ▲
+                   │ assign       │ unassign
+                ┌──▼──────┐       │
+                │ assigned ├──────┘
                 └──┬───────┘
                    │ work starts
              ┌─────▼───────┐
@@ -98,8 +98,8 @@ history:
 
 Valid transitions:
 - `open` → `assigned`
-- `assigned` → `in-progress`
-- `in-progress` → `review` | `blocked` | `done` (skip review for non-code tasks)
+- `assigned` → `in-progress` | `open` (unassign)
+- `in-progress` → `review` | `blocked` | `done` | `open` (skip review for non-code tasks)
 - `blocked` → `in-progress` (unblocked)
 - `review` → `done` | `in-progress` (review rejected, needs rework)
 - Any state → `cancelled`
@@ -150,10 +150,13 @@ loom issue create "Update all components to use theme tokens" --type task --pare
 loom issue update LOOM-005-01 --status in-progress
 loom issue update LOOM-005-01 --status done
 
+# Unassign an issue
+loom issue update LOOM-005-01 --unassign
+
 # View the board
 loom issue list
-loom issue list --tree          # show parent/child hierarchy
-loom issue list --tree LOOM-005 # show tree for one epic
+loom issue list --tree           # show parent/child hierarchy
+loom issue list --ready          # only dependency-ready issues
 ```
 
 ## Tree View Output

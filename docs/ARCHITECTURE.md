@@ -95,14 +95,15 @@ Agent A                    .loom/mail/              Agent B
 │                                             │
 │  ┌─────────┐  ┌──────────┐  ┌───────────┐  │
 │  │ CLI     │  │ Daemon   │  │ Dashboard │  │
-│  │ (cobra) │  │ (gorout.)│  │ (bubbletea│  │
+│  │ (cobra) │  │ (re-exec)│  │ (bubbletea│  │
 │  └────┬────┘  └────┬─────┘  └─────┬─────┘  │
 │       │            │               │        │
 │  ┌────▼────────────▼───────────────▼─────┐  │
 │  │          Internal Modules             │  │
 │  │                                       │  │
-│  │  agent/    issue/    mail/    memory/  │  │
-│  │  worktree/ acp/      config/  store/   │  │
+│  │  agent/   issue/   mail/    memory/   │  │
+│  │  acp/     config/  store/   worktree/ │  │
+│  │  mcp/     lock/    nudge/   cli/      │  │
 │  └───────────────────┬───────────────────┘  │
 │                      │                      │
 │              ┌───────▼───────┐              │
@@ -113,25 +114,30 @@ Agent A                    .loom/mail/              Agent B
 
 ### Daemon
 
-The daemon is a background goroutine started by `loom start`. It:
+The daemon self-daemonizes by re-exec with `LOOM_DAEMON=1` env var (not fork). It:
 1. Polls `.loom/issues/` for new/changed issue files (every 2s)
 2. Polls `.loom/mail/inbox/*/` for new messages (every 2s)
-3. Checks agent heartbeats (every 30s)
-4. Delivers notifications via ACP prompts
-5. Cleans up dead agents (stale heartbeat > configurable timeout)
+3. Polls for pending-acp agents to activate (every 2s)
+4. Monitors ACP output from active agents (every 1s)
+5. Checks agent heartbeats (every 30s)
+6. Runs worktree garbage collection (every 5min)
+7. Delivers notifications via ACP prompts
+8. Cleans up dead agents (stale heartbeat > configurable timeout)
+9. Auto-shuts down after idle timeout (default 5min with no active agents/issues)
 
-The daemon runs inside the `loom start` process. It does NOT require a separate process.
+The daemon exposes a Unix socket API at `.loom/daemon.sock` for commands like nudge, kill, cancel, and message delivery.
 
 ### MCP Server (Optional, Recommended)
 
-A Loom MCP server that agents can connect to, providing native tool access:
-- `loom_mail_send` / `loom_mail_read`
-- `loom_issue_update` / `loom_issue_create`
-- `loom_memory_add` / `loom_memory_search`
-- `loom_worktree_status`
-- `loom_agent_heartbeat`
+A Loom MCP server using stdio JSON-RPC transport that agents connect to, providing native tool access:
+- `loom_mail_send` / `loom_mail_read` / `loom_mail_count`
+- `loom_issue_show` / `loom_issue_update` / `loom_issue_create` / `loom_issue_close` / `loom_issue_list`
+- `loom_memory_add` / `loom_memory_search` / `loom_memory_list`
+- `loom_lock_acquire` / `loom_lock_release` / `loom_lock_check`
+- `loom_agent_heartbeat` / `loom_agent_status` / `loom_agent_kill`
+- `loom_worktree_remove`
 
-This is cleaner than agents shelling out via execute_bash. The MCP server is built into the loom binary (`loom mcp-server`) and agents connect to it via kiro-cli's MCP configuration.
+This is cleaner than agents shelling out via execute_bash. Each agent gets its own MCP server instance (`loom mcp-server --agent-id <id>`) that knows the agent's identity.
 
 See [Integration](INTEGRATION.md) for details.
 
@@ -140,7 +146,8 @@ See [Integration](INTEGRATION.md) for details.
 ```
 .loom/
 ├── config.yaml                    # System configuration
-├── hive.lock                      # PID lock file (prevent double-start)
+├── loom.lock                      # PID lock file (prevent double-start)
+├── daemon.sock                    # Unix socket for daemon API
 │
 ├── agents/                        # Agent registry + state
 │   ├── orchestrator.yaml          # {id, role, status, pid, heartbeat}
@@ -166,21 +173,18 @@ See [Integration](INTEGRATION.md) for details.
 │   └── conventions/               # "All API handlers follow this pattern"
 │
 ├── worktrees/                     # Git worktrees (builder isolation)
-│   ├── loom-LOOM-001-01-login-form/
-│   └── loom-LOOM-002-api-timeout/
+│   ├── LOOM-001-01-login-form/
+│   └── LOOM-002-api-timeout/
 │
-├── plans/                         # Feature breakdowns from leads
-│   └── LOOM-001/
-│       ├── blueprint.md           # Architecture from lead
-│       └── tasks.yaml             # Work items + dependency graph
+├── plans/                         # Feature breakdowns from leads (reserved)
 │
-├── artifacts/                     # Agent outputs
-│   ├── reviews/                   # Code review reports
-│   ├── research/                  # Research findings
-│   └── patches/                   # Completed diffs before merge
+├── artifacts/                     # Agent outputs (reserved)
+│   ├── reviews/
+│   ├── research/
+│   └── patches/
 │
 ├── locks/                         # File-level locks (conflict prevention)
-│   └── src__auth__login.ts.lock   # Path encoded with __ separators
+│   └── src__auth__login.ts.lock.yaml  # Path encoded with __ separators
 │
 ├── logs/                          # Per-agent session logs
 │   ├── orchestrator.log
@@ -212,7 +216,7 @@ See [Integration](INTEGRATION.md) for details.
 4. Lead can re-spawn a replacement worker or reassign the task
 
 ### Daemon Crash
-1. `loom start` checks for existing `.loom/hive.lock`
+1. `loom start` checks for existing `.loom/loom.lock`
 2. If lock exists but process is dead → clean up orphaned state
 3. Re-read all issue/agent/mail state from disk (it's all files)
 4. Resume monitoring
@@ -233,6 +237,7 @@ limits:
   max_worktrees: 4
   max_agents_per_lead: 3
   heartbeat_timeout_seconds: 300
+  idle_timeout_seconds: 600
 merge:
   strategy: squash        # squash | merge | rebase
   auto_delete_branch: true
@@ -241,9 +246,28 @@ polling:
   issue_interval_ms: 2000
   mail_interval_ms: 2000
   heartbeat_interval_ms: 30000
+  pending_agents_interval_ms: 2000
+  acp_output_interval_ms: 1000
+  worktree_gc_interval_ms: 300000
+  idle_shutdown_seconds: 300
 kiro:
   command: kiro-cli       # path to kiro-cli binary
+  default_mode: acp       # must be "acp"
+models:                   # per-role model selection
+  orchestrator: sonnet
+  lead: opus
+  builder: opus
+  reviewer: opus
+  explorer: haiku
+  researcher: sonnet
 mcp:
   enabled: true           # run built-in MCP server for agents
-  port: 0                 # 0 = auto-assign
+  port: 0                 # 0 = auto-assign (stdio transport)
+deny:                     # tool/command deny lists for agents
+  tools: []
+  commands:
+    - "git merge*"
+    - "git push*"
+    - "git reset --hard*"
+    # ... (see config.go DefaultConfig for full list)
 ```

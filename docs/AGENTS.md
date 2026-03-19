@@ -49,50 +49,48 @@
 ## Agent Lifecycle
 
 ```
-                    ┌─────────┐
-                    │  SPAWN  │
-                    └────┬────┘
-                         │
+                    ┌─────────────┐
+                    │ PENDING-ACP │
+                    └──────┬──────┘
+                           │
               Create agent YAML in .loom/agents/
-              Start kiro-cli ACP subprocess
               Create mailbox in .loom/mail/inbox/
-                         │
-                    ┌────▼────┐
-                    │ ACTIVE  │◄──────────────────┐
-                    └────┬────┘                   │
-                         │                        │
-              Agent works, sends heartbeats       │
-              Sends/receives mail                 │
-              Updates issues                      │
-                         │                        │
-                    ┌────▼────┐              ┌────┴────┐
-                    │  DONE   │              │ BLOCKED │
-                    └────┬────┘              └─────────┘
-                         │                   (sends blocker mail,
-              Send completion mail            waits for resolution)
-              Close assigned issues
-                         │
-                    ┌────▼────┐
-                    │ CLEANUP │
-                    └────┬────┘
-                         │
-              Archive mail
-              Remove worktree (if builder, after merge)
-              Delete agent YAML
-              Kill ACP subprocess
-              Remove mailbox
-                         │
-                    ┌────▼────┐
-                    │  GONE   │
-                    └─────────┘
+                           │
+                    ┌──────▼──────┐
+                    │ ACTIVATING  │
+                    └──────┬──────┘
+                           │
+              Daemon creates ACP client subprocess
+              Send agent's prompt via ACP
+                           │
+                    ┌──────▼──────┐
+                    │   ACTIVE    │
+                    └──────┬──────┘
+                           │
+              Agent works, sends heartbeats
+              Sends/receives mail
+              Updates issues
+                           │
+              (heartbeat timeout or process exit)
+                           │
+                    ┌──────▼──────┐
+                    │    DEAD     │
+                    └──────┬──────┘
+                           │
+              Daemon notifies parent agent
+              Worktree preserved for inspection
+              Inbox GC'd on deregister
+                           │
+                    ┌──────▼──────┐
+                    │    GONE     │
+                    └─────────────┘
 ```
 
 ### Agent States
-- `spawning` — being created, not yet ready
-- `idle` — ready, waiting for work
+- `pending-acp` — registered, waiting for daemon to create ACP session
+- `activating` — ACP session being initialized
 - `active` — working on a task
-- `blocked` — waiting on dependency or resolution
-- `done` — completed work, awaiting cleanup
+- `idle` — ready, waiting for work
 - `dead` — crashed or timed out (detected by heartbeat monitor)
 
 ---
@@ -103,34 +101,40 @@
 # .loom/agents/builder-017.yaml
 id: builder-017
 role: builder                    # orchestrator | lead | builder | reviewer | explorer | researcher
-status: active                   # spawning | idle | active | blocked | done | dead
+status: active                   # pending-acp | activating | active | idle | dead
 pid: 54321                       # kiro-cli process ID
 spawned_by: lead-auth            # parent agent
 spawned_at: 2026-03-09T18:40:00-04:00
 heartbeat: 2026-03-09T18:52:30-04:00
 assigned_issues:
   - LOOM-001-01
-worktree: loom-LOOM-001-01-login-form
-file_scope:
+worktree: LOOM-001-01-login-form
+acp_session_id: "sess-abc123"    # ACP session identifier
+initial_task: "Implement login form validation"
+nudge_count: 0
+last_nudge: null
+file_scope:                      # file/directory scope hints (from --scope)
   - src/auth/login.ts
   - src/auth/types.ts
 config:
+  kiro_mode: acp
   mcp_enabled: true
+  model: opus                    # model override (from --model or config)
 ```
 
 ---
 
 ## Agent Spawning
 
-When the daemon spawns an agent:
+When an agent is spawned (via `loom spawn`):
 
-1. Generate agent ID: `{role}-{3-digit-counter}` (e.g., `builder-017`)
+1. Generate agent ID: `{role}-{3-digit-counter}` (e.g., `builder-017`). Exception: `orchestrator` always returns `"orchestrator"`.
 2. Write agent YAML to `.loom/agents/{id}.yaml` with `status: pending-acp`
 3. Create mailbox directory `.loom/mail/inbox/{id}/`
 4. If builder: create worktree (see [Worktrees](WORKTREES.md))
-5. If builder and `--scope` was provided: store file-scope hints in agent YAML (`file_scope` field) and set `LOOM_FILE_SCOPE` in the agent's environment
-6. Daemon's `watchPendingAgents()` detects the pending-acp agent and creates an ACP client subprocess
-7. Send the agent's prompt via ACP protocol
+5. If builder and `--scope` was provided: store file-scope hints in agent YAML (`file_scope` field)
+6. Daemon's `watchPendingAgents()` detects the pending-acp agent, sets status to `activating`, and creates an ACP client subprocess
+7. Send the agent's prompt via ACP protocol, status becomes `active`
 
 ### Prompt Injection
 

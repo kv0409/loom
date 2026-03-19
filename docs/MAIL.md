@@ -50,7 +50,7 @@ body: |
   - Password minimum 8 chars
   - Show inline errors
   
-  Working in worktree: loom-LOOM-001-01-login-form
+  Working in worktree: LOOM-001-01-login-form
   
   When done, run: loom mail send lead-auth "LOOM-001-01 complete" --type completion
 read: false                      # set to true when agent reads it
@@ -98,7 +98,7 @@ Agents are instructed via their prompt templates to send mail at these points:
 ## Delivery Mechanism
 
 1. Sender runs: `loom mail send <to> "<subject>" --type <type> --body "<body>"`
-2. Loom CLI writes YAML file to `.loom/mail/inbox/<to>/<timestamp>-<from>-<slug>.yaml`
+2. Loom CLI writes YAML file to `.loom/mail/inbox/<to>/<timestamp>-<from>-<slug>-<nonce>.yaml` (nonce for collision avoidance)
 3. Daemon's mail watcher goroutine detects new file (polling every 2s)
 4. Daemon sends ACP prompt to agent:
    ```

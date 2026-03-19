@@ -7,35 +7,35 @@ Each builder agent works in an isolated git worktree inside `.loom/worktrees/`. 
 ## Naming Convention
 
 ```
-.loom/worktrees/loom-{issue-id}-{slug}/
+.loom/worktrees/{issue-id}-{slug}/
 ```
 
-Branch name:
+Branch name (same as directory name):
 ```
-loom/{issue-id}-{slug}
+{issue-id}-{slug}
 ```
 
 Examples:
 ```
-Worktree: .loom/worktrees/loom-LOOM-001-01-login-form/
-Branch:   loom/LOOM-001-01-login-form
+Worktree: .loom/worktrees/LOOM-001-01-login-form/
+Branch:   LOOM-001-01-login-form
 
-Worktree: .loom/worktrees/loom-LOOM-002-api-timeout/
-Branch:   loom/LOOM-002-api-timeout
+Worktree: .loom/worktrees/LOOM-002-api-timeout/
+Branch:   LOOM-002-api-timeout
 ```
 
-The `loom/` branch prefix makes it easy to identify and clean up loom-created branches.
+The `parseNameConvention()` function uses regex `^(LOOM-\d+(?:-\d+)?)` to extract the issue ID from the worktree/branch name. Non-matching names silently break issue association.
 
 ## Lifecycle
 
 ### Creation (when builder spawns)
 
 ```bash
-# 1. Create worktree from current HEAD of main branch
-git worktree add .loom/worktrees/loom-LOOM-001-01-login-form -b loom/LOOM-001-01-login-form
+# 1. Create worktree from current HEAD of default branch
+git worktree add .loom/worktrees/LOOM-001-01-login-form -b LOOM-001-01-login-form
 
 # 2. Record in agent YAML
-# agents/builder-017.yaml → worktree: loom-LOOM-001-01-login-form
+# agents/builder-017.yaml → worktree: LOOM-001-01-login-form
 
 # 3. Builder's kiro-cli working directory is set to the worktree path
 ```
@@ -51,21 +51,22 @@ git worktree add .loom/worktrees/loom-LOOM-001-01-login-form -b loom/LOOM-001-01
 
 ```bash
 # 1. Builder commits final state
-cd .loom/worktrees/loom-LOOM-001-01-login-form
+cd .loom/worktrees/LOOM-001-01-login-form
 git add -A && git commit -m "feat(auth): implement login form validation"
 
 # 2. Builder sends completion mail to lead
 loom mail send lead-auth "LOOM-001-01 complete" --type completion
 
 # 3. Lead reviews (or assigns reviewer)
-# 4. Lead merges:
-git checkout main
-git merge --squash loom/LOOM-001-01-login-form
-git commit -m "feat(auth): login form validation (LOOM-001-01)"
+# 4. Lead merges (or use loom merge):
+loom merge LOOM-001-01 --cleanup
 
-# 5. Cleanup
-git worktree remove .loom/worktrees/loom-LOOM-001-01-login-form
-git branch -d loom/LOOM-001-01-login-form
+# 5. Or manually:
+git checkout main
+git merge --squash LOOM-001-01-login-form
+git commit -m "feat(auth): login form validation (LOOM-001-01)"
+git worktree remove .loom/worktrees/LOOM-001-01-login-form
+git branch -d LOOM-001-01-login-form
 ```
 
 ### Cleanup on Agent Death
@@ -135,13 +136,13 @@ Leads should assign tasks with non-overlapping file sets. The explorer agent can
 # List all worktrees
 $ loom worktree list
 WORKTREE                              AGENT        ISSUE        STATUS    FILES CHANGED
-loom-LOOM-001-01-login-form           builder-017  LOOM-001-01  active    4 files (+120, -15)
-loom-LOOM-002-api-timeout             builder-019  LOOM-002     active    2 files (+30, -8)
+LOOM-001-01-login-form                builder-017  LOOM-001-01  active    4 files (+120, -15)
+LOOM-002-api-timeout                  builder-019  LOOM-002     active    2 files (+30, -8)
 
 # Show detail
-$ loom worktree show loom-LOOM-001-01-login-form
-Path:    .loom/worktrees/loom-LOOM-001-01-login-form
-Branch:  loom/LOOM-001-01-login-form
+$ loom worktree show LOOM-001-01-login-form
+Path:    .loom/worktrees/LOOM-001-01-login-form
+Branch:  LOOM-001-01-login-form
 Agent:   builder-017
 Issue:   LOOM-001-01
 Status:  active

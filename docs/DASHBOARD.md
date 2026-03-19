@@ -12,38 +12,27 @@ loom dash
 
 Runs in the current terminal. Reads from `.loom/` files directly.
 
-## Main View
+## Views
 
-```
-┌─ LOOM ─────────────────────────────────────────────────────────────────┐
-│                                                                        │
-│  AGENTS (5 active, 1 idle)                    ISSUES                   │
-│  ┌──────────────┬──────────┬───────────────┐  ┌────────┬────────────┐  │
-│  │ Agent        │ Role     │ Status        │  │ Status │ Count      │  │
-│  ├──────────────┼──────────┼───────────────┤  ├────────┼────────────┤  │
-│  │ orchestrator │ queen    │ ● idle        │  │ Open   │ ████ 2     │  │
-│  │ lead-auth    │ lead     │ ● active      │  │ WIP    │ ██████ 3   │  │
-│  │ builder-017  │ builder  │ ● active      │  │ Review │ ██ 1       │  │
-│  │ builder-018  │ builder  │ ● active      │  │ Done   │ ████████ 4 │  │
-│  │ builder-019  │ builder  │ ⚠ blocked     │  │ Block  │ █ 1        │  │
-│  │ reviewer-003 │ reviewer │ ● active      │  └────────┴────────────┘  │
-│  └──────────────┴──────────┴───────────────┘                           │
-│                                                                        │
-│  WORKTREES (3 active / 4 max)                 MAIL (2 unread)          │
-│  ┌────────────────────────────┬─────────────┐ ┌────────────────────┐   │
-│  │ loom-LOOM-001-01-login     │ builder-017 │ │ → builder-019      │   │
-│  │ loom-LOOM-001-02-jwt       │ builder-018 │ │   BLOCKER: dep...  │   │
-│  │ loom-LOOM-002-timeout      │ builder-019 │ │ → lead-auth        │   │
-│  └────────────────────────────┴─────────────┘ │   complete: LOO... │   │
-│                                                └────────────────────┘   │
-│  MEMORY (5 entries)                           RECENT ACTIVITY          │
-│  2 decisions · 2 discoveries · 1 convention   18:52 builder-017 commit │
-│                                                18:51 reviewer-003 start│
-│                                                18:50 builder-019 block │
-│                                                                        │
-│  [a]gents [i]ssues [m]ail [w]orktrees [d]ecisions [l]ogs [?]help     │
-└────────────────────────────────────────────────────────────────────────┘
-```
+The dashboard has these views, accessible via keyboard shortcuts or Tab cycling:
+
+| View | Key | Description |
+|---|---|---|
+| Overview | `0` or `H` | Summary of agents, issues, activity, and attention items |
+| Agents | `a` | Agent list with status, role, heartbeat |
+| Issues | `i` | Issue list with status, assignee, priority |
+| Memory | `d` | Decisions, discoveries, conventions |
+| Activity | `t` | Recent agent activity and tool usage |
+| Worktrees | `w` | Active worktrees with diff stats |
+
+Tab cycles through: Overview → Agents → Issues → Memory → Activity → Worktrees.
+
+Additional views accessible via drill-down (Enter):
+- **Agent Detail** — from Agents view, shows assigned issues, worktree, mail, output
+- **Issue Detail** — from Issues view, shows description, children, related context
+- **Memory Detail** — from Memory view, shows full entry content
+- **Mail Detail** — from Issue/Agent detail views
+- **Diff** — from Worktrees view, shows worktree diff with horizontal scrolling
 
 ## Navigation
 
@@ -51,123 +40,61 @@ Runs in the current terminal. Reads from `.loom/` files directly.
 
 | Key | Action |
 |---|---|
+| `0` or `H` | Switch to Overview |
 | `a` | Switch to Agents view |
 | `i` | Switch to Issues view |
-| `m` | Switch to Mail view |
-| `w` | Switch to Worktrees view |
 | `d` | Switch to Memory/Decisions view |
-| `l` | Switch to Logs view |
+| `t` | Switch to Activity view |
+| `w` | Switch to Worktrees view |
 | `Tab` | Cycle through views |
 | `Enter` | Drill into selected item |
-| `Esc` / `Backspace` | Go back to parent view |
+| `Esc` | Go back to parent view |
 | `j` / `k` or `↓` / `↑` | Navigate list |
-| `/` | Search within current view |
-| `n` | Nudge selected agent (opens input) |
-| `?` | Help overlay |
+| `/` | Search/filter within current view |
 | `q` | Quit dashboard |
+| `Ctrl+C` | Quit dashboard |
 
-## Detail Views
+### Agent-Specific Keys (Agents / Agent Detail views)
 
-### Agent Detail (Enter on an agent)
+| Key | Action |
+|---|---|
+| `n` | Nudge selected agent (opens nudge type selector) |
+| `m` | Message selected agent (opens text input) |
+| `o` | View agent output (Agent Detail only) |
+| `x` | Kill agent (with confirmation) |
 
-```
-┌─ Agent: builder-017 ──────────────────────────────────────────────────┐
-│                                                                        │
-│  Role: builder          Status: ● active       Heartbeat: 3s ago      │
-│  Spawned by: lead-auth  Spawned at: 18:40:00   PID: 54321             │
-│                                                                        │
-│  ASSIGNED ISSUES                                                       │
-│  └── LOOM-001-01 [in-progress] Login form validation                  │
-│                                                                        │
-│  WORKTREE: loom-LOOM-001-01-login-form                                │
-│  Branch: loom/LOOM-001-01-login-form                                  │
-│  Commits: 3 | Files changed: 4 (+120, -15)                            │
-│                                                                        │
-│  RECENT MAIL                                                           │
-│  ← 18:40 lead-auth: task assignment                                   │
-│  → 18:41 lead-auth: status (started)                                  │
-│                                                                        │
-│  LOCKS HELD                                                            │
-│  src/components/LoginForm.tsx                                          │
-│  src/utils/validation.ts                                               │
-│                                                                        │
-│  [n]udge  [k]ill  [Esc] back                               │
-└────────────────────────────────────────────────────────────────────────┘
-```
+### Diff View Keys
 
-### Issue Detail (Enter on an issue)
+| Key | Action |
+|---|---|
+| `j` / `k` or `↓` / `↑` | Scroll vertically |
+| `h` / `l` or `←` / `→` | Scroll horizontally |
 
-```
-┌─ LOOM-001: Build authentication system ───────────────────────────────┐
-│                                                                        │
-│  Type: epic    Priority: high    Status: in-progress                  │
-│  Assignee: lead-auth             Created: 18:34 by human              │
-│                                                                        │
-│  DESCRIPTION                                                           │
-│  Implement JWT-based authentication with login, registration,         │
-│  and token refresh endpoints. Include middleware for protected routes. │
-│                                                                        │
-│  CHILDREN                                                              │
-│  ├── LOOM-001-01 [done]        Login form validation (builder-017)    │
-│  ├── LOOM-001-02 [review]      JWT middleware (builder-018)           │
-│  └── LOOM-001-03 [assigned]    Token refresh (builder-019)            │
-│      └── depends on: LOOM-001-02                                      │
-│                                                                        │
-│  RELATED DECISIONS                                                     │
-│  └── DEC-001: Use JWT for auth tokens instead of sessions             │
-│                                                                        │
-│  HISTORY                                                               │
-│  18:34 created by human                                                │
-│  18:35 assigned to lead-auth by orchestrator                          │
-│  18:36 status → in-progress by lead-auth                              │
-│                                                                        │
-│  [Esc] back                                                            │
-└────────────────────────────────────────────────────────────────────────┘
-```
+## Search / Filter
 
-### Log View
+Press `/` in any list view to activate search. Type a query and press Enter to filter. The search matches against visible fields (agent names, issue titles/descriptions, memory content, etc.). Press Esc to clear the filter.
 
-```
-┌─ Logs ────────────────────────────────────────────────────────────────┐
-│  Filter: [all agents ▼]  [all levels ▼]  Search: [____________]      │
-│                                                                        │
-│  18:52:30 [builder-017] Committing changes to LoginForm.tsx           │
-│  18:52:28 [reviewer-003] Starting review of LOOM-001-01              │
-│  18:52:15 [builder-019] BLOCKED: LOOM-001-02 not yet merged          │
-│  18:52:10 [lead-auth]   Assigned reviewer-003 to review LOOM-001-01  │
-│  18:51:45 [builder-017] Mail sent: completion to lead-auth            │
-│  18:51:30 [builder-018] Working on JWT middleware                     │
-│  18:51:00 [orchestrator] All agents healthy                           │
-│                                                                        │
-│  [↑↓] scroll  [f] filter  [/] search  [Esc] back                    │
-└────────────────────────────────────────────────────────────────────────┘
-```
+## Compose Overlay
+
+Press `Ctrl+S` to send a composed mail message. The compose form (built with `huh`) allows setting To, Subject, Body, Type, and Priority fields.
 
 ## Refresh
 
-The dashboard polls `.loom/` files every 1 second for updates. No websockets, no IPC — just filesystem reads. This keeps it simple and means the dashboard can run from any terminal.
-
-## Interactions from Dashboard
-
-| Action | How | Effect |
-|---|---|---|
-| Nudge agent | Select agent → `n` → type message → Enter | Sends ACP prompt to agent |
-| Kill agent | Select agent → `k` → confirm | Stops agent, preserves worktree |
-| Create issue | `i` view → `c` → fill form | Creates issue, triggers auto-pickup |
-| Search memory | `d` view → `/` → type query | Keyword search across all memory |
+The dashboard polls `.loom/` files every 2 seconds for updates. No websockets, no IPC — just filesystem reads. This keeps it simple and means the dashboard can run from any terminal.
 
 ## Color Scheme
 
-Using lipgloss for consistent styling:
+Uses the Tokyo Night truecolor palette via lipgloss:
 
 | Element | Color |
 |---|---|
-| Active/healthy | Green |
-| Blocked/warning | Yellow/amber |
-| Dead/error | Red |
-| Idle | Dim/gray |
-| Headers | Bold white |
-| Selected item | Inverse/highlight |
-| Borders | Subtle gray |
+| Active/healthy | Green (`#9ECE6A`) |
+| Blocked/warning | Yellow (`#E0AF68`) |
+| Dead/error | Red (`#F7768E`) |
+| Idle | Gray (`#565F89`) |
+| Primary/selected | Blue (`#7AA2F7`) |
+| Review/info | Cyan (`#7DCFFF`) |
+| Lead | Magenta (`#BB9AF7`) |
+| Borders | Subtle (`#414868`) |
 
-Respects terminal color capabilities (true color, 256, 16).
+Lip Gloss automatically downgrades truecolor to ANSI 256 or 16-color in lesser terminals.

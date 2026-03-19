@@ -32,15 +32,15 @@ Cons: Each call spawns a new process, parses YAML, writes files. Slight overhead
 
 ### Mode 2: MCP Server (Recommended)
 
-Loom includes a built-in MCP server that agents connect to via kiro-cli's MCP configuration. This gives agents native tool access.
+Loom includes a built-in MCP server using stdio JSON-RPC transport. Each agent gets its own MCP server instance that knows the agent's identity.
 
 #### Starting the MCP Server
 
-The MCP server starts automatically with `loom start` (if `mcp.enabled: true` in config). It runs as a subprocess of the loom daemon.
+The MCP server is started per-agent as a stdio subprocess. Each agent's kiro-cli spawns its own instance:
 
 ```bash
-# Or manually:
-loom mcp-server --port 9876
+loom mcp-server --agent-id builder-017
+loom mcp-server --agent-id builder-017 --loom-root /path/to/.loom
 ```
 
 #### MCP Tools Exposed
@@ -53,6 +53,7 @@ loom mcp-server --port 9876
 | `loom_issue_show` | Get issue details |
 | `loom_issue_update` | Update issue status/fields |
 | `loom_issue_create` | Create a sub-issue |
+| `loom_issue_close` | Close an issue |
 | `loom_issue_list` | List issues with filters |
 | `loom_memory_add` | Record a decision/discovery/convention |
 | `loom_memory_search` | Search memory entries |
@@ -62,18 +63,13 @@ loom mcp-server --port 9876
 | `loom_lock_check` | Check if a file is locked |
 | `loom_agent_heartbeat` | Update heartbeat timestamp |
 | `loom_agent_status` | Report current status |
-| `loom_worktree_info` | Get info about own worktree |
+| `loom_agent_kill` | Kill another agent |
+| `loom_worktree_remove` | Remove a worktree |
 
 #### Agent MCP Configuration
 
-When spawning an agent, loom configures kiro-cli to connect to the MCP server. This is done by:
+When spawning an agent, loom configures kiro-cli to connect to the MCP server via stdio transport. Each agent gets its own MCP server instance:
 
-1. Writing a temporary kiro config that includes the MCP server connection
-2. Starting kiro-cli with that config
-
-The exact mechanism depends on how kiro-cli supports MCP configuration:
-
-**Option A: Config file**
 ```json
 // .loom/agents/builder-017.kiro.json
 {
@@ -89,13 +85,7 @@ The exact mechanism depends on how kiro-cli supports MCP configuration:
 }
 ```
 
-**Option B: CLI flags** (if kiro-cli supports it)
-```bash
-kiro-cli chat --mcp-server "loom:loom mcp-server --agent-id builder-017"
-```
-
-**Option C: Stdio MCP** (most likely for kiro-cli)
-The MCP server runs as a stdio process that kiro-cli spawns. Each agent gets its own MCP server instance that knows the agent's identity.
+The MCP server runs as a stdio process that kiro-cli spawns. It communicates via JSON-RPC over stdin/stdout.
 
 #### MCP Tool Schemas
 
@@ -275,9 +265,8 @@ LOOM_ROLE=builder
 LOOM_ROOT=/path/to/project/.loom
 LOOM_PROJECT_ROOT=/path/to/project
 LOOM_PARENT_AGENT=lead-auth
-LOOM_WORKTREE=/path/to/project/.loom/worktrees/loom-LOOM-001-01-login-form
+LOOM_WORKTREE=/path/to/project/.loom/worktrees/LOOM-001-01-login-form
 LOOM_FILE_SCOPE=src/auth/login.ts,src/auth/types.ts  # if --scope provided
-LOOM_MCP_PORT=9876          # if MCP enabled
 ```
 
 ## Extension Points
@@ -289,11 +278,11 @@ Users can add custom templates to `.loom/templates/` for specialized roles (e.g.
 The issue type field is a free string. Users can define project-specific types beyond the defaults (epic, task, bug, spike).
 
 ### Hooks Directory
-Future: `.loom/hooks/` for user-defined scripts that run on events:
-- `on-issue-create.sh`
-- `on-agent-spawn.sh`
-- `on-merge.sh`
-- `on-blocker.sh`
+Loom installs hook scripts during `loom init` from embedded assets (`agents/hooks/`):
+- `loom-tool-logger.sh` — logs tool usage for activity tracking
+- `loom-worktree-guard.sh` — prevents agents from writing outside their worktree
+
+These are copied to `.loom/` and `.kiro/hooks/` during init. Use `loom init --refresh` to update hooks in existing projects.
 
 ### Plugin MCP Servers
 Agents can connect to additional MCP servers beyond loom's built-in one. Configured per-role in `.loom/config.yaml`:

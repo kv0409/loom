@@ -74,7 +74,7 @@ Build incrementally. Each phase produces a usable (if incomplete) tool.
 - [ ] Mail notifier (poll inboxes, send ACP notifications)
 - [ ] Heartbeat monitor (detect dead agents)
 - [ ] Pending-acp agent watcher (`watchPendingAgents()`)
-- [ ] PID lock file (`hive.lock`)
+- [ ] PID lock file (`loom.lock`)
 - [ ] Graceful shutdown
 - [ ] Crash recovery (detect orphaned state on start)
 

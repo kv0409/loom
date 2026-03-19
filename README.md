@@ -53,20 +53,27 @@ loom update
 
 ```
 loom/
-├── cmd/loom/main.go              # Entrypoint
+├── cmd/loom/main.go              # Entrypoint (monolithic CLI)
 ├── internal/
-│   ├── agent/                    # Agent lifecycle
-│   ├── config/                   # Config loading
-│   ├── dashboard/                # bubbletea TUI
-│   ├── issue/                    # Issue tracker
-│   ├── mail/                     # Mail system
-│   ├── memory/                   # Decision/discovery store
-│   ├── orchestrator/             # Core orchestration loop
 │   ├── acp/                      # ACP client wrapper
-│   ├── worktree/                 # Git worktree lifecycle
-│   └── store/                    # YAML file helpers
-├── mcp/                          # Loom MCP server (for agent integration)
+│   ├── agent/                    # Agent lifecycle & registry
+│   ├── cli/                      # CLI output helpers
+│   ├── config/                   # Config loading & validation
+│   ├── daemon/                   # Daemon process, API, lock, doctor
+│   ├── dashboard/                # bubbletea TUI
+│   │   └── backend/              # Dashboard data loading
+│   ├── issue/                    # Issue tracker & merge
+│   ├── lock/                     # File-level advisory locks
+│   ├── mail/                     # Async mail system
+│   ├── mcp/                      # MCP server (stdio JSON-RPC)
+│   ├── memory/                   # Decision/discovery/convention store
+│   ├── nudge/                    # Predefined nudge types
+│   ├── store/                    # YAML file helpers
+│   └── worktree/                 # Git worktree lifecycle
+├── agents/                       # Embedded agent JSON configs (go:embed)
+│   └── hooks/                    # Embedded hook scripts
 ├── templates/                    # Agent prompt templates (go:embed)
+├── scripts/                      # Release tooling
 ├── docs/                         # Design documentation
 ├── go.mod
 ├── Makefile
@@ -75,4 +82,4 @@ loom/
 
 ## Status
 
-**Planning phase.** See docs/ for the full design.
+**Active development.** Core systems (daemon, agents, issues, mail, memory, worktrees, MCP server, TUI dashboard) are implemented and functional. See docs/ for design details.
