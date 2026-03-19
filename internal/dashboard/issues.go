@@ -71,7 +71,7 @@ func (m Model) renderIssues() string {
 
 	var content string
 	if len(display) == 0 {
-		t := newLGTable(headers, nil, -1, avail)
+		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No issues — loom issue create to add one", avail)
 	} else {
 		// Active section.
@@ -81,7 +81,7 @@ func (m Model) renderIssues() string {
 		if activeSelected {
 			sel = activeCursor
 		}
-		content = newLGTable(headers, activeRows, sel, avail).Render() + "\n"
+		content = newLGTable(headers, activeRows, sel, avail, nil).Render() + "\n"
 
 		// Done section with separator (headerless — avoids duplicate column headers).
 		if doneStart < end {
@@ -93,7 +93,7 @@ func (m Model) renderIssues() string {
 			if doneSelected {
 				doneSel = doneCursor
 			}
-			content += newLGTableHeaderless(doneRows, doneSel, avail).Render() + "\n"
+			content += newLGTableHeaderless(doneRows, doneSel, avail, nil).Render() + "\n"
 		}
 	}
 

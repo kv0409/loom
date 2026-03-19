@@ -24,10 +24,10 @@ func (m Model) renderMemory() string {
 
 	var content string
 	if len(memories) == 0 {
-		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, nil, -1, avail)
+		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No memory entries yet", avail)
 	} else {
-		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, rows, m.cursor-start, avail)
+		t := newLGTable([]string{"ID", "TYPE", "TITLE", "DETAIL"}, rows, m.cursor-start, avail, nil)
 		content = t.Render() + "\n"
 	}
 

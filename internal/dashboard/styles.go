@@ -326,6 +326,13 @@ var (
 	activityIconStyle = lipgloss.NewStyle().Bold(true).Width(2)
 )
 
+// CellStyler is a callback that returns the lipgloss.Style for a given table
+// cell. row and col are 0-based data indices; isSelected is true when the row
+// matches the current cursor. Views provide a CellStyler to apply per-cell
+// foreground colors (e.g. agent color, status color) while letting the table
+// handle selection background uniformly.
+type CellStyler func(row, col int, isSelected bool) lipgloss.Style
+
 // Table styles used by newLGTable and newLGTableHeaderless in render_helpers.go.
 var (
 	lgTableHeaderStyle   = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)

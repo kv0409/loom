@@ -103,10 +103,10 @@ func (m Model) renderActivity() string {
 
 	var content string
 	if len(entries) == 0 {
-		t := newLGTable(headers, nil, -1, avail)
+		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail)
+		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
 		content = t.Render() + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)

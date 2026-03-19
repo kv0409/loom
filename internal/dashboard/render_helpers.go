@@ -39,7 +39,10 @@ func fmtTimeFull(t time.Time) string {
 // newLGTable creates a borderless lipgloss/table with headers, styled via StyleFunc.
 // selectedRow is the data-row index (0-based) that should be highlighted, or -1 for none.
 // width is the total available width (typically availableWidth(m.width)).
-func newLGTable(headers []string, rows [][]string, selectedRow, width int) *lgtable.Table {
+// styler is an optional CellStyler callback; when non-nil it controls per-cell styling
+// (the view decides foreground colors based on data). When nil, the default header/cell/selected
+// styles are applied.
+func newLGTable(headers []string, rows [][]string, selectedRow, width int, styler CellStyler) *lgtable.Table {
 	return lgtable.New().
 		Headers(headers...).
 		Rows(rows...).
@@ -56,6 +59,9 @@ func newLGTable(headers []string, rows [][]string, selectedRow, width int) *lgta
 			if row == lgtable.HeaderRow {
 				return lgTableHeaderStyle
 			}
+			if styler != nil {
+				return styler(row, col, row == selectedRow)
+			}
 			if row == selectedRow {
 				return lgTableSelectedStyle
 			}
@@ -66,7 +72,8 @@ func newLGTable(headers []string, rows [][]string, selectedRow, width int) *lgta
 // newLGTableHeaderless creates a borderless lipgloss/table with no headers.
 // selectedRow is the data-row index (0-based) that should be highlighted, or -1 for none.
 // width is the total available width.
-func newLGTableHeaderless(rows [][]string, selectedRow, width int) *lgtable.Table {
+// styler is an optional CellStyler callback; when non-nil it controls per-cell styling.
+func newLGTableHeaderless(rows [][]string, selectedRow, width int, styler CellStyler) *lgtable.Table {
 	return lgtable.New().
 		Rows(rows...).
 		Width(width).
@@ -79,6 +86,9 @@ func newLGTableHeaderless(rows [][]string, selectedRow, width int) *lgtable.Tabl
 		BorderColumn(false).
 		BorderRow(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
+			if styler != nil {
+				return styler(row, col, row == selectedRow)
+			}
 			if row == selectedRow {
 				return lgTableSelectedStyle
 			}

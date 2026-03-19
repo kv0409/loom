@@ -61,10 +61,10 @@ func (m Model) renderAgents() string {
 
 	var content string
 	if len(agents) == 0 {
-		t := newLGTable(headers, nil, -1, avail)
+		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No agents running — loom spawn to start", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail)
+		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
 		content = t.Render() + "\n"
 	}
 

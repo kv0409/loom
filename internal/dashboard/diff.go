@@ -30,10 +30,10 @@ func (m Model) renderWorktrees() string {
 
 	var content string
 	if len(worktrees) == 0 {
-		t := newLGTable(headers, nil, -1, avail)
+		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No worktrees — builders create them automatically", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail)
+		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
 		content = t.Render() + "\n"
 	}
 
