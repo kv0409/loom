@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"regexp"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
@@ -118,6 +119,29 @@ func statusIndicator(status string) string {
 		glyph = g
 	}
 	return statusStyle(status).Render(glyph)
+}
+
+// heartbeatDonut returns a colored donut glyph based on elapsed/timeout fraction.
+func heartbeatDonut(elapsed, timeout time.Duration) string {
+	if timeout <= 0 {
+		return statusIndicator("active")
+	}
+	frac := float64(elapsed) / float64(timeout)
+	var glyph string
+	var c color.Color
+	switch {
+	case frac < 0.2:
+		glyph, c = "●", colGreen
+	case frac < 0.4:
+		glyph, c = "◕", colGreen
+	case frac < 0.6:
+		glyph, c = "◑", colYellow
+	case frac < 0.8:
+		glyph, c = "◔", colYellow
+	default:
+		glyph, c = "○", colRed
+	}
+	return lipgloss.NewStyle().Foreground(c).Render(glyph)
 }
 
 func typeGlyph(issueType string) string {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
@@ -140,7 +141,11 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 		if a.Status == "dead" || a.Status == "error" {
 			continue
 		}
-		label := statusIndicator(a.Status) + " " + agentPillFor(truncate(a.ID, 16), a.ID)
+		indicator := statusIndicator(a.Status)
+		if a.Status == "active" || a.Status == "in-progress" {
+			indicator = heartbeatDonut(time.Since(a.Heartbeat), time.Duration(m.heartbeatTimeoutSec)*time.Second)
+		}
+		label := indicator + " " + agentPillFor(truncate(a.ID, 16), a.ID)
 		focus := idleStyle.Render("idle")
 		if line, ok := lastActivity[a.ID]; ok && line != "" {
 			focus = activeStyle.Render(truncate(formatToolLine(line, fullW-26, projectRoot), fullW-26))
