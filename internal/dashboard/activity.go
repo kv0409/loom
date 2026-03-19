@@ -118,10 +118,10 @@ func (m Model) renderActivity() string {
 
 	var content string
 	if len(entries) == 0 {
-		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8}, ColWidth{2, 4})
+		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8}, ColWidth{2, 6})
 		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8}, ColWidth{2, 4})
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8}, ColWidth{2, 6})
 		content = t.Render() + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)
