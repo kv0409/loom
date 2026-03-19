@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -37,14 +38,30 @@ func (m Model) renderMail() string {
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		msg := messages[i]
-		styledPrio := mailPriorityTag(msg.Priority)
-
+		prio := msg.Priority
+		if prio == "" {
+			prio = "unknown"
+		}
 		subj := msg.Subject
 		if !msg.Read {
 			subj = "● " + subj
 		}
+		rows = append(rows, []string{prio, msg.From, msg.To, msg.Type, fmtTime(msg.Timestamp, false), subj})
+	}
 
-		rows = append(rows, []string{styledPrio, msg.From, msg.To, msg.Type, fmtTime(msg.Timestamp, false), subj})
+	styler := func(row, col int, isSelected bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if isSelected {
+			base = lgTableSelectedStyle
+		}
+		dataIdx := start + row
+		if dataIdx >= len(messages) {
+			return base
+		}
+		if col == 0 { // PRIO
+			return base.Foreground(mailPriorityColor(messages[dataIdx].Priority))
+		}
+		return base
 	}
 
 	var content string
@@ -52,7 +69,7 @@ func (m Model) renderMail() string {
 		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No queued messages", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler)
 		content = t.Render() + "\n"
 	}
 

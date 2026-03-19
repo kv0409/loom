@@ -92,13 +92,29 @@ func (m Model) renderActivity() string {
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		e := entries[i]
-		info := resolveToolInfo(e.Tool)
-		rows = append(rows, []string{
-			agentPillFor(e.AgentID, e.AgentID),
-			activityTimeStyle.Render(e.Time),
-			activityIconStyle.Foreground(info.color).Render(info.icon),
-			e.Detail,
-		})
+		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon, e.Detail})
+	}
+
+	styler := func(row, col int, isSelected bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if isSelected {
+			base = lgTableSelectedStyle
+		}
+		dataIdx := start + row
+		if dataIdx >= len(entries) {
+			return base
+		}
+		e := entries[dataIdx]
+		switch col {
+		case 0: // AGENT
+			return base.Foreground(agentColor(e.AgentID)).Bold(true)
+		case 1: // TIME
+			return base.Foreground(colGray)
+		case 2: // TOOL icon
+			info := resolveToolInfo(e.Tool)
+			return base.Foreground(info.color).Bold(true)
+		}
+		return base
 	}
 
 	var content string
@@ -106,7 +122,7 @@ func (m Model) renderActivity() string {
 		t := newLGTable(headers, nil, -1, avail, nil, ColWidth{1, 8}, ColWidth{2, 4})
 		content = t.Render() + "\n" + renderEmpty("No activity detected", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, nil, ColWidth{1, 8}, ColWidth{2, 4})
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler, ColWidth{1, 8}, ColWidth{2, 4})
 		content = t.Render() + "\n"
 		if len(entries) > vRows {
 			content += fmt.Sprintf("  ... and %d more\n", len(entries)-vRows)

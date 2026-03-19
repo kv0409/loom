@@ -326,6 +326,18 @@ var (
 	activityIconStyle = lipgloss.NewStyle().Bold(true).Width(2)
 )
 
+// mailPriorityColor returns the foreground color for a mail priority level.
+func mailPriorityColor(priority string) color.Color {
+	switch priority {
+	case "critical":
+		return colRed
+	case "normal":
+		return colCyan
+	default:
+		return colGray
+	}
+}
+
 // CellStyler is a callback that returns the lipgloss.Style for a given table
 // cell. row and col are 0-based data indices; isSelected is true when the row
 // matches the current cursor. Views provide a CellStyler to apply per-cell

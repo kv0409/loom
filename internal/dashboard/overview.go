@@ -181,13 +181,26 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	rows := make([][]string, 0, toolLimit)
 	for i := len(m.data.Activity) - toolLimit; i < len(m.data.Activity); i++ {
 		e := m.data.Activity[i]
-		info := resolveToolInfo(e.Tool)
-		rows = append(rows, []string{
-			agentPillFor(e.AgentID, e.AgentID),
-			activityTimeStyle.Render(e.Time),
-			activityIconStyle.Foreground(info.color).Render(info.icon),
-			e.Detail,
-		})
+		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon, e.Detail})
+	}
+
+	activityStart := len(m.data.Activity) - toolLimit
+	styler := func(row, col int, _ bool) lipgloss.Style {
+		base := lgTableCellStyle
+		dataIdx := activityStart + row
+		if dataIdx >= len(m.data.Activity) {
+			return base
+		}
+		e := m.data.Activity[dataIdx]
+		switch col {
+		case 0:
+			return base.Foreground(agentColor(e.AgentID)).Bold(true)
+		case 1:
+			return base.Foreground(colGray)
+		case 2:
+			return base.Foreground(resolveToolInfo(e.Tool).color).Bold(true)
+		}
+		return base
 	}
 
 	unique := map[string]struct{}{}
@@ -199,7 +212,7 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 	if len(rows) == 0 {
 		content = renderEmpty("No recent activity", colW-2)
 	} else {
-		t := newLGTableHeaderless(rows, -1, innerW, nil)
+		t := newLGTableHeaderless(rows, -1, innerW, styler)
 		content = "\n" + t.Render()
 	}
 	return panel(fmt.Sprintf("LATEST SIGNAL (%d agents)", len(unique)), content, colW)

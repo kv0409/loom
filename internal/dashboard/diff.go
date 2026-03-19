@@ -14,18 +14,32 @@ func (m Model) renderWorktrees() string {
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(worktrees), vRows)
 
-	headers := []string{"NAME", "BRANCH", "AGENT", "ISSUE", "DIFF"}
+	headers := []string{"NAME", "BRANCH", "AGENT", "ISSUE", "FILES", "ADD", "DEL"}
 
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		wt := worktrees[i]
-		diff := ""
+		files, add, del := "", "", ""
 		if ds := m.data.DiffStats[wt.Name]; ds != nil && ds.FilesChanged > 0 {
-			diff = fmt.Sprintf("%df ", ds.FilesChanged) +
-				diffAdd.Render(fmt.Sprintf("+%d ", ds.Insertions)) +
-				diffDel.Render(fmt.Sprintf("-%d", ds.Deletions))
+			files = fmt.Sprintf("%d", ds.FilesChanged)
+			add = fmt.Sprintf("+%d", ds.Insertions)
+			del = fmt.Sprintf("-%d", ds.Deletions)
 		}
-		rows = append(rows, []string{slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, diff})
+		rows = append(rows, []string{slugFromWorktree(wt.Name), wt.Branch, wt.Agent, wt.Issue, files, add, del})
+	}
+
+	styler := func(row, col int, isSelected bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if isSelected {
+			base = lgTableSelectedStyle
+		}
+		switch col {
+		case 5: // ADD
+			return base.Foreground(colGreen)
+		case 6: // DEL
+			return base.Foreground(colRed)
+		}
+		return base
 	}
 
 	var content string
@@ -33,7 +47,7 @@ func (m Model) renderWorktrees() string {
 		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No worktrees — builders create them automatically", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler)
 		content = t.Render() + "\n"
 	}
 

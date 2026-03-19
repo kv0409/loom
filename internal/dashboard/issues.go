@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/tree"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
@@ -63,10 +64,25 @@ func (m Model) renderIssues() string {
 			if sg == "" {
 				sg = "●"
 			}
-			styledID := statusStyle(iss.Status).Render(sg + typeGlyph(iss.Type) + " " + iss.ID)
-			rows = append(rows, []string{styledID, iss.Assignee, iss.Title})
+			rows = append(rows, []string{sg + typeGlyph(iss.Type) + " " + iss.ID, iss.Assignee, iss.Title})
 		}
 		return rows
+	}
+
+	buildStyler := func(from int) CellStyler {
+		return func(row, col int, isSelected bool) lipgloss.Style {
+			base := lgTableCellStyle
+			if isSelected {
+				base = lgTableSelectedStyle
+			}
+			dataIdx := from + row
+			if col == 0 && dataIdx < len(display) {
+				if c, ok := statusColors[display[dataIdx].Status]; ok {
+					return base.Foreground(c)
+				}
+			}
+			return base
+		}
 	}
 
 	var content string
@@ -81,7 +97,7 @@ func (m Model) renderIssues() string {
 		if activeSelected {
 			sel = activeCursor
 		}
-		content = newLGTable(headers, activeRows, sel, avail, nil).Render() + "\n"
+		content = newLGTable(headers, activeRows, sel, avail, buildStyler(start)).Render() + "\n"
 
 		// Done section with separator (headerless — avoids duplicate column headers).
 		if doneStart < end {
@@ -93,7 +109,7 @@ func (m Model) renderIssues() string {
 			if doneSelected {
 				doneSel = doneCursor
 			}
-			content += newLGTableHeaderless(doneRows, doneSel, avail, nil).Render() + "\n"
+			content += newLGTableHeaderless(doneRows, doneSel, avail, buildStyler(doneStart)).Render() + "\n"
 		}
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
@@ -54,9 +55,32 @@ func (m Model) renderAgents() string {
 			}
 		}
 
-		styledID := prefix + agentPillFor(a.ID, a.ID)
-		styledStatus := fmt.Sprintf("%s %s", statusIndicator(a.Status), statusPill(a.Status))
-		rows = append(rows, []string{styledID, a.Role, styledStatus, wt, issues, hb})
+		sg := statusGlyphs[a.Status]
+		if sg == "" {
+			sg = "●"
+		}
+		rows = append(rows, []string{prefix + a.ID, a.Role, sg + " " + a.Status, wt, issues, hb})
+	}
+
+	styler := func(row, col int, isSelected bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if isSelected {
+			base = lgTableSelectedStyle
+		}
+		dataIdx := start + row
+		if dataIdx >= len(agents) {
+			return base
+		}
+		a := agents[dataIdx]
+		switch col {
+		case 0: // ID — agent color
+			return base.Foreground(agentColor(a.ID)).Bold(true)
+		case 2: // STATUS — status color
+			if c, ok := statusColors[a.Status]; ok {
+				return base.Foreground(c)
+			}
+		}
+		return base
 	}
 
 	var content string
@@ -64,7 +88,7 @@ func (m Model) renderAgents() string {
 		t := newLGTable(headers, nil, -1, avail, nil)
 		content = t.Render() + "\n" + renderEmpty("No agents running — loom spawn to start", avail)
 	} else {
-		t := newLGTable(headers, rows, m.cursor-start, avail, nil)
+		t := newLGTable(headers, rows, m.cursor-start, avail, styler)
 		content = t.Render() + "\n"
 	}
 
