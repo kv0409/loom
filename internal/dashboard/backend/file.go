@@ -282,10 +282,6 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 			}
 		}
 
-		if a.Status == "dead" {
-			continue
-		}
-
 		// ACP agents: read from .output files.
 		outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
 		raw, err := os.ReadFile(outPath)
