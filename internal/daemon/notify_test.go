@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/acp"
+	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
+	"github.com/karanagi/loom/internal/issue"
 )
 
 // stubClient is a minimal ACP client stand-in for testing notify outcomes.
@@ -119,5 +121,88 @@ func TestApiNudge_AgentNotFound(t *testing.T) {
 	resp := d.apiNudge(Request{AgentID: "nonexistent", Message: "hello"})
 	if resp.OK {
 		t.Fatal("expected error for nonexistent agent")
+	}
+}
+
+func TestApiInvalidateIssuesMarksCacheDirty(t *testing.T) {
+	tmp := setupStateRoot(t)
+	iss, err := issue.Create(tmp, "invalidate me", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+		state:      newDaemonState(tmp),
+	}
+	d.state.now = func() time.Time { return now }
+	d.state.reconcileEvery = time.Hour
+	if err := d.state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues first: %v", err)
+	}
+
+	if _, err := issue.Update(tmp, iss.ID, issue.UpdateOpts{Priority: "high"}); err != nil {
+		t.Fatalf("issue.Update: %v", err)
+	}
+	if err := d.state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues before invalidate: %v", err)
+	}
+	if got := d.state.issueByID(iss.ID).Priority; got != "normal" {
+		t.Fatalf("expected cached priority normal before invalidate, got %q", got)
+	}
+
+	resp := d.apiInvalidate(Request{Targets: []string{"issues"}})
+	if !resp.OK {
+		t.Fatalf("expected invalidate ok, got error %q", resp.Error)
+	}
+	if err := d.state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues after invalidate: %v", err)
+	}
+	if got := d.state.issueByID(iss.ID).Priority; got != "high" {
+		t.Fatalf("expected high priority after invalidate, got %q", got)
+	}
+}
+
+func TestApiHeartbeatUpdatesCachedAgentWithoutDirtyingState(t *testing.T) {
+	tmp := setupStateRoot(t)
+	oldHeartbeat := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	a := &agent.Agent{ID: "builder-001", Role: "builder", Status: "active", Heartbeat: oldHeartbeat}
+	if err := agent.Register(tmp, a); err != nil {
+		t.Fatalf("agent.Register: %v", err)
+	}
+
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+		state:      newDaemonState(tmp),
+	}
+	d.state.reconcileEvery = time.Hour
+	if err := d.state.syncAgents(); err != nil {
+		t.Fatalf("syncAgents first: %v", err)
+	}
+
+	before := d.state.agentByID("builder-001")
+	if before == nil {
+		t.Fatal("expected cached agent")
+	}
+
+	resp := d.apiHeartbeat(Request{AgentID: "builder-001"})
+	if !resp.OK {
+		t.Fatalf("expected heartbeat ok, got error %q", resp.Error)
+	}
+
+	after := d.state.agentByID("builder-001")
+	if after == nil {
+		t.Fatal("expected cached agent after heartbeat")
+	}
+	if !after.Heartbeat.After(before.Heartbeat) {
+		t.Fatalf("expected cached heartbeat to advance, before=%v after=%v", before.Heartbeat, after.Heartbeat)
+	}
+	if d.state.dirty&stateTargetAgents != 0 {
+		t.Fatal("expected heartbeat api to refresh cache directly without leaving agents dirty")
 	}
 }

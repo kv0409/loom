@@ -30,9 +30,9 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
-	"github.com/karanagi/loom/internal/nudge"
 	"github.com/karanagi/loom/internal/mcp"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/nudge"
 	"github.com/karanagi/loom/internal/worktree"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
@@ -199,7 +199,7 @@ func main() {
 	nudgeCmd := &cobra.Command{
 		Use:   "nudge <agent> <type>",
 		Short: "Send predefined nudge to agent",
-		Long: "Send a predefined nudge signal to an agent.\n\nAvailable nudge types:\n" + nudgeTypeHelp(),
+		Long:  "Send a predefined nudge signal to an agent.\n\nAvailable nudge types:\n" + nudgeTypeHelp(),
 		Args:  cobra.ExactArgs(2),
 		RunE:  runNudge,
 	}
@@ -827,6 +827,7 @@ func runIssueCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	invalidateDaemonState(root, "issues")
 	cliout.PrintSuccess("Created "+iss.Title, iss.ID)
 	return nil
 }
@@ -1042,7 +1043,8 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		cliout.PrintWarning("Cancelled "+args[0])
+		invalidateDaemonState(root, "issues", "agents")
+		cliout.PrintWarning("Cancelled " + args[0])
 		for _, ci := range cancelled {
 			if ci.PreviousAssignee == "" {
 				continue
@@ -1059,6 +1061,7 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		if _, err := agent.CloseIssue(root, args[0], ""); err != nil {
 			return err
 		}
+		invalidateDaemonState(root, "issues", "agents")
 		cliout.PrintSuccess("Closed " + args[0])
 		return nil
 	}
@@ -1068,11 +1071,13 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		if err := agent.UnassignIssue(root, args[0]); err != nil {
 			return err
 		}
+		invalidateDaemonState(root, "issues", "agents")
 	}
 	if assignee != "" {
 		if err := agent.AssignIssue(root, assignee, args[0]); err != nil {
 			return err
 		}
+		invalidateDaemonState(root, "issues", "agents")
 	}
 
 	// Apply remaining non-assignee updates.
@@ -1082,6 +1087,7 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		}); err != nil {
 			return err
 		}
+		invalidateDaemonState(root, "issues")
 	}
 
 	cliout.PrintSuccess("Updated " + args[0])
@@ -1115,6 +1121,7 @@ func runIssueClose(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	invalidateDaemonState(root, "issues", "agents")
 	cliout.PrintSuccess("Closed " + args[0])
 	return nil
 }
@@ -1146,7 +1153,8 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return err
 	}
-	cliout.PrintSuccess("Sent to "+args[0]+": "+args[1])
+	invalidateDaemonState(root, "mail")
+	cliout.PrintSuccess("Sent to " + args[0] + ": " + args[1])
 	return nil
 }
 
@@ -1172,6 +1180,7 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 		fmt.Println("No messages")
 		return nil
 	}
+	markedRead := false
 	for _, m := range msgs {
 		fmt.Printf("--- %s ---\n", m.ID)
 		fmt.Printf("  Time:     %s\n", m.Timestamp.Format("2006-01-02 15:04:05"))
@@ -1183,8 +1192,14 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Println()
 		if !m.Read {
-			mail.MarkRead(root, agent, m.ID)
+			if err := mail.MarkRead(root, agent, m.ID); err != nil {
+				return err
+			}
+			markedRead = true
 		}
+	}
+	if markedRead {
+		invalidateDaemonState(root, "mail")
 	}
 	return nil
 }
@@ -1565,7 +1580,7 @@ func runAgentHeartbeat(cmd *cobra.Command, args []string) error {
 	if id == "" {
 		return fmt.Errorf("LOOM_AGENT_ID not set")
 	}
-	return agent.UpdateHeartbeat(root, id)
+	return daemon.Heartbeat(root, id)
 }
 
 func runAgentCancel(cmd *cobra.Command, args []string) error {
@@ -1666,6 +1681,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("setting dispatch on %s: %w", issID, err)
 			}
 		}
+		invalidateDaemonState(root, "issues")
 	}
 
 	a, err := agent.Spawn(root, agent.SpawnOpts{
@@ -1673,15 +1689,23 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		SpawnedBy:      spawnedBy,
 		AssignedIssues: issues,
 		IssueSlug:      slug,
-		ExtraContext:    extra,
+		ExtraContext:   extra,
 		Model:          model,
 		FileScope:      fileScope,
 	})
 	if err != nil {
 		return err
 	}
+	invalidateDaemonState(root, "issues", "agents")
 	fmt.Printf("Spawned %s (role: %s)\n", a.ID, a.Role)
 	return nil
+}
+
+func invalidateDaemonState(root string, targets ...string) {
+	if _, err := os.Stat(daemon.SockPath(root)); err != nil {
+		return
+	}
+	_ = daemon.Invalidate(root, targets...)
 }
 
 func relativeTime(t time.Time) string {

@@ -73,6 +73,13 @@ func (d *Daemon) touchActivity() {
 	d.mu.Unlock()
 }
 
+func (d *Daemon) invalidateState(targets ...stateTarget) {
+	if d.state == nil {
+		return
+	}
+	d.state.invalidate(targets...)
+}
+
 // NotifyOutcome describes the result of a notification attempt.
 type NotifyOutcome string
 
@@ -148,7 +155,9 @@ func (d *Daemon) recoverOrphanedAgents() {
 		a.Status = "pending-acp"
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[recover] save agent %s: %v", a.ID, err)
+			continue
 		}
+		d.invalidateState(stateTargetAgents)
 	}
 }
 
@@ -268,7 +277,9 @@ func (d *Daemon) watchPendingAgents() {
 					a.Status = "activating"
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
+						continue
 					}
+					d.invalidateState(stateTargetAgents)
 					go d.activateACPAgent(a)
 				}
 			}
@@ -372,6 +383,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
+		d.invalidateState(stateTargetAgents)
 		return
 	}
 
@@ -389,6 +401,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
+		d.invalidateState(stateTargetAgents)
 		return
 	}
 
@@ -401,6 +414,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
+		d.invalidateState(stateTargetAgents)
 		return
 	}
 	log.Printf("[acp] %s: session=%s, sending initial task", a.ID, sessionID)
@@ -413,6 +427,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 			if err := agent.Save(d.LoomRoot, a); err != nil {
 				log.Printf("[daemon] save agent %s: %v", a.ID, err)
 			}
+			d.invalidateState(stateTargetAgents)
 			return
 		}
 	}
@@ -431,6 +446,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	if err := agent.Save(d.LoomRoot, a); err != nil {
 		log.Printf("[daemon] save agent %s: %v", a.ID, err)
 	}
+	d.invalidateState(stateTargetAgents)
 
 	// Set the model after the agent is fully active so a timeout
 	// doesn't block activation or kill the process during startup.
@@ -571,6 +587,7 @@ func (d *Daemon) watchDoneIssues() {
 					d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
 					continue
 				}
+				d.invalidateState(stateTargetIssues, stateTargetAgents)
 				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
 				target := info.PreviousAssignee
@@ -610,6 +627,7 @@ func (d *Daemon) watchDoneIssues() {
 					if time.Since(t) > 2*time.Minute {
 						log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
 						agent.KillWithResolved(d.LoomRoot, a.ID, true, resolved)
+						d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
 						delete(notifiedAgents, a.ID)
 					}
 					continue
@@ -729,6 +747,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.UnassignAllIssues(d.LoomRoot, a); err != nil {
 						log.Printf("[heartbeat] failed to unassign issues for %s: %v", a.ID, err)
 					}
+					d.invalidateState(stateTargetIssues, stateTargetAgents)
 					delete(d.lastSeen, a.ID)
 					delete(d.idleSince, a.ID)
 					parentID := a.SpawnedBy
@@ -759,6 +778,7 @@ func (d *Daemon) watchHeartbeats() {
 						if err := agent.Save(d.LoomRoot, a); err != nil {
 							log.Printf("[daemon] save agent %s: %v", a.ID, err)
 						}
+						d.invalidateState(stateTargetAgents)
 					}
 					continue
 				}
@@ -780,6 +800,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 					}
+					d.invalidateState(stateTargetAgents)
 					if a.NudgeCount == 2 {
 						if parentID := a.SpawnedBy; parentID != "" {
 							parent := d.state.agentByID(parentID)
@@ -846,6 +867,7 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 		log.Printf("[idle-timeout] killing %s: idle for %v with no active issues", a.ID, time.Since(d.idleSince[a.ID]))
 		delete(d.idleSince, a.ID)
 		agent.Kill(d.LoomRoot, a.ID, true)
+		d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
 		if parentID := a.SpawnedBy; parentID != "" {
 			parent := d.state.agentByID(parentID)
 			if parent != nil {
@@ -880,7 +902,9 @@ func (d *Daemon) watchInboxGC() {
 				if d.state.agentByID(e.Name()) == nil {
 					if err := mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name()); err != nil {
 						d.rlog("watchInboxGC:archive:"+e.Name(), "[inbox-gc] archive stale inbox %s: %v", e.Name(), err)
+						continue
 					}
+					d.invalidateState(stateTargetMail)
 				}
 			}
 		}

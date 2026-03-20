@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
 	"os"
+	"strings"
 
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/daemon"
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
@@ -404,7 +405,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		return string(out), nil
 
 	case "loom_agent_heartbeat":
-		if err := agent.UpdateHeartbeat(s.LoomRoot, s.AgentID); err != nil {
+		if err := daemon.Heartbeat(s.LoomRoot, s.AgentID); err != nil {
 			return "", err
 		}
 		return "Heartbeat updated", nil
@@ -480,7 +481,7 @@ func toolDefs() []toolDef {
 	return []toolDef{
 		{Name: "loom_mail_send", Description: "Send a mail message to another agent", InputSchema: obj(
 			props{"to": propStr("Recipient agent ID"), "subject": propStr("Message subject"), "body": propStr("Message body"),
-				"type": propEnum("Message type", "task", "status", "completion", "blocker", "review-request", "review-result", "question", "escalation"),
+				"type":     propEnum("Message type", "task", "status", "completion", "blocker", "review-request", "review-result", "question", "escalation"),
 				"priority": propEnum("Priority", "critical", "normal", "low"), "ref": propStr("Related issue ID")},
 			"to", "subject")},
 		{Name: "loom_mail_read", Description: "Read inbox messages", InputSchema: obj(

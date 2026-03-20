@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/issue"
@@ -59,6 +60,7 @@ func TestDaemonStateSyncIssuesCachesUnchangedFiles(t *testing.T) {
 	if _, err := issue.Update(root, iss.ID, issue.UpdateOpts{Priority: "high"}); err != nil {
 		t.Fatalf("issue.Update: %v", err)
 	}
+	state.invalidate(stateTargetIssues)
 	if err := state.syncIssues(); err != nil {
 		t.Fatalf("syncIssues after update: %v", err)
 	}
@@ -93,6 +95,7 @@ func TestDaemonStateReadyIssuesUsesCachedDependencyState(t *testing.T) {
 	if _, err := agent.CloseIssue(root, dep.ID, "done"); err != nil {
 		t.Fatalf("close dependency: %v", err)
 	}
+	state.invalidate(stateTargetIssues)
 	if err := state.syncIssues(); err != nil {
 		t.Fatalf("syncIssues second: %v", err)
 	}
@@ -151,6 +154,7 @@ func TestDaemonStateSyncAgentsAndMailCachesUnreadMessages(t *testing.T) {
 	if err := mail.MarkRead(root, "builder-001", unread[0].ID); err != nil {
 		t.Fatalf("mail.MarkRead: %v", err)
 	}
+	state.invalidate(stateTargetMail)
 	if err := state.syncMail(); err != nil {
 		t.Fatalf("syncMail after mark-read: %v", err)
 	}
@@ -159,5 +163,79 @@ func TestDaemonStateSyncAgentsAndMailCachesUnreadMessages(t *testing.T) {
 	}
 	if state.mailByAgent["builder-001"][unread[0].ID] == firstMail {
 		t.Fatal("changed mail file should be reparsed")
+	}
+}
+
+func TestDaemonStateSkipsIssueRescanUntilInvalidated(t *testing.T) {
+	root := setupStateRoot(t)
+	iss, err := issue.Create(root, "cache me", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	state := newDaemonState(root)
+	state.now = func() time.Time { return now }
+	state.reconcileEvery = time.Hour
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues first: %v", err)
+	}
+
+	if got := state.issueByID(iss.ID).Priority; got != "normal" {
+		t.Fatalf("expected initial priority normal, got %q", got)
+	}
+
+	if _, err := issue.Update(root, iss.ID, issue.UpdateOpts{Priority: "high"}); err != nil {
+		t.Fatalf("issue.Update: %v", err)
+	}
+
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues without invalidation: %v", err)
+	}
+	if got := state.issueByID(iss.ID).Priority; got != "normal" {
+		t.Fatalf("expected cached priority to remain normal before invalidation, got %q", got)
+	}
+
+	state.invalidate(stateTargetIssues)
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues after invalidation: %v", err)
+	}
+	if got := state.issueByID(iss.ID).Priority; got != "high" {
+		t.Fatalf("expected invalidated cache to reload high priority, got %q", got)
+	}
+}
+
+func TestDaemonStateReconcilesDirtyIssueAfterInterval(t *testing.T) {
+	root := setupStateRoot(t)
+	iss, err := issue.Create(root, "cache me later", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+
+	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
+	state := newDaemonState(root)
+	state.now = func() time.Time { return now }
+	state.reconcileEvery = time.Minute
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues first: %v", err)
+	}
+
+	if _, err := issue.Update(root, iss.ID, issue.UpdateOpts{Priority: "high"}); err != nil {
+		t.Fatalf("issue.Update: %v", err)
+	}
+
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues before reconcile interval: %v", err)
+	}
+	if got := state.issueByID(iss.ID).Priority; got != "normal" {
+		t.Fatalf("expected cached priority to remain normal before reconcile interval, got %q", got)
+	}
+
+	now = now.Add(2 * time.Minute)
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues after reconcile interval: %v", err)
+	}
+	if got := state.issueByID(iss.ID).Priority; got != "high" {
+		t.Fatalf("expected reconcile interval to refresh high priority, got %q", got)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/karanagi/loom/internal/agent"
 )
@@ -18,11 +19,12 @@ func SockPath(loomRoot string) string {
 
 // Request is the JSON wire format for daemon API calls.
 type Request struct {
-	Action  string `json:"action"`
-	AgentID string `json:"agent_id"`
-	Message string `json:"message,omitempty"`
-	Lines   int    `json:"lines,omitempty"`
-	Cleanup bool   `json:"cleanup,omitempty"`
+	Action  string   `json:"action"`
+	AgentID string   `json:"agent_id"`
+	Message string   `json:"message,omitempty"`
+	Lines   int      `json:"lines,omitempty"`
+	Cleanup bool     `json:"cleanup,omitempty"`
+	Targets []string `json:"targets,omitempty"`
 }
 
 // Response is the JSON wire format for daemon API replies.
@@ -32,7 +34,7 @@ type Response struct {
 	Error string `json:"error,omitempty"`
 }
 
-func okResp(data any) Response  { return Response{OK: true, Data: data} }
+func okResp(data any) Response    { return Response{OK: true, Data: data} }
 func errResp(msg string) Response { return Response{OK: false, Error: msg} }
 
 // startAPI opens the Unix socket listener and serves connections.
@@ -84,12 +86,16 @@ func (d *Daemon) handleConn(conn net.Conn) {
 		resp = d.apiNudge(req)
 	case "message":
 		resp = d.apiMessage(req)
+	case "heartbeat":
+		resp = d.apiHeartbeat(req)
 	case "kill":
 		resp = d.apiKill(req)
 	case "cancel":
 		resp = d.apiCancel(req)
 	case "output":
 		resp = d.apiOutput(req)
+	case "invalidate":
+		resp = d.apiInvalidate(req)
 	default:
 		resp = errResp("unknown action: " + req.Action)
 	}
@@ -120,6 +126,26 @@ func (d *Daemon) apiMessage(req Request) Response {
 	return okResp(nr)
 }
 
+func (d *Daemon) apiHeartbeat(req Request) Response {
+	a, err := agent.Load(d.LoomRoot, req.AgentID)
+	if err != nil {
+		return errResp("agent not found: " + req.AgentID)
+	}
+	a.Heartbeat = time.Now()
+	if err := agent.Save(d.LoomRoot, a); err != nil {
+		return errResp("heartbeat save failed: " + err.Error())
+	}
+	if d.state != nil {
+		if err := d.state.storeAgent(a); err != nil {
+			d.invalidateState(stateTargetAgents)
+		}
+	}
+	if d.state == nil {
+		d.invalidateState(stateTargetAgents)
+	}
+	return okResp(nil)
+}
+
 func (d *Daemon) apiKill(req Request) Response {
 	a, err := agent.Load(d.LoomRoot, req.AgentID)
 	if err != nil {
@@ -130,6 +156,7 @@ func (d *Daemon) apiKill(req Request) Response {
 	if err := agent.Kill(d.LoomRoot, req.AgentID, req.Cleanup); err != nil {
 		return errResp("kill failed: " + err.Error())
 	}
+	d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
 	return okResp(nil)
 }
 
@@ -163,4 +190,34 @@ func (d *Daemon) apiOutput(req Request) Response {
 		lines = 50
 	}
 	return okResp(d.GetACPOutput(req.AgentID, lines))
+}
+
+func (d *Daemon) apiInvalidate(req Request) Response {
+	if err := d.invalidateTargets(req.Targets...); err != nil {
+		return errResp("invalidate failed: " + err.Error())
+	}
+	return okResp(nil)
+}
+
+func (d *Daemon) invalidateTargets(names ...string) error {
+	if len(names) == 0 {
+		d.invalidateState()
+		return nil
+	}
+
+	targets := make([]stateTarget, 0, len(names))
+	for _, name := range names {
+		switch name {
+		case "issues":
+			targets = append(targets, stateTargetIssues)
+		case "agents":
+			targets = append(targets, stateTargetAgents)
+		case "mail":
+			targets = append(targets, stateTargetMail)
+		default:
+			return fmt.Errorf("unknown target %q", name)
+		}
+	}
+	d.invalidateState(targets...)
+	return nil
 }

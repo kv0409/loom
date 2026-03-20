@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/karanagi/loom/internal/acp"
+	"github.com/karanagi/loom/internal/agent"
 )
 
 // call dials the daemon Unix socket, sends req, and returns the response.
@@ -40,6 +42,17 @@ func Message(loomRoot, agentID, message string) error {
 	return err
 }
 
+// Heartbeat updates an agent heartbeat via the daemon when available, or falls back
+// to a direct file write when the daemon is not reachable.
+func Heartbeat(loomRoot, agentID string) error {
+	if _, err := os.Stat(SockPath(loomRoot)); err == nil {
+		if _, err := call(loomRoot, Request{Action: "heartbeat", AgentID: agentID}); err == nil {
+			return nil
+		}
+	}
+	return agent.UpdateHeartbeat(loomRoot, agentID)
+}
+
 // Kill terminates an agent via the daemon.
 func Kill(loomRoot, agentID string, cleanup bool) error {
 	_, err := call(loomRoot, Request{Action: "kill", AgentID: agentID, Cleanup: cleanup})
@@ -68,4 +81,10 @@ func Output(loomRoot, agentID string, lines int) ([]acp.ACPEvent, error) {
 		return nil, fmt.Errorf("output unmarshal: %w", err)
 	}
 	return events, nil
+}
+
+// Invalidate marks daemon cache sections dirty so the next watcher tick reloads them.
+func Invalidate(loomRoot string, targets ...string) error {
+	_, err := call(loomRoot, Request{Action: "invalidate", Targets: targets})
+	return err
 }

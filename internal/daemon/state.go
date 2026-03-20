@@ -20,32 +20,54 @@ type fileStamp struct {
 	size    int64
 }
 
+type stateTarget uint8
+
+const (
+	stateTargetIssues stateTarget = 1 << iota
+	stateTargetAgents
+	stateTargetMail
+)
+
+const defaultReconcileEvery = 30 * time.Second
+
 type daemonState struct {
-	loomRoot    string
-	mu          sync.RWMutex
-	issueStamp  map[string]fileStamp
-	issues      map[string]*issue.Issue
-	agentStamp  map[string]fileStamp
-	agents      map[string]*agent.Agent
-	mailStamp   map[string]fileStamp
-	mailByAgent map[string]map[string]*mail.Message
+	loomRoot       string
+	mu             sync.RWMutex
+	now            func() time.Time
+	reconcileEvery time.Duration
+	dirty          stateTarget
+	lastIssuesSync time.Time
+	lastAgentsSync time.Time
+	lastMailSync   time.Time
+	issueStamp     map[string]fileStamp
+	issues         map[string]*issue.Issue
+	agentStamp     map[string]fileStamp
+	agents         map[string]*agent.Agent
+	mailStamp      map[string]fileStamp
+	mailByAgent    map[string]map[string]*mail.Message
 }
 
 func newDaemonState(loomRoot string) *daemonState {
 	return &daemonState{
-		loomRoot:    loomRoot,
-		issueStamp:  make(map[string]fileStamp),
-		issues:      make(map[string]*issue.Issue),
-		agentStamp:  make(map[string]fileStamp),
-		agents:      make(map[string]*agent.Agent),
-		mailStamp:   make(map[string]fileStamp),
-		mailByAgent: make(map[string]map[string]*mail.Message),
+		loomRoot:       loomRoot,
+		now:            time.Now,
+		reconcileEvery: defaultReconcileEvery,
+		dirty:          stateTargetIssues | stateTargetAgents | stateTargetMail,
+		issueStamp:     make(map[string]fileStamp),
+		issues:         make(map[string]*issue.Issue),
+		agentStamp:     make(map[string]fileStamp),
+		agents:         make(map[string]*agent.Agent),
+		mailStamp:      make(map[string]fileStamp),
+		mailByAgent:    make(map[string]map[string]*mail.Message),
 	}
 }
 
 func (s *daemonState) syncIssues() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.shouldSyncLocked(stateTargetIssues, s.lastIssuesSync) {
+		return nil
+	}
 
 	files, err := listYAMLFilesOrEmpty(filepath.Join(s.loomRoot, "issues"))
 	if err != nil {
@@ -82,12 +104,17 @@ func (s *daemonState) syncIssues() error {
 		delete(s.issues, id)
 		delete(s.issueStamp, id)
 	}
+	s.lastIssuesSync = s.now()
+	s.dirty &^= stateTargetIssues
 	return nil
 }
 
 func (s *daemonState) syncAgents() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.shouldSyncLocked(stateTargetAgents, s.lastAgentsSync) {
+		return nil
+	}
 
 	files, err := listYAMLFilesOrEmpty(filepath.Join(s.loomRoot, "agents"))
 	if err != nil {
@@ -124,12 +151,17 @@ func (s *daemonState) syncAgents() error {
 		delete(s.agents, id)
 		delete(s.agentStamp, id)
 	}
+	s.lastAgentsSync = s.now()
+	s.dirty &^= stateTargetAgents
 	return nil
 }
 
 func (s *daemonState) syncMail() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.shouldSyncLocked(stateTargetMail, s.lastMailSync) {
+		return nil
+	}
 
 	inboxRoot := filepath.Join(s.loomRoot, "mail", "inbox")
 	entries, err := os.ReadDir(inboxRoot)
@@ -137,6 +169,8 @@ func (s *daemonState) syncMail() error {
 		if os.IsNotExist(err) {
 			s.mailStamp = make(map[string]fileStamp)
 			s.mailByAgent = make(map[string]map[string]*mail.Message)
+			s.lastMailSync = s.now()
+			s.dirty &^= stateTargetMail
 			return nil
 		}
 		return fmt.Errorf("reading inbox root: %w", err)
@@ -205,7 +239,34 @@ func (s *daemonState) syncMail() error {
 		}
 		delete(s.mailByAgent, agentID)
 	}
+	s.lastMailSync = s.now()
+	s.dirty &^= stateTargetMail
 	return nil
+}
+
+func (s *daemonState) invalidate(targets ...stateTarget) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(targets) == 0 {
+		s.dirty = stateTargetIssues | stateTargetAgents | stateTargetMail
+		return
+	}
+	for _, target := range targets {
+		s.dirty |= target
+	}
+}
+
+func (s *daemonState) shouldSyncLocked(target stateTarget, lastSync time.Time) bool {
+	if s.dirty&target != 0 {
+		return true
+	}
+	if lastSync.IsZero() {
+		return true
+	}
+	if s.reconcileEvery <= 0 {
+		return false
+	}
+	return s.now().Sub(lastSync) >= s.reconcileEvery
 }
 
 func (s *daemonState) allIssues() []*issue.Issue {
@@ -319,6 +380,21 @@ func (s *daemonState) unreadMessages(agentID string) []*mail.Message {
 		return out[i].Timestamp.After(out[j].Timestamp)
 	})
 	return out
+}
+
+func (s *daemonState) storeAgent(a *agent.Agent) error {
+	info, err := os.Stat(filepath.Join(s.loomRoot, "agents", a.ID+".yaml"))
+	if err != nil {
+		return fmt.Errorf("stat agent %s: %w", a.ID, err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.agents[a.ID] = cloneCachedAgent(a)
+	s.agentStamp[a.ID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+	s.lastAgentsSync = s.now()
+	s.dirty &^= stateTargetAgents
+	return nil
 }
 
 func listYAMLFilesOrEmpty(dir string) ([]string, error) {
