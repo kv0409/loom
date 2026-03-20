@@ -3,17 +3,21 @@ package dashboard
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/karanagi/loom/internal/dashboard/backend"
 )
 
 // filterChatHistory returns messages between "dashboard" and "orchestrator",
 // sorted oldest-first (chronological conversation order).
-func filterChatHistory(messages []*backend.Message) []*backend.Message {
+func filterChatHistory(messages []*backend.Message, sessionStart time.Time) []*backend.Message {
 	var out []*backend.Message
 	for _, m := range messages {
 		if (m.From == "dashboard" && m.To == "orchestrator") ||
 			(m.From == "orchestrator" && m.To == "dashboard") {
+			if !sessionStart.IsZero() && m.Timestamp.Before(sessionStart) {
+				continue
+			}
 			out = append(out, m)
 		}
 	}
@@ -26,7 +30,7 @@ func filterChatHistory(messages []*backend.Message) []*backend.Message {
 // renderChatPane renders a bottom panel showing the conversation between
 // dashboard and orchestrator, with a text input prompt at the bottom.
 func (m Model) renderChatPane() string {
-	msgs := filterChatHistory(m.data.Messages)
+	msgs := filterChatHistory(m.data.Messages, m.chatSessionStart())
 	paneH := chatPaneHeight(m.height)
 	maxW := detailContentWidth(m.width)
 
@@ -74,4 +78,13 @@ func (m Model) chatInput() string {
 		return m.chatTI.View()
 	}
 	return emptyMsgStyle.Render("press : to chat")
+}
+
+func (m Model) chatSessionStart() time.Time {
+	for _, a := range m.data.Agents {
+		if a != nil && a.ID == "orchestrator" {
+			return a.SpawnedAt
+		}
+	}
+	return time.Time{}
 }
