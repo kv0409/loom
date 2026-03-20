@@ -487,7 +487,11 @@ func (fb *FileBackend) Diff(wtPath string) string {
 }
 
 func (fb *FileBackend) SendMail(loomRoot string, from, to, subject, body, typ, priority, ref string) error {
-	return mail.Send(loomRoot, mail.SendOpts{
+	resolvedTo, err := mail.ResolveRecipient(loomRoot, to)
+	if err != nil {
+		return err
+	}
+	if err := mail.Send(loomRoot, mail.SendOpts{
 		From:     from,
 		To:       to,
 		Subject:  subject,
@@ -495,7 +499,11 @@ func (fb *FileBackend) SendMail(loomRoot string, from, to, subject, body, typ, p
 		Type:     typ,
 		Priority: priority,
 		Ref:      ref,
-	})
+	}); err != nil {
+		return err
+	}
+	daemon.RefreshBestEffort(loomRoot, daemon.RefreshOpts{MailAgents: []string{resolvedTo}})
+	return nil
 }
 
 func (fb *FileBackend) MemorySnippet(e *MemoryEntry) string {

@@ -19,12 +19,15 @@ func SockPath(loomRoot string) string {
 
 // Request is the JSON wire format for daemon API calls.
 type Request struct {
-	Action  string   `json:"action"`
-	AgentID string   `json:"agent_id"`
-	Message string   `json:"message,omitempty"`
-	Lines   int      `json:"lines,omitempty"`
-	Cleanup bool     `json:"cleanup,omitempty"`
-	Targets []string `json:"targets,omitempty"`
+	Action     string   `json:"action"`
+	AgentID    string   `json:"agent_id"`
+	Message    string   `json:"message,omitempty"`
+	Lines      int      `json:"lines,omitempty"`
+	Cleanup    bool     `json:"cleanup,omitempty"`
+	Targets    []string `json:"targets,omitempty"`
+	IssueIDs   []string `json:"issue_ids,omitempty"`
+	AgentIDs   []string `json:"agent_ids,omitempty"`
+	MailAgents []string `json:"mail_agents,omitempty"`
 }
 
 // Response is the JSON wire format for daemon API replies.
@@ -96,6 +99,8 @@ func (d *Daemon) handleConn(conn net.Conn) {
 		resp = d.apiOutput(req)
 	case "invalidate":
 		resp = d.apiInvalidate(req)
+	case "refresh":
+		resp = d.apiRefresh(req)
 	default:
 		resp = errResp("unknown action: " + req.Action)
 	}
@@ -195,6 +200,34 @@ func (d *Daemon) apiOutput(req Request) Response {
 func (d *Daemon) apiInvalidate(req Request) Response {
 	if err := d.invalidateTargets(req.Targets...); err != nil {
 		return errResp("invalidate failed: " + err.Error())
+	}
+	return okResp(nil)
+}
+
+func (d *Daemon) apiRefresh(req Request) Response {
+	if d.state == nil {
+		return errResp("state unavailable")
+	}
+	if len(req.IssueIDs) == 0 && len(req.AgentIDs) == 0 && len(req.MailAgents) == 0 {
+		return errResp("no refresh targets provided")
+	}
+	for _, id := range req.IssueIDs {
+		if err := d.state.refreshIssue(id); err != nil {
+			d.invalidateState(stateTargetIssues)
+			return errResp("refresh issue failed: " + err.Error())
+		}
+	}
+	for _, id := range req.AgentIDs {
+		if err := d.state.refreshAgent(id); err != nil {
+			d.invalidateState(stateTargetAgents)
+			return errResp("refresh agent failed: " + err.Error())
+		}
+	}
+	for _, agentID := range req.MailAgents {
+		if err := d.state.refreshMailbox(agentID); err != nil {
+			d.invalidateState(stateTargetMail)
+			return errResp("refresh mailbox failed: " + err.Error())
+		}
 	}
 	return okResp(nil)
 }

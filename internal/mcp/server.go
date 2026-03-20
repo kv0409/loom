@@ -155,6 +155,10 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if err != nil {
 			return "", err
 		}
+		resolvedTo, err := mail.ResolveRecipient(s.LoomRoot, to)
+		if err != nil {
+			return "", err
+		}
 		if err := mail.Send(s.LoomRoot, mail.SendOpts{
 			From:     s.AgentID,
 			To:       to,
@@ -166,6 +170,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		}); err != nil {
 			return "", err
 		}
+		daemon.RefreshBestEffort(s.LoomRoot, daemon.RefreshOpts{MailAgents: []string{resolvedTo}})
 		return fmt.Sprintf("Sent to %s: %s", to, subject), nil
 
 	case "loom_mail_read":
@@ -177,10 +182,17 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if len(msgs) == 0 {
 			return "No messages", nil
 		}
+		markedRead := false
 		for _, m := range msgs {
 			if !m.Read {
-				mail.MarkRead(s.LoomRoot, s.AgentID, m.ID)
+				if err := mail.MarkRead(s.LoomRoot, s.AgentID, m.ID); err != nil {
+					return "", err
+				}
+				markedRead = true
 			}
+		}
+		if markedRead {
+			daemon.RefreshBestEffort(s.LoomRoot, daemon.RefreshOpts{MailAgents: []string{s.AgentID}})
 		}
 		out, _ := json.MarshalIndent(msgs, "", "  ")
 		return string(out), nil
@@ -214,60 +226,60 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if assignee != "" && unassign {
 			return "", fmt.Errorf("assignee and unassign are mutually exclusive")
 		}
+		var current *issue.Issue
+		if unassign || assignee != "" || str(args, "status") == "cancelled" || str(args, "status") == "done" {
+			current, err = issue.Load(s.LoomRoot, id)
+			if err != nil {
+				return "", err
+			}
+		}
+		refreshOpts := daemon.RefreshOpts{}
 		if unassign {
 			if err := agent.UnassignIssue(s.LoomRoot, id); err != nil {
 				return "", err
+			}
+			refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, id)
+			if current != nil && current.Assignee != "" {
+				refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, current.Assignee)
 			}
 		}
 		if assignee != "" {
 			if err := agent.AssignIssue(s.LoomRoot, assignee, id); err != nil {
 				return "", err
 			}
+			refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, id)
+			refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, assignee)
+			if current != nil && current.Assignee != "" && current.Assignee != assignee {
+				refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, current.Assignee)
+			}
 		}
 		status := str(args, "status")
 		if status == "cancelled" {
-			cancelled, err := issue.Cancel(s.LoomRoot, id)
+			cancelled, err := agent.CancelIssue(s.LoomRoot, id)
 			if err != nil {
 				return "", err
 			}
 			for _, ci := range cancelled {
-				if ci.PreviousAssignee == "" {
-					continue
-				}
-				if a, err := agent.Load(s.LoomRoot, ci.PreviousAssignee); err == nil {
-					filtered := a.AssignedIssues[:0]
-					for _, aid := range a.AssignedIssues {
-						if aid != ci.IssueID {
-							filtered = append(filtered, aid)
-						}
-					}
-					a.AssignedIssues = filtered
-					agent.Save(s.LoomRoot, a)
+				refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, ci.IssueID)
+				if ci.PreviousAssignee != "" {
+					refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, ci.PreviousAssignee)
 				}
 			}
+			daemon.RefreshBestEffort(s.LoomRoot, refreshOpts)
 			return fmt.Sprintf("Cancelled %s (%d issues affected)", id, len(cancelled)), nil
 		}
 		priority := str(args, "priority")
 		dispatch := strMap(args, "dispatch")
-		if status == "cancelled" {
-			if _, err := agent.CancelIssue(s.LoomRoot, id); err != nil {
-				return "", err
-			}
-			// Apply any remaining non-status updates.
-			if priority != "" || len(dispatch) > 0 {
-				if _, err := issue.Update(s.LoomRoot, id, issue.UpdateOpts{
-					Priority: priority,
-					Dispatch: dispatch,
-				}); err != nil {
-					return "", err
-				}
-			}
-			return fmt.Sprintf("Cancelled %s", id), nil
-		}
 		if status == "done" {
-			if _, err := agent.CloseIssue(s.LoomRoot, id, ""); err != nil {
+			info, err := agent.CloseIssue(s.LoomRoot, id, "")
+			if err != nil {
 				return "", err
 			}
+			refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, id)
+			if info != nil && info.PreviousAssignee != "" {
+				refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, info.PreviousAssignee)
+			}
+			daemon.RefreshBestEffort(s.LoomRoot, refreshOpts)
 			return fmt.Sprintf("Closed %s", id), nil
 		}
 		if status != "" || priority != "" || len(dispatch) > 0 {
@@ -278,7 +290,9 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 			}); err != nil {
 				return "", err
 			}
+			refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, id)
 		}
+		daemon.RefreshBestEffort(s.LoomRoot, refreshOpts)
 		return fmt.Sprintf("Updated %s", id), nil
 
 	case "loom_issue_close":
@@ -286,9 +300,15 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if err != nil {
 			return "", err
 		}
-		if _, err := agent.CloseIssue(s.LoomRoot, id, str(args, "reason")); err != nil {
+		info, err := agent.CloseIssue(s.LoomRoot, id, str(args, "reason"))
+		if err != nil {
 			return "", err
 		}
+		refreshOpts := daemon.RefreshOpts{IssueIDs: []string{id}}
+		if info != nil && info.PreviousAssignee != "" {
+			refreshOpts.AgentIDs = append(refreshOpts.AgentIDs, info.PreviousAssignee)
+		}
+		daemon.RefreshBestEffort(s.LoomRoot, refreshOpts)
 		return fmt.Sprintf("Closed %s", id), nil
 
 	case "loom_issue_create":
@@ -306,6 +326,7 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		if err != nil {
 			return "", err
 		}
+		daemon.RefreshBestEffort(s.LoomRoot, daemon.RefreshOpts{IssueIDs: []string{iss.ID}})
 		return fmt.Sprintf("Created %s: %s", iss.ID, iss.Title), nil
 
 	case "loom_issue_list":
@@ -475,6 +496,18 @@ func strMap(m map[string]interface{}, key string) map[string]string {
 		}
 	}
 	return out
+}
+
+func appendUniqueString(items []string, value string) []string {
+	if value == "" {
+		return items
+	}
+	for _, existing := range items {
+		if existing == value {
+			return items
+		}
+	}
+	return append(items, value)
 }
 
 func toolDefs() []toolDef {

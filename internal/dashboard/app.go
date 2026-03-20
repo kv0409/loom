@@ -53,54 +53,54 @@ const (
 )
 
 type Model struct {
-	loomRoot         string
-	view             view
-	data             backend.Snapshot
-	cursor           int
-	cursors          map[view]int // per-view cursor positions
-	width            int
-	height           int
-	nudgeMode        bool
-	nudgeCursor      int
-	messageMode      bool
-	messageTI        textinput.Model
-	killConfirm      bool
+	loomRoot             string
+	view                 view
+	data                 backend.Snapshot
+	cursor               int
+	cursors              map[view]int // per-view cursor positions
+	width                int
+	height               int
+	nudgeMode            bool
+	nudgeCursor          int
+	messageMode          bool
+	messageTI            textinput.Model
+	killConfirm          bool
 	selectedWorktreeName string
-	diffContent      string
-	kanbanCol        int // selected column in kanban view
-	kanbanRow        int // selected row within column
-	backend          backend.Backend
-	lastClickTime    time.Time
-	lastClickRow     int
-	detailVP         viewport.Model
-	diffVP           viewport.Model
-	detailYOff       int // desired Y offset for detail viewport
-	diffYOff         int // desired Y offset for diff viewport
-	diffXOff         int // desired X offset for diff viewport
-	detailAutoScroll bool // auto-scroll agent detail output to bottom
-	flashMsg         string
-	flashIsErr       bool
-	searchMode       bool
-	searchTI         textinput.Model
-	help             help.Model
-	keys             keyMap
-	reloading        bool // set when quitting due to binary hot-reload
-	refreshed        bool // set after first data message received
-	composeMode      bool
-	composeForm      *huh.Form
-	composeData      *composeData
-	issueComposeMode bool
-	issueComposeForm *huh.Form
-	issueComposeData *issueComposeData
-	chatMode         bool            // true when chat pane is open
-	chatTI           textinput.Model // text input for chat pane
-	chatYOff         int             // scroll offset for chat history
-	agentOutputCache []backend.ACPEvent // cached events for current agent detail
-	agentOutputID    string             // agent ID the cache belongs to
-	diffLoading      bool               // true while diff is being fetched
-	errorShown       bool               // set after first error flash to avoid repeating
-	heartbeatTimeoutSec int             // from config; used for countdown donut
-	spinner          spinner.Model      // animated spinner for loading states
+	diffContent          string
+	kanbanCol            int // selected column in kanban view
+	kanbanRow            int // selected row within column
+	backend              backend.Backend
+	lastClickTime        time.Time
+	lastClickRow         int
+	detailVP             viewport.Model
+	diffVP               viewport.Model
+	detailYOff           int  // desired Y offset for detail viewport
+	diffYOff             int  // desired Y offset for diff viewport
+	diffXOff             int  // desired X offset for diff viewport
+	detailAutoScroll     bool // auto-scroll agent detail output to bottom
+	flashMsg             string
+	flashIsErr           bool
+	searchMode           bool
+	searchTI             textinput.Model
+	help                 help.Model
+	keys                 keyMap
+	reloading            bool // set when quitting due to binary hot-reload
+	refreshed            bool // set after first data message received
+	composeMode          bool
+	composeForm          *huh.Form
+	composeData          *composeData
+	issueComposeMode     bool
+	issueComposeForm     *huh.Form
+	issueComposeData     *issueComposeData
+	chatMode             bool               // true when chat pane is open
+	chatTI               textinput.Model    // text input for chat pane
+	chatYOff             int                // scroll offset for chat history
+	agentOutputCache     []backend.ACPEvent // cached events for current agent detail
+	agentOutputID        string             // agent ID the cache belongs to
+	diffLoading          bool               // true while diff is being fetched
+	errorShown           bool               // set after first error flash to avoid repeating
+	heartbeatTimeoutSec  int                // from config; used for countdown donut
+	spinner              spinner.Model      // animated spinner for loading states
 }
 
 type tickMsg time.Time
@@ -929,6 +929,7 @@ func (m Model) issueComposeSubmit() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return createIssueResultMsg{flash: fmt.Sprintf("Create failed: %s", err), isErr: true}
 		}
+		daemon.RefreshBestEffort(lr, daemon.RefreshOpts{IssueIDs: []string{iss.ID}})
 		return createIssueResultMsg{flash: fmt.Sprintf("Created %s", iss.ID), isErr: false}
 	}
 }

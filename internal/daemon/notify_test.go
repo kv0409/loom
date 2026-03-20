@@ -10,6 +10,7 @@ import (
 	"github.com/karanagi/loom/internal/agent"
 	"github.com/karanagi/loom/internal/config"
 	"github.com/karanagi/loom/internal/issue"
+	"github.com/karanagi/loom/internal/mail"
 )
 
 // stubClient is a minimal ACP client stand-in for testing notify outcomes.
@@ -204,5 +205,95 @@ func TestApiHeartbeatUpdatesCachedAgentWithoutDirtyingState(t *testing.T) {
 	}
 	if d.state.dirty&stateTargetAgents != 0 {
 		t.Fatal("expected heartbeat api to refresh cache directly without leaving agents dirty")
+	}
+}
+
+func TestApiRefreshIssueUpdatesCachedIssueWithoutDirtyingState(t *testing.T) {
+	tmp := setupStateRoot(t)
+	iss, err := issue.Create(tmp, "refresh me", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+		state:      newDaemonState(tmp),
+	}
+	d.state.reconcileEvery = time.Hour
+	if err := d.state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues first: %v", err)
+	}
+
+	if _, err := issue.Update(tmp, iss.ID, issue.UpdateOpts{Priority: "high"}); err != nil {
+		t.Fatalf("issue.Update: %v", err)
+	}
+	if err := d.state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues before refresh: %v", err)
+	}
+	if got := d.state.issueByID(iss.ID).Priority; got != "normal" {
+		t.Fatalf("expected stale cached priority normal before refresh, got %q", got)
+	}
+
+	resp := d.apiRefresh(Request{IssueIDs: []string{iss.ID}})
+	if !resp.OK {
+		t.Fatalf("expected refresh ok, got error %q", resp.Error)
+	}
+	if got := d.state.issueByID(iss.ID).Priority; got != "high" {
+		t.Fatalf("expected refreshed priority high, got %q", got)
+	}
+	if d.state.dirty&stateTargetIssues != 0 {
+		t.Fatal("expected targeted issue refresh to update cache without leaving issues dirty")
+	}
+}
+
+func TestApiRefreshMailboxUpdatesCachedUnreadMessagesWithoutDirtyingState(t *testing.T) {
+	tmp := setupStateRoot(t)
+	registerStateAgent(t, tmp, "lead-001", "lead")
+	registerStateAgent(t, tmp, "builder-001", "builder")
+	if err := mail.Send(tmp, mail.SendOpts{
+		From:    "lead-001",
+		To:      "builder-001",
+		Subject: "refresh mail",
+		Type:    "task",
+	}); err != nil {
+		t.Fatalf("mail.Send: %v", err)
+	}
+
+	d := &Daemon{
+		LoomRoot:   tmp,
+		Config:     &config.Config{},
+		acpClients: make(map[string]*acp.Client),
+		state:      newDaemonState(tmp),
+	}
+	d.state.reconcileEvery = time.Hour
+	if err := d.state.syncMail(); err != nil {
+		t.Fatalf("syncMail first: %v", err)
+	}
+
+	unread := d.state.unreadMessages("builder-001")
+	if len(unread) != 1 {
+		t.Fatalf("expected 1 unread message, got %d", len(unread))
+	}
+	if err := mail.MarkRead(tmp, "builder-001", unread[0].ID); err != nil {
+		t.Fatalf("mail.MarkRead: %v", err)
+	}
+	if err := d.state.syncMail(); err != nil {
+		t.Fatalf("syncMail before refresh: %v", err)
+	}
+	if got := d.state.unreadMessages("builder-001"); len(got) != 1 {
+		t.Fatalf("expected stale unread cache before refresh, got %d", len(got))
+	}
+
+	resp := d.apiRefresh(Request{MailAgents: []string{"builder-001"}})
+	if !resp.OK {
+		t.Fatalf("expected refresh ok, got error %q", resp.Error)
+	}
+	if got := d.state.unreadMessages("builder-001"); len(got) != 0 {
+		t.Fatalf("expected refreshed mailbox to have no unread messages, got %d", len(got))
+	}
+	if d.state.dirty&stateTargetMail != 0 {
+		t.Fatal("expected targeted mailbox refresh to update cache without leaving mail dirty")
 	}
 }

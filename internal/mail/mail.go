@@ -51,6 +51,23 @@ type LogOpts struct {
 // ErrRecipientNotFound is returned when the recipient agent has no registration.
 var ErrRecipientNotFound = fmt.Errorf("recipient agent not found")
 
+func ResolveRecipient(loomRoot, to string) (string, error) {
+	a, err := agent.Load(loomRoot, to)
+	if err != nil {
+		return "", fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
+	}
+
+	if a.Status != "dead" || a.SpawnedBy == "" {
+		return to, nil
+	}
+
+	parent, err := agent.Load(loomRoot, a.SpawnedBy)
+	if err != nil || parent.Status == "dead" {
+		return "", fmt.Errorf("%w: %s", ErrRecipientNotFound, a.SpawnedBy)
+	}
+	return a.SpawnedBy, nil
+}
+
 func Send(loomRoot string, opts SendOpts) error {
 	msg := &Message{
 		From:     opts.From,
@@ -69,20 +86,9 @@ func Send(loomRoot string, opts SendOpts) error {
 	}
 	msg.ID = fmt.Sprintf("%d-%s-%s-%s", msg.Timestamp.UnixNano(), msg.From, slug(msg.Subject), nonce)
 
-	// Validate recipient exists
-	to := msg.To
-	a, err := agent.Load(loomRoot, to)
+	to, err := ResolveRecipient(loomRoot, msg.To)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
-	}
-
-	// Route to parent if recipient is dead; validate parent exists and is alive
-	if a.Status == "dead" && a.SpawnedBy != "" {
-		to = a.SpawnedBy
-		parent, err := agent.Load(loomRoot, to)
-		if err != nil || parent.Status == "dead" {
-			return fmt.Errorf("%w: %s", ErrRecipientNotFound, to)
-		}
+		return err
 	}
 
 	dir := filepath.Join(loomRoot, "mail", "inbox", to)

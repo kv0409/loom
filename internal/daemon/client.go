@@ -10,6 +10,12 @@ import (
 	"github.com/karanagi/loom/internal/agent"
 )
 
+type RefreshOpts struct {
+	IssueIDs   []string
+	AgentIDs   []string
+	MailAgents []string
+}
+
 // call dials the daemon Unix socket, sends req, and returns the response.
 func call(loomRoot string, req Request) (Response, error) {
 	conn, err := net.Dial("unix", SockPath(loomRoot))
@@ -83,8 +89,49 @@ func Output(loomRoot, agentID string, lines int) ([]acp.ACPEvent, error) {
 	return events, nil
 }
 
+// Refresh reloads specific cached control-plane entries from disk without
+// invalidating the entire section.
+func Refresh(loomRoot string, opts RefreshOpts) error {
+	_, err := call(loomRoot, Request{
+		Action:     "refresh",
+		IssueIDs:   opts.IssueIDs,
+		AgentIDs:   opts.AgentIDs,
+		MailAgents: opts.MailAgents,
+	})
+	return err
+}
+
+// RefreshBestEffort updates specific cached entries when the daemon is
+// available and falls back to section invalidation if targeted refresh fails.
+func RefreshBestEffort(loomRoot string, opts RefreshOpts) {
+	if _, err := os.Stat(SockPath(loomRoot)); err != nil {
+		return
+	}
+	if err := Refresh(loomRoot, opts); err == nil {
+		return
+	}
+	targets := refreshTargets(opts)
+	if len(targets) > 0 {
+		_ = Invalidate(loomRoot, targets...)
+	}
+}
+
 // Invalidate marks daemon cache sections dirty so the next watcher tick reloads them.
 func Invalidate(loomRoot string, targets ...string) error {
 	_, err := call(loomRoot, Request{Action: "invalidate", Targets: targets})
 	return err
+}
+
+func refreshTargets(opts RefreshOpts) []string {
+	var targets []string
+	if len(opts.IssueIDs) > 0 {
+		targets = append(targets, "issues")
+	}
+	if len(opts.AgentIDs) > 0 {
+		targets = append(targets, "agents")
+	}
+	if len(opts.MailAgents) > 0 {
+		targets = append(targets, "mail")
+	}
+	return targets
 }

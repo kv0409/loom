@@ -763,6 +763,7 @@ func runTask(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	refreshDaemonState(root, daemon.RefreshOpts{IssueIDs: []string{iss.ID}})
 	cliout.PrintSuccess("Created "+args[0], iss.ID)
 	cliout.PrintInfo("The orchestrator will pick this up automatically.")
 	return nil
@@ -827,7 +828,7 @@ func runIssueCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	invalidateDaemonState(root, "issues")
+	refreshDaemonState(root, daemon.RefreshOpts{IssueIDs: []string{iss.ID}})
 	cliout.PrintSuccess("Created "+iss.Title, iss.ID)
 	return nil
 }
@@ -1038,12 +1039,27 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("--assignee and --unassign are mutually exclusive")
 	}
 
+	var current *issue.Issue
+	if unassign || assignee != "" || status == "cancelled" || status == "done" {
+		current, err = issue.Load(root, args[0])
+		if err != nil {
+			return err
+		}
+	}
+
 	if status == "cancelled" {
 		cancelled, err := agent.CancelIssue(root, args[0])
 		if err != nil {
 			return err
 		}
-		invalidateDaemonState(root, "issues", "agents")
+		refreshOpts := daemon.RefreshOpts{}
+		for _, ci := range cancelled {
+			refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, ci.IssueID)
+			if ci.PreviousAssignee != "" {
+				refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, ci.PreviousAssignee)
+			}
+		}
+		refreshDaemonState(root, refreshOpts)
 		cliout.PrintWarning("Cancelled " + args[0])
 		for _, ci := range cancelled {
 			if ci.PreviousAssignee == "" {
@@ -1058,26 +1074,39 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if status == "done" {
-		if _, err := agent.CloseIssue(root, args[0], ""); err != nil {
+		info, err := agent.CloseIssue(root, args[0], "")
+		if err != nil {
 			return err
 		}
-		invalidateDaemonState(root, "issues", "agents")
+		refreshOpts := daemon.RefreshOpts{IssueIDs: []string{args[0]}}
+		if info != nil && info.PreviousAssignee != "" {
+			refreshOpts.AgentIDs = append(refreshOpts.AgentIDs, info.PreviousAssignee)
+		}
+		refreshDaemonState(root, refreshOpts)
 		cliout.PrintSuccess("Closed " + args[0])
 		return nil
 	}
 
 	// Handle assignee changes through agent package for state sync.
+	refreshOpts := daemon.RefreshOpts{}
 	if unassign {
 		if err := agent.UnassignIssue(root, args[0]); err != nil {
 			return err
 		}
-		invalidateDaemonState(root, "issues", "agents")
+		refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, args[0])
+		if current != nil && current.Assignee != "" {
+			refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, current.Assignee)
+		}
 	}
 	if assignee != "" {
 		if err := agent.AssignIssue(root, assignee, args[0]); err != nil {
 			return err
 		}
-		invalidateDaemonState(root, "issues", "agents")
+		refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, args[0])
+		refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, assignee)
+		if current != nil && current.Assignee != "" && current.Assignee != assignee {
+			refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, current.Assignee)
+		}
 	}
 
 	// Apply remaining non-assignee updates.
@@ -1087,9 +1116,10 @@ func runIssueUpdate(cmd *cobra.Command, args []string) error {
 		}); err != nil {
 			return err
 		}
-		invalidateDaemonState(root, "issues")
+		refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, args[0])
 	}
 
+	refreshDaemonState(root, refreshOpts)
 	cliout.PrintSuccess("Updated " + args[0])
 	return nil
 }
@@ -1117,11 +1147,15 @@ func runIssueClose(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	reason, _ := cmd.Flags().GetString("reason")
-	_, err = agent.CloseIssue(root, args[0], reason)
+	info, err := agent.CloseIssue(root, args[0], reason)
 	if err != nil {
 		return err
 	}
-	invalidateDaemonState(root, "issues", "agents")
+	refreshOpts := daemon.RefreshOpts{IssueIDs: []string{args[0]}}
+	if info != nil && info.PreviousAssignee != "" {
+		refreshOpts.AgentIDs = append(refreshOpts.AgentIDs, info.PreviousAssignee)
+	}
+	refreshDaemonState(root, refreshOpts)
 	cliout.PrintSuccess("Closed " + args[0])
 	return nil
 }
@@ -1141,6 +1175,10 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	}
 	ref, _ := cmd.Flags().GetString("ref")
 	body, _ := cmd.Flags().GetString("body")
+	resolvedTo, err := mail.ResolveRecipient(root, args[0])
+	if err != nil {
+		return err
+	}
 
 	if err := mail.Send(root, mail.SendOpts{
 		From:     from,
@@ -1153,7 +1191,7 @@ func runMailSend(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return err
 	}
-	invalidateDaemonState(root, "mail")
+	refreshDaemonState(root, daemon.RefreshOpts{MailAgents: []string{resolvedTo}})
 	cliout.PrintSuccess("Sent to " + args[0] + ": " + args[1])
 	return nil
 }
@@ -1199,7 +1237,7 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if markedRead {
-		invalidateDaemonState(root, "mail")
+		refreshDaemonState(root, daemon.RefreshOpts{MailAgents: []string{agent}})
 	}
 	return nil
 }
@@ -1674,6 +1712,15 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	refreshOpts := daemon.RefreshOpts{}
+	for _, issID := range issues {
+		refreshOpts.IssueIDs = appendUniqueString(refreshOpts.IssueIDs, issID)
+		loaded, err := issue.Load(root, issID)
+		if err == nil && loaded.Assignee != "" {
+			refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, loaded.Assignee)
+		}
+	}
+
 	// Apply dispatch directives to assigned issues before spawning.
 	if dispatch := parseDispatch(dispatchStr); len(dispatch) > 0 {
 		for _, issID := range issues {
@@ -1681,7 +1728,6 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("setting dispatch on %s: %w", issID, err)
 			}
 		}
-		invalidateDaemonState(root, "issues")
 	}
 
 	a, err := agent.Spawn(root, agent.SpawnOpts{
@@ -1696,16 +1742,26 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	invalidateDaemonState(root, "issues", "agents")
+	refreshOpts.AgentIDs = appendUniqueString(refreshOpts.AgentIDs, a.ID)
+	refreshDaemonState(root, refreshOpts)
 	fmt.Printf("Spawned %s (role: %s)\n", a.ID, a.Role)
 	return nil
 }
 
-func invalidateDaemonState(root string, targets ...string) {
-	if _, err := os.Stat(daemon.SockPath(root)); err != nil {
-		return
+func refreshDaemonState(root string, opts daemon.RefreshOpts) {
+	daemon.RefreshBestEffort(root, opts)
+}
+
+func appendUniqueString(items []string, value string) []string {
+	if value == "" {
+		return items
 	}
-	_ = daemon.Invalidate(root, targets...)
+	for _, existing := range items {
+		if existing == value {
+			return items
+		}
+	}
+	return append(items, value)
 }
 
 func relativeTime(t time.Time) string {
@@ -2753,6 +2809,10 @@ func runFinding(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("invalid --class value %q: must be foundational, tactical, or observational", class)
 	}
+	resolvedTo, err := mail.ResolveRecipient(root, to)
+	if err != nil {
+		return err
+	}
 
 	if err := mail.Send(root, mail.SendOpts{
 		From:    from,
@@ -2763,6 +2823,7 @@ func runFinding(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return err
 	}
+	refreshDaemonState(root, daemon.RefreshOpts{MailAgents: []string{resolvedTo}})
 	fmt.Printf("Finding sent to %s\n", to)
 	return nil
 }

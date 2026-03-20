@@ -382,6 +382,21 @@ func (s *daemonState) unreadMessages(agentID string) []*mail.Message {
 	return out
 }
 
+func (s *daemonState) storeIssue(iss *issue.Issue) error {
+	info, err := os.Stat(filepath.Join(s.loomRoot, "issues", iss.ID+".yaml"))
+	if err != nil {
+		return fmt.Errorf("stat issue %s: %w", iss.ID, err)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.issues[iss.ID] = cloneCachedIssue(iss)
+	s.issueStamp[iss.ID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+	s.lastIssuesSync = s.now()
+	s.dirty &^= stateTargetIssues
+	return nil
+}
+
 func (s *daemonState) storeAgent(a *agent.Agent) error {
 	info, err := os.Stat(filepath.Join(s.loomRoot, "agents", a.ID+".yaml"))
 	if err != nil {
@@ -394,6 +409,93 @@ func (s *daemonState) storeAgent(a *agent.Agent) error {
 	s.agentStamp[a.ID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
 	s.lastAgentsSync = s.now()
 	s.dirty &^= stateTargetAgents
+	return nil
+}
+
+func (s *daemonState) refreshIssue(id string) error {
+	path := filepath.Join(s.loomRoot, "issues", id+".yaml")
+	iss := &issue.Issue{}
+	if err := store.ReadYAML(path, iss); err != nil {
+		if os.IsNotExist(err) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			delete(s.issues, id)
+			delete(s.issueStamp, id)
+			s.lastIssuesSync = s.now()
+			s.dirty &^= stateTargetIssues
+			return nil
+		}
+		return fmt.Errorf("reading issue %s: %w", id, err)
+	}
+	if iss.ID == "" {
+		return fmt.Errorf("reading issue %s: missing id", id)
+	}
+	return s.storeIssue(iss)
+}
+
+func (s *daemonState) refreshAgent(id string) error {
+	a, err := agent.Load(s.loomRoot, id)
+	if err != nil {
+		if os.IsNotExist(err) {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			delete(s.agents, id)
+			delete(s.agentStamp, id)
+			s.lastAgentsSync = s.now()
+			s.dirty &^= stateTargetAgents
+			return nil
+		}
+		return fmt.Errorf("reading agent %s: %w", id, err)
+	}
+	if a.ID == "" {
+		return fmt.Errorf("reading agent %s: missing id", id)
+	}
+	return s.storeAgent(a)
+}
+
+func (s *daemonState) refreshMailbox(agentID string) error {
+	files, err := listYAMLFilesOrEmpty(filepath.Join(s.loomRoot, "mail", "inbox", agentID))
+	if err != nil {
+		return fmt.Errorf("listing inbox for %s: %w", agentID, err)
+	}
+
+	bucket := make(map[string]*mail.Message, len(files))
+	stamps := make(map[string]fileStamp, len(files))
+	for _, f := range files {
+		info, err := os.Stat(f)
+		if err != nil {
+			return fmt.Errorf("stat mail %s: %w", filepath.Base(f), err)
+		}
+		msgID := strings.TrimSuffix(filepath.Base(f), ".yaml")
+		msg := &mail.Message{}
+		if err := store.ReadYAML(f, msg); err != nil {
+			return fmt.Errorf("reading mail %s: %w", filepath.Base(f), err)
+		}
+		if msg.ID == "" {
+			return fmt.Errorf("reading mail %s: missing id", filepath.Base(f))
+		}
+		bucket[msgID] = cloneCachedMessage(msg)
+		stamps[msgID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	prefix := agentID + "/"
+	for key := range s.mailStamp {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.mailStamp, key)
+		}
+	}
+	if len(bucket) == 0 {
+		delete(s.mailByAgent, agentID)
+	} else {
+		s.mailByAgent[agentID] = bucket
+		for msgID, stamp := range stamps {
+			s.mailStamp[prefix+msgID] = stamp
+		}
+	}
+	s.lastMailSync = s.now()
+	s.dirty &^= stateTargetMail
 	return nil
 }
 
