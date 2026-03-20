@@ -26,7 +26,7 @@ func (m Model) filteredAgents() []*backend.Agent {
 	}
 	var out []*backend.Agent
 	for _, a := range m.data.Agents {
-		if searchMatch(m.searchTI.Value(), a.ID, a.Role, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
+		if searchMatch(m.searchTI.Value(), a.ID, a.Role, a.Config.Model, a.Status, a.WorktreeName, strings.Join(a.AssignedIssues, " ")) {
 			out = append(out, a)
 		}
 	}

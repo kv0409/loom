@@ -15,7 +15,7 @@ func (m Model) renderAgents() string {
 	vRows := visibleRows(m.height, 9)
 	start, end := listViewport(m.cursor, len(agents), vRows)
 
-	headers := []string{"ID", "ROLE", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}
+	headers := []string{"ID", "MODEL", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}
 	rows := make([][]string, 0, end-start)
 	for i := start; i < end; i++ {
 		a := agents[i]
@@ -59,7 +59,11 @@ func (m Model) renderAgents() string {
 		if sg == "" {
 			sg = "●"
 		}
-		rows = append(rows, []string{prefix + a.ID, a.Role, sg + " " + a.Status, wt, issues, hb})
+		model := a.Config.Model
+		if model == "" {
+			model = "—"
+		}
+		rows = append(rows, []string{prefix + a.ID, model, sg + " " + a.Status, wt, issues, hb})
 	}
 
 	styler := func(row, col int, isSelected bool) lipgloss.Style {
