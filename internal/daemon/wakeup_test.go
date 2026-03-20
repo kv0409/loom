@@ -96,3 +96,37 @@ func TestKillRefreshOptsTracksAffectedAgentsIssuesAndMail(t *testing.T) {
 		t.Fatalf("expected 2 mailbox refresh targets, got %v", opts.MailAgents)
 	}
 }
+
+func TestWatchPendingAgentsProcessesTickerWithoutWakeSignal(t *testing.T) {
+	root := setupStateRoot(t)
+	a := &agent.Agent{ID: "orchestrator", Role: "orchestrator", Status: "pending-acp"}
+	if err := agent.Register(root, a); err != nil {
+		t.Fatalf("agent.Register: %v", err)
+	}
+
+	cfg := config.DefaultConfig()
+	cfg.Polling.PendingAgentsIntervalMs = 10
+	cfg.Kiro.Command = "/definitely-not-a-real-kiro-command"
+
+	d := New(root, cfg)
+	go d.watchPendingAgents()
+	defer close(d.stop)
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		got, err := agent.Load(root, "orchestrator")
+		if err != nil {
+			t.Fatalf("agent.Load: %v", err)
+		}
+		if got.Status != "pending-acp" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	got, err := agent.Load(root, "orchestrator")
+	if err != nil {
+		t.Fatalf("agent.Load final: %v", err)
+	}
+	t.Fatalf("expected ticker to move agent out of pending-acp, still %q", got.Status)
+}

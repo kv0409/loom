@@ -439,22 +439,22 @@ func (d *Daemon) watchPendingAgents() {
 			return
 		case <-ticker.C:
 		case <-d.agentWake:
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchPendingAgents:sync", "[pending-agents] sync agents failed: %v", err)
-				continue
-			}
-			agents := d.state.agentsList()
-			for _, a := range agents {
-				if a.Status == "pending-acp" {
-					d.touchActivity()
-					a.Status = "activating"
-					if err := agent.Save(d.LoomRoot, a); err != nil {
-						log.Printf("[daemon] save agent %s: %v", a.ID, err)
-						continue
-					}
-					d.storeCachedAgent(a)
-					go d.activateACPAgent(a)
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchPendingAgents:sync", "[pending-agents] sync agents failed: %v", err)
+			continue
+		}
+		agents := d.state.agentsList()
+		for _, a := range agents {
+			if a.Status == "pending-acp" {
+				d.touchActivity()
+				a.Status = "activating"
+				if err := agent.Save(d.LoomRoot, a); err != nil {
+					log.Printf("[daemon] save agent %s: %v", a.ID, err)
+					continue
 				}
+				d.storeCachedAgent(a)
+				go d.activateACPAgent(a)
 			}
 		}
 	}
@@ -666,29 +666,29 @@ func (d *Daemon) watchIssues() {
 		case <-ticker.C:
 		case <-d.issueWake:
 		case <-d.agentWake:
-			if err := d.state.syncIssues(); err != nil {
-				d.rlog("watchIssues:sync:issues", "[issues] sync issues failed: %v", err)
+		}
+		if err := d.state.syncIssues(); err != nil {
+			d.rlog("watchIssues:sync:issues", "[issues] sync issues failed: %v", err)
+			continue
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchIssues:sync:agents", "[issues] sync agents failed: %v", err)
+			continue
+		}
+		issues := d.state.readyIssues()
+		for _, iss := range issues {
+			if prev, ok := notifiedAt[iss.ID]; ok && !iss.UpdatedAt.After(prev) {
 				continue
 			}
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchIssues:sync:agents", "[issues] sync agents failed: %v", err)
+			notifiedAt[iss.ID] = iss.UpdatedAt
+			d.touchActivity()
+			msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
+			orch := d.state.agentByID("orchestrator")
+			if orch == nil {
+				d.rlog("watchIssues:orch", "[issues] orchestrator not found in cached state")
 				continue
 			}
-			issues := d.state.readyIssues()
-			for _, iss := range issues {
-				if prev, ok := notifiedAt[iss.ID]; ok && !iss.UpdatedAt.After(prev) {
-					continue
-				}
-				notifiedAt[iss.ID] = iss.UpdatedAt
-				d.touchActivity()
-				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
-				orch := d.state.agentByID("orchestrator")
-				if orch == nil {
-					d.rlog("watchIssues:orch", "[issues] orchestrator not found in cached state")
-					continue
-				}
-				d.logNotify(orch, msg)
-			}
+			d.logNotify(orch, msg)
 		}
 	}
 }
@@ -737,93 +737,93 @@ func (d *Daemon) watchDoneIssues() {
 		case <-ticker.C:
 		case <-d.issueWake:
 		case <-d.agentWake:
-			if err := d.state.syncIssues(); err != nil {
-				d.rlog("watchDoneIssues:sync:issues", "[done-issues] sync issues failed: %v", err)
+		}
+		if err := d.state.syncIssues(); err != nil {
+			d.rlog("watchDoneIssues:sync:issues", "[done-issues] sync issues failed: %v", err)
+			continue
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchDoneIssues:sync:agents", "[done-issues] sync agents failed: %v", err)
+			continue
+		}
+		issues := d.state.allIssues()
+
+		// Build set of resolved issue IDs.
+		resolved := d.state.resolvedIssueSet()
+
+		// Auto-close parents with all descendants resolved.
+		for _, iss := range issues {
+			if len(iss.Children) == 0 || iss.Status == "done" || iss.Status == "cancelled" {
 				continue
 			}
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchDoneIssues:sync:agents", "[done-issues] sync agents failed: %v", err)
+			if !d.state.allDescendantsResolved(iss.ID) {
 				continue
 			}
-			issues := d.state.allIssues()
-
-			// Build set of resolved issue IDs.
-			resolved := d.state.resolvedIssueSet()
-
-			// Auto-close parents with all descendants resolved.
-			for _, iss := range issues {
-				if len(iss.Children) == 0 || iss.Status == "done" || iss.Status == "cancelled" {
-					continue
-				}
-				if !d.state.allDescendantsResolved(iss.ID) {
-					continue
-				}
-				d.touchActivity()
-				info, err := agent.CloseIssue(d.LoomRoot, iss.ID, "all children resolved")
-				if err != nil {
-					d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
-					continue
-				}
-				refreshOpts := RefreshOpts{IssueIDs: []string{iss.ID}}
-				if info.PreviousAssignee != "" {
-					refreshOpts.AgentIDs = []string{info.PreviousAssignee}
-				}
-				d.refreshCachedState(refreshOpts)
-				resolved[iss.ID] = true
-				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
-				target := info.PreviousAssignee
-				if target == "" {
-					target = "orchestrator"
-				}
-				a := d.state.agentByID(target)
-				if a == nil {
-					d.rlog("watchDoneIssues:load:"+target, "[done-issues] cached agent %s missing", target)
-					continue
-				}
-				d.logNotify(a, msg)
+			d.touchActivity()
+			info, err := agent.CloseIssue(d.LoomRoot, iss.ID, "all children resolved")
+			if err != nil {
+				d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
+				continue
 			}
-
-			// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
-			agents := d.state.agentsList()
-			for _, a := range agents {
-				if a.Status != "active" || a.Role == "orchestrator" {
-					continue
-				}
-				// Only notify/kill if the agent has at least one assigned issue
-				// AND all of its assigned issues are resolved.
-				if len(a.AssignedIssues) == 0 {
-					continue
-				}
-				allResolved := true
-				for _, issID := range a.AssignedIssues {
-					if !resolved[issID] {
-						allResolved = false
-						break
-					}
-				}
-				if !allResolved {
-					continue
-				}
-				if t, ok := notifiedAgents[a.ID]; ok {
-					if time.Since(t) > 2*time.Minute {
-						log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
-						refreshOpts := d.killRefreshOpts(a.ID, resolved)
-						agent.KillWithResolved(d.LoomRoot, a.ID, true, resolved)
-						d.refreshCachedState(refreshOpts)
-						delete(notifiedAgents, a.ID)
-					}
-					continue
-				}
-				notifiedAgents[a.ID] = time.Now()
-				log.Printf("[daemon] notifying %s: assigned issue resolved, wrap up", a.ID)
-				d.logNotify(a, "[LOOM] Your assigned issue is resolved. Wrap up any final work and exit.")
+			refreshOpts := RefreshOpts{IssueIDs: []string{iss.ID}}
+			if info.PreviousAssignee != "" {
+				refreshOpts.AgentIDs = []string{info.PreviousAssignee}
 			}
+			d.refreshCachedState(refreshOpts)
+			resolved[iss.ID] = true
+			msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
+			target := info.PreviousAssignee
+			if target == "" {
+				target = "orchestrator"
+			}
+			a := d.state.agentByID(target)
+			if a == nil {
+				d.rlog("watchDoneIssues:load:"+target, "[done-issues] cached agent %s missing", target)
+				continue
+			}
+			d.logNotify(a, msg)
+		}
 
-			// Clean up tracking for agents that are gone.
-			for id := range notifiedAgents {
-				if d.state.agentByID(id) == nil {
-					delete(notifiedAgents, id)
+		// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
+		agents := d.state.agentsList()
+		for _, a := range agents {
+			if a.Status != "active" || a.Role == "orchestrator" {
+				continue
+			}
+			// Only notify/kill if the agent has at least one assigned issue
+			// AND all of its assigned issues are resolved.
+			if len(a.AssignedIssues) == 0 {
+				continue
+			}
+			allResolved := true
+			for _, issID := range a.AssignedIssues {
+				if !resolved[issID] {
+					allResolved = false
+					break
 				}
+			}
+			if !allResolved {
+				continue
+			}
+			if t, ok := notifiedAgents[a.ID]; ok {
+				if time.Since(t) > 2*time.Minute {
+					log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
+					refreshOpts := d.killRefreshOpts(a.ID, resolved)
+					agent.KillWithResolved(d.LoomRoot, a.ID, true, resolved)
+					d.refreshCachedState(refreshOpts)
+					delete(notifiedAgents, a.ID)
+				}
+				continue
+			}
+			notifiedAgents[a.ID] = time.Now()
+			log.Printf("[daemon] notifying %s: assigned issue resolved, wrap up", a.ID)
+			d.logNotify(a, "[LOOM] Your assigned issue is resolved. Wrap up any final work and exit.")
+		}
+
+		// Clean up tracking for agents that are gone.
+		for id := range notifiedAgents {
+			if d.state.agentByID(id) == nil {
+				delete(notifiedAgents, id)
 			}
 		}
 	}
@@ -841,33 +841,33 @@ func (d *Daemon) watchMail() {
 		case <-ticker.C:
 		case <-d.mailWake:
 		case <-d.agentWake:
-			if err := d.state.syncMail(); err != nil {
-				d.rlog("watchMail:sync:mail", "[mail] sync mail failed: %v", err)
+		}
+		if err := d.state.syncMail(); err != nil {
+			d.rlog("watchMail:sync:mail", "[mail] sync mail failed: %v", err)
+			continue
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchMail:sync:agents", "[mail] sync agents failed: %v", err)
+			continue
+		}
+		for _, agentID := range d.state.mailAgentIDs() {
+			msgs := d.state.unreadMessages(agentID)
+			if len(msgs) == 0 {
 				continue
 			}
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchMail:sync:agents", "[mail] sync agents failed: %v", err)
+			d.touchActivity()
+			a := d.state.agentByID(agentID)
+			if a == nil {
+				d.rlog("watchMail:load:"+agentID, "[mail] cached agent %s missing", agentID)
 				continue
 			}
-			for _, agentID := range d.state.mailAgentIDs() {
-				msgs := d.state.unreadMessages(agentID)
-				if len(msgs) == 0 {
+			for _, m := range msgs {
+				if t, ok := notifiedAt[m.ID]; ok && time.Since(t) < renotifyInterval {
 					continue
 				}
-				d.touchActivity()
-				a := d.state.agentByID(agentID)
-				if a == nil {
-					d.rlog("watchMail:load:"+agentID, "[mail] cached agent %s missing", agentID)
-					continue
-				}
-				for _, m := range msgs {
-					if t, ok := notifiedAt[m.ID]; ok && time.Since(t) < renotifyInterval {
-						continue
-					}
-					notifiedAt[m.ID] = time.Now()
-					msg := "[LOOM] New mail from " + m.From + ": " + m.Subject + ". Run: loom mail read"
-					d.logNotify(a, msg)
-				}
+				notifiedAt[m.ID] = time.Now()
+				msg := "[LOOM] New mail from " + m.From + ": " + m.Subject + ". Run: loom mail read"
+				d.logNotify(a, msg)
 			}
 		}
 	}
@@ -890,122 +890,122 @@ func (d *Daemon) watchHeartbeats() {
 			return
 		case <-ticker.C:
 		case <-d.agentWake:
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchHeartbeats:sync:agents", "[heartbeat] sync agents failed: %v", err)
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchHeartbeats:sync:agents", "[heartbeat] sync agents failed: %v", err)
+			continue
+		}
+		agents := d.state.agentsList()
+		for _, a := range agents {
+			if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
+				delete(d.lastSeen, a.ID)
+				delete(d.idleSince, a.ID)
 				continue
 			}
-			agents := d.state.agentsList()
-			for _, a := range agents {
-				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
-					delete(d.lastSeen, a.ID)
-					delete(d.idleSince, a.ID)
-					continue
-				}
-				if !d.isAlive(a) {
-					d.mu.Lock()
-					_, hasClient := d.acpClients[a.ID]
-					d.mu.Unlock()
-					log.Printf("[heartbeat] marking %s dead: isAlive=false (hasClient=%v pid=%d)", a.ID, hasClient, a.PID)
-					d.UnregisterACPClient(a.ID)
-					agent.KillProcess(a)
-					// Salvage and clean up worktree before marking dead.
-					if a.WorktreeName != "" {
-						wtPath := filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
-						if worktree.HasDirtyFiles(wtPath) {
-							if err := worktree.SalvageCommit(wtPath, a.ID); err != nil {
-								log.Printf("[heartbeat] preserving worktree %s: salvage failed: %v", a.WorktreeName, err)
-							}
-						}
-						if err := worktree.Remove(d.LoomRoot, a.WorktreeName, false); err != nil {
-							if errors.Is(err, worktree.ErrUnmergedBranch) {
-								log.Printf("[heartbeat] preserving worktree %s: branch has unmerged commits", a.WorktreeName)
-							} else {
-								log.Printf("[heartbeat] preserving worktree %s: cleanup failed: %v", a.WorktreeName, err)
-							}
+			if !d.isAlive(a) {
+				d.mu.Lock()
+				_, hasClient := d.acpClients[a.ID]
+				d.mu.Unlock()
+				log.Printf("[heartbeat] marking %s dead: isAlive=false (hasClient=%v pid=%d)", a.ID, hasClient, a.PID)
+				d.UnregisterACPClient(a.ID)
+				agent.KillProcess(a)
+				// Salvage and clean up worktree before marking dead.
+				if a.WorktreeName != "" {
+					wtPath := filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
+					if worktree.HasDirtyFiles(wtPath) {
+						if err := worktree.SalvageCommit(wtPath, a.ID); err != nil {
+							log.Printf("[heartbeat] preserving worktree %s: salvage failed: %v", a.WorktreeName, err)
 						}
 					}
-					a.Status = "dead"
+					if err := worktree.Remove(d.LoomRoot, a.WorktreeName, false); err != nil {
+						if errors.Is(err, worktree.ErrUnmergedBranch) {
+							log.Printf("[heartbeat] preserving worktree %s: branch has unmerged commits", a.WorktreeName)
+						} else {
+							log.Printf("[heartbeat] preserving worktree %s: cleanup failed: %v", a.WorktreeName, err)
+						}
+					}
+				}
+				a.Status = "dead"
+				a.NudgeCount = 0
+				if err := agent.Save(d.LoomRoot, a); err != nil {
+					log.Printf("[daemon] save agent %s: %v", a.ID, err)
+				}
+				if err := agent.UnassignAllIssues(d.LoomRoot, a); err != nil {
+					log.Printf("[heartbeat] failed to unassign issues for %s: %v", a.ID, err)
+				}
+				refreshOpts := RefreshOpts{AgentIDs: []string{a.ID}}
+				if len(a.AssignedIssues) > 0 {
+					refreshOpts.IssueIDs = append([]string(nil), a.AssignedIssues...)
+				}
+				d.refreshCachedState(refreshOpts)
+				delete(d.lastSeen, a.ID)
+				delete(d.idleSince, a.ID)
+				parentID := a.SpawnedBy
+				if parentID == "" {
+					continue
+				}
+				parent := d.state.agentByID(parentID)
+				if parent == nil {
+					continue
+				}
+				d.logNotify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
+				continue
+			}
+
+			// Agent is alive — check for stale heartbeat.
+			prev, tracked := d.lastSeen[a.ID]
+			if !tracked {
+				d.lastSeen[a.ID] = a.Heartbeat
+				continue
+			}
+
+			// Heartbeat was refreshed since last check — reset nudge count.
+			if a.Heartbeat.After(prev) {
+				d.lastSeen[a.ID] = a.Heartbeat
+				d.touchActivity()
+				if a.NudgeCount > 0 {
 					a.NudgeCount = 0
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 					}
-					if err := agent.UnassignAllIssues(d.LoomRoot, a); err != nil {
-						log.Printf("[heartbeat] failed to unassign issues for %s: %v", a.ID, err)
-					}
-					refreshOpts := RefreshOpts{AgentIDs: []string{a.ID}}
-					if len(a.AssignedIssues) > 0 {
-						refreshOpts.IssueIDs = append([]string(nil), a.AssignedIssues...)
-					}
-					d.refreshCachedState(refreshOpts)
-					delete(d.lastSeen, a.ID)
-					delete(d.idleSince, a.ID)
-					parentID := a.SpawnedBy
-					if parentID == "" {
-						continue
-					}
-					parent := d.state.agentByID(parentID)
-					if parent == nil {
-						continue
-					}
-					d.logNotify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
-					continue
-				}
-
-				// Agent is alive — check for stale heartbeat.
-				prev, tracked := d.lastSeen[a.ID]
-				if !tracked {
-					d.lastSeen[a.ID] = a.Heartbeat
-					continue
-				}
-
-				// Heartbeat was refreshed since last check — reset nudge count.
-				if a.Heartbeat.After(prev) {
-					d.lastSeen[a.ID] = a.Heartbeat
-					d.touchActivity()
-					if a.NudgeCount > 0 {
-						a.NudgeCount = 0
-						if err := agent.Save(d.LoomRoot, a); err != nil {
-							log.Printf("[daemon] save agent %s: %v", a.ID, err)
-						}
-						d.storeCachedAgent(a)
-					}
-					continue
-				}
-
-				// Check if heartbeat is stale.
-				if time.Since(a.Heartbeat) <= timeout {
-					continue
-				}
-
-				if a.NudgeCount < 2 {
-					// Skip stale-heartbeat nudge for the orchestrator when there
-					// are no active (non-terminal) issues — it is legitimately idle.
-					if a.Role == "orchestrator" && !d.hasActiveIssues() {
-						continue
-					}
-					d.logNotify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
-					a.NudgeCount++
-					a.LastNudge = time.Now()
-					if err := agent.Save(d.LoomRoot, a); err != nil {
-						log.Printf("[daemon] save agent %s: %v", a.ID, err)
-					}
 					d.storeCachedAgent(a)
-					if a.NudgeCount == 2 {
-						if parentID := a.SpawnedBy; parentID != "" {
-							parent := d.state.agentByID(parentID)
-							if parent != nil {
-								d.logNotify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
-							}
+				}
+				continue
+			}
+
+			// Check if heartbeat is stale.
+			if time.Since(a.Heartbeat) <= timeout {
+				continue
+			}
+
+			if a.NudgeCount < 2 {
+				// Skip stale-heartbeat nudge for the orchestrator when there
+				// are no active (non-terminal) issues — it is legitimately idle.
+				if a.Role == "orchestrator" && !d.hasActiveIssues() {
+					continue
+				}
+				d.logNotify(a, "[LOOM] Heartbeat stale — are you stuck? Run loom agent heartbeat to confirm alive.")
+				a.NudgeCount++
+				a.LastNudge = time.Now()
+				if err := agent.Save(d.LoomRoot, a); err != nil {
+					log.Printf("[daemon] save agent %s: %v", a.ID, err)
+				}
+				d.storeCachedAgent(a)
+				if a.NudgeCount == 2 {
+					if parentID := a.SpawnedBy; parentID != "" {
+						parent := d.state.agentByID(parentID)
+						if parent != nil {
+							d.logNotify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
 						}
 					}
 				}
 			}
+		}
 
-			// Idle agent timeout: kill active non-orchestrator agents with no
-			// active (non-done/cancelled) assigned issues.
-			if idleTimeout > 0 {
-				d.checkIdleAgents(agents, idleTimeout)
-			}
+		// Idle agent timeout: kill active non-orchestrator agents with no
+		// active (non-done/cancelled) assigned issues.
+		if idleTimeout > 0 {
+			d.checkIdleAgents(agents, idleTimeout)
 		}
 	}
 }
@@ -1076,27 +1076,27 @@ func (d *Daemon) watchInboxGC() {
 			return
 		case <-ticker.C:
 		case <-d.agentWake:
-			if err := d.state.syncAgents(); err != nil {
-				d.rlog("watchInboxGC:sync:agents", "[inbox-gc] sync agents failed: %v", err)
+		}
+		if err := d.state.syncAgents(); err != nil {
+			d.rlog("watchInboxGC:sync:agents", "[inbox-gc] sync agents failed: %v", err)
+			continue
+		}
+		inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
+		entries, err := os.ReadDir(inboxRoot)
+		if err != nil {
+			d.rlog("watchInboxGC:readdir", "[inbox-gc] ReadDir inbox: %v", err)
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
 				continue
 			}
-			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
-			entries, err := os.ReadDir(inboxRoot)
-			if err != nil {
-				d.rlog("watchInboxGC:readdir", "[inbox-gc] ReadDir inbox: %v", err)
-				continue
-			}
-			for _, e := range entries {
-				if !e.IsDir() {
+			if d.state.agentByID(e.Name()) == nil {
+				if err := mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name()); err != nil {
+					d.rlog("watchInboxGC:archive:"+e.Name(), "[inbox-gc] archive stale inbox %s: %v", e.Name(), err)
 					continue
 				}
-				if d.state.agentByID(e.Name()) == nil {
-					if err := mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name()); err != nil {
-						d.rlog("watchInboxGC:archive:"+e.Name(), "[inbox-gc] archive stale inbox %s: %v", e.Name(), err)
-						continue
-					}
-					d.refreshCachedState(RefreshOpts{MailAgents: []string{e.Name()}})
-				}
+				d.refreshCachedState(RefreshOpts{MailAgents: []string{e.Name()}})
 			}
 		}
 	}
