@@ -1581,7 +1581,7 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "ID\tROLE\tSTATUS\tWORKTREE\tISSUES\tHEARTBEAT\n")
+	fmt.Fprintf(w, "ID\tMODEL\tSTATUS\tWORKTREE\tISSUES\tHEARTBEAT\n")
 	for _, a := range agents {
 		wt := "—"
 		if a.WorktreeName != "" {
@@ -1592,7 +1592,11 @@ func runAgents(cmd *cobra.Command, args []string) error {
 			issues = strings.Join(a.AssignedIssues, ",")
 		}
 		hb := relativeTime(a.Heartbeat)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", a.ID, a.Role, a.Status, wt, issues, hb)
+		model := a.Config.Model
+		if model == "" {
+			model = "—"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", a.ID, model, a.Status, wt, issues, hb)
 	}
 	w.Flush()
 	return nil
