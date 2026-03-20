@@ -37,6 +37,7 @@ type Client struct {
 	// Output buffer for dashboard.
 	outMu         sync.Mutex
 	lastResponses []ACPEvent
+	pendingOutput []ACPEvent
 
 	// AgentID for audit logging.
 	AgentID string
@@ -346,6 +347,7 @@ func (c *Client) appendEvent(ev ACPEvent) {
 	if len(c.lastResponses) > 50 {
 		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
 	}
+	c.pendingOutput = append(c.pendingOutput, ev)
 	c.outMu.Unlock()
 }
 
@@ -519,7 +521,7 @@ func resolveModelAlias(model string) string {
 func (c *Client) SetModel(sessionID string, model string) error {
 	params := map[string]interface{}{
 		"sessionId": sessionID,
-		"modelId":  resolveModelAlias(model),
+		"modelId":   resolveModelAlias(model),
 	}
 	return c.call("session/set_model", params, nil)
 }
@@ -537,6 +539,19 @@ func (c *Client) RecentOutput(n int) []ACPEvent {
 	}
 	out := make([]ACPEvent, n)
 	copy(out, c.lastResponses[len(c.lastResponses)-n:])
+	return out
+}
+
+// DrainOutput returns all newly captured output events since the previous drain.
+func (c *Client) DrainOutput() []ACPEvent {
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+	if len(c.pendingOutput) == 0 {
+		return nil
+	}
+	out := make([]ACPEvent, len(c.pendingOutput))
+	copy(out, c.pendingOutput)
+	c.pendingOutput = nil
 	return out
 }
 
