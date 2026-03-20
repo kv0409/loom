@@ -82,4 +82,9 @@ const (
 
 	// Detail views.
 	keyGoBottom = "G"
+
+	// Quit confirmation dialog.
+	keyQuitConfirmStop   = "s"
+	keyQuitConfirmQuit   = "q"
+	keyQuitConfirmCancel = "esc"
 )

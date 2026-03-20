@@ -235,3 +235,22 @@ func renderIssueComposeOverlay(form *huh.Form, width, height int) string {
 	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
+
+// renderQuitConfirmOverlay renders the quit confirmation dialog as a centered overlay.
+func renderQuitConfirmOverlay(width, height int) string {
+	formW := min(48, width-4)
+
+	title := composeTitleStyle.Render("⏻ QUIT DASHBOARD")
+
+	body := quitBodyStyle.Render("The loom session is still running.\nWhat would you like to do?")
+
+	options := "\n" +
+		composeKeyStyle.Render("[s]") + composeHintStyle.Render(" Stop session + quit") + "\n" +
+		composeKeyStyle.Render("[q]") + composeHintStyle.Render(" Quit dashboard only") + "\n" +
+		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" Cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
+	box := overlayStyle.Width(formW).Render(content)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}

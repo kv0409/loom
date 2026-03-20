@@ -101,6 +101,8 @@ type Model struct {
 	errorShown           bool               // set after first error flash to avoid repeating
 	heartbeatTimeoutSec  int                // from config; used for countdown donut
 	spinner              spinner.Model      // animated spinner for loading states
+	quitConfirmMode      bool               // true when quit confirmation dialog is shown
+	stopRequested        bool               // true when user chose "stop session + quit"
 }
 
 type tickMsg time.Time
@@ -166,6 +168,9 @@ func New(loomRoot string, heartbeatTimeoutSec int) Model {
 
 // Reloading reports whether the dashboard exited due to a binary hot-reload.
 func (m Model) Reloading() bool { return m.reloading }
+
+// StopRequested reports whether the user chose to stop the loom session on quit.
+func (m Model) StopRequested() bool { return m.stopRequested }
 
 // switchView saves the current cursor position and switches to the target view,
 // restoring its previously saved cursor position.
@@ -511,6 +516,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Quit confirmation dialog captures all input
+	if m.quitConfirmMode {
+		switch msg.String() {
+		case keyQuitConfirmStop:
+			m.stopRequested = true
+			return m, tea.Quit
+		case keyQuitConfirmQuit:
+			return m, tea.Quit
+		case keyQuitConfirmCancel:
+			m.quitConfirmMode = false
+		default:
+			m.quitConfirmMode = false
+		}
+		return m, nil
+	}
+
 	// Nudge mode: selection menu
 	if m.nudgeMode {
 		switch msg.String() {
@@ -638,7 +659,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case keyQuit, keyQuitCtrl:
-		return m, tea.Quit
+		m.quitConfirmMode = true
+		return m, nil
 	case keyEsc:
 		switch m.view {
 		case viewAgentDetail:
@@ -1138,6 +1160,15 @@ func (m Model) View() tea.View {
 	// Issue compose modal overlay replaces normal output.
 	if m.issueComposeMode && m.issueComposeForm != nil {
 		output := renderIssueComposeOverlay(m.issueComposeForm, m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
+	}
+
+	// Quit confirmation overlay replaces normal output.
+	if m.quitConfirmMode {
+		output := renderQuitConfirmOverlay(m.width, m.height)
 		lines = splitLines(output)
 		for len(lines) < m.height {
 			lines = append(lines, "")

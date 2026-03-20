@@ -392,6 +392,9 @@ var (
 	composeKeyStyle   = lipgloss.NewStyle().Foreground(colFg).Bold(true)
 )
 
+// Quit confirmation dialog body style
+var quitBodyStyle = lipgloss.NewStyle().Foreground(colFg)
+
 // Chat pane styles
 var (
 	chatUserStyle         = lipgloss.NewStyle().Foreground(colBlue).Bold(true)

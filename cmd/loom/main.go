@@ -529,6 +529,15 @@ func launchDashboard(root string) error {
 			}
 			return syscall.Exec(self, os.Args, os.Environ())
 		}
+		if dm, ok := finalModel.(dashboard.Model); ok && dm.StopRequested() {
+			// User chose "stop session + quit" — run graceful shutdown.
+			fmt.Println("Stopping loom session...")
+			self, execErr := os.Executable()
+			if execErr != nil {
+				return execErr
+			}
+			return syscall.Exec(self, []string{self, "stop"}, os.Environ())
+		}
 		return nil
 	}
 }
