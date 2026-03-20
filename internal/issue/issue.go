@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/karanagi/loom/internal/store"
@@ -21,22 +21,22 @@ func actor() string {
 }
 
 type Issue struct {
-	ID          string         `yaml:"id"`
-	Title       string         `yaml:"title"`
-	Description string         `yaml:"description"`
-	Type        string         `yaml:"type"`
-	Status      string         `yaml:"status"`
-	Priority    string         `yaml:"priority"`
-	Assignee    string         `yaml:"assignee"`
-	Parent      string         `yaml:"parent"`
-	DependsOn   []string       `yaml:"depends_on"`
-	Worktree    string         `yaml:"worktree"`
-	CreatedBy   string         `yaml:"created_by"`
-	CreatedAt   time.Time      `yaml:"created_at"`
-	UpdatedAt   time.Time      `yaml:"updated_at"`
-	ClosedAt    *time.Time     `yaml:"closed_at,omitempty"`
-	MergedAt    *time.Time     `yaml:"merged_at,omitempty"`
-	CloseReason string         `yaml:"close_reason,omitempty"`
+	ID          string            `yaml:"id"`
+	Title       string            `yaml:"title"`
+	Description string            `yaml:"description"`
+	Type        string            `yaml:"type"`
+	Status      string            `yaml:"status"`
+	Priority    string            `yaml:"priority"`
+	Assignee    string            `yaml:"assignee"`
+	Parent      string            `yaml:"parent"`
+	DependsOn   []string          `yaml:"depends_on"`
+	Worktree    string            `yaml:"worktree"`
+	CreatedBy   string            `yaml:"created_by"`
+	CreatedAt   time.Time         `yaml:"created_at"`
+	UpdatedAt   time.Time         `yaml:"updated_at"`
+	ClosedAt    *time.Time        `yaml:"closed_at,omitempty"`
+	MergedAt    *time.Time        `yaml:"merged_at,omitempty"`
+	CloseReason string            `yaml:"close_reason,omitempty"`
 	Children    []string          `yaml:"children,omitempty"`
 	Dispatch    map[string]string `yaml:"dispatch,omitempty"`
 	History     []HistoryEntry    `yaml:"history"`
@@ -89,6 +89,21 @@ func issuePath(loomRoot, id string) string {
 	return filepath.Join(issuesDir(loomRoot), id+".yaml")
 }
 
+func withFileLock(path string, fn func() error) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+
+	return fn()
+}
+
 func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 	if opts.Type == "" {
 		opts.Type = "task"
@@ -98,35 +113,69 @@ func Create(loomRoot string, title string, opts CreateOpts) (*Issue, error) {
 	}
 
 	now := time.Now()
-	var id string
 
 	if opts.Parent != "" {
-		// Sub-issue: load parent, count children, generate sub-ID
-		parent, err := Load(loomRoot, opts.Parent)
-		if err != nil {
-			return nil, fmt.Errorf("loading parent %s: %w", opts.Parent, err)
-		}
-		subNum := 0
-		for _, childID := range parent.Children {
-			if n, err := strconv.Atoi(strings.TrimPrefix(childID, opts.Parent+"-")); err == nil && n > subNum {
-				subNum = n
+		var created *Issue
+		lockPath := filepath.Join(issuesDir(loomRoot), opts.Parent+".children.lock")
+		if err := withFileLock(lockPath, func() error {
+			parent, err := Load(loomRoot, opts.Parent)
+			if err != nil {
+				return fmt.Errorf("loading parent %s: %w", opts.Parent, err)
 			}
-		}
-		subNum++
-		id = fmt.Sprintf("%s-%02d", opts.Parent, subNum)
 
-		parent.Children = append(parent.Children, id)
-		parent.UpdatedAt = now
-		if err := Save(loomRoot, parent); err != nil {
-			return nil, fmt.Errorf("updating parent: %w", err)
+			subNum, err := store.NextCounter(filepath.Join(issuesDir(loomRoot), opts.Parent+".children.counter.txt"))
+			if err != nil {
+				return fmt.Errorf("getting next child counter for %s: %w", opts.Parent, err)
+			}
+			id := fmt.Sprintf("%s-%02d", opts.Parent, subNum)
+			path := issuePath(loomRoot, id)
+			if _, err := os.Stat(path); err == nil {
+				return fmt.Errorf("sub-issue %s already exists", id)
+			} else if err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("checking sub-issue %s: %w", id, err)
+			}
+
+			child := &Issue{
+				ID:          id,
+				Title:       title,
+				Description: opts.Description,
+				Type:        opts.Type,
+				Status:      "open",
+				Priority:    opts.Priority,
+				Parent:      opts.Parent,
+				DependsOn:   opts.DependsOn,
+				Dispatch:    opts.Dispatch,
+				CreatedBy:   actor(),
+				CreatedAt:   now,
+				UpdatedAt:   now,
+				History: []HistoryEntry{
+					{At: now, By: actor(), Action: "created"},
+				},
+			}
+			if err := store.WriteYAML(path, child); err != nil {
+				return fmt.Errorf("creating issue: %w", err)
+			}
+
+			parent.Children = append(parent.Children, id)
+			parent.UpdatedAt = now
+			if err := Save(loomRoot, parent); err != nil {
+				_ = os.Remove(path)
+				return fmt.Errorf("updating parent: %w", err)
+			}
+
+			created = child
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-	} else {
-		n, err := store.NextCounter(filepath.Join(issuesDir(loomRoot), "counter.txt"))
-		if err != nil {
-			return nil, fmt.Errorf("getting next counter: %w", err)
-		}
-		id = fmt.Sprintf("LOOM-%03d", n)
+		return created, nil
 	}
+
+	n, err := store.NextCounter(filepath.Join(issuesDir(loomRoot), "counter.txt"))
+	if err != nil {
+		return nil, fmt.Errorf("getting next counter: %w", err)
+	}
+	id := fmt.Sprintf("LOOM-%03d", n)
 
 	issue := &Issue{
 		ID:          id,
@@ -174,10 +223,10 @@ func List(loomRoot string, opts ListOpts) ([]*Issue, error) {
 	for _, f := range files {
 		issue := &Issue{}
 		if err := store.ReadYAML(f, issue); err != nil {
-			continue
+			return nil, fmt.Errorf("reading issue %s: %w", filepath.Base(f), err)
 		}
 		if issue.ID == "" {
-			continue
+			return nil, fmt.Errorf("reading issue %s: missing id", filepath.Base(f))
 		}
 		if !opts.All && (issue.Status == "done" || issue.Status == "cancelled") {
 			continue

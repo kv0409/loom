@@ -3,6 +3,7 @@ package issue
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -232,6 +233,80 @@ func TestListReady_IncludesUnblockedAfterResolve(t *testing.T) {
 	}
 	if !found {
 		t.Error("issue should appear in ready list after dep resolves")
+	}
+}
+
+func TestCreateSubIssuesConcurrentlyKeepsUniqueIDsAndParentLinks(t *testing.T) {
+	root := setupTestRoot(t)
+	parent, err := Create(root, "parent", CreateOpts{})
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+
+	const n = 12
+	start := make(chan struct{})
+	errs := make(chan error, n)
+	ids := make(chan string, n)
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			child, err := Create(root, "child", CreateOpts{Parent: parent.ID})
+			if err != nil {
+				errs <- err
+				return
+			}
+			ids <- child.ID
+		}(i)
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+	close(ids)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent child create failed: %v", err)
+		}
+	}
+
+	seen := make(map[string]bool, n)
+	for id := range ids {
+		if seen[id] {
+			t.Fatalf("duplicate child ID created: %s", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != n {
+		t.Fatalf("expected %d unique child IDs, got %d", n, len(seen))
+	}
+
+	reloadedParent, err := Load(root, parent.ID)
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	if len(reloadedParent.Children) != n {
+		t.Fatalf("expected %d parent children, got %d: %v", n, len(reloadedParent.Children), reloadedParent.Children)
+	}
+	for _, childID := range reloadedParent.Children {
+		if !seen[childID] {
+			t.Fatalf("parent children contains unexpected child ID %s", childID)
+		}
+	}
+}
+
+func TestListReturnsErrorOnCorruptedIssueFile(t *testing.T) {
+	root := setupTestRoot(t)
+	if err := os.WriteFile(filepath.Join(root, "issues", "LOOM-999.yaml"), []byte(":\n- bad"), 0644); err != nil {
+		t.Fatalf("write corrupt issue: %v", err)
+	}
+
+	if _, err := List(root, ListOpts{All: true}); err == nil {
+		t.Fatal("expected corrupted issue file to make List fail")
 	}
 }
 

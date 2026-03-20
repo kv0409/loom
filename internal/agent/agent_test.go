@@ -3,6 +3,7 @@ package agent
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,17 @@ func makeAgent(id, role string) *Agent {
 		Status:    "active",
 		SpawnedAt: time.Now(),
 		Heartbeat: time.Now(),
+	}
+}
+
+func replaceAgentFileWithDirectory(t *testing.T, root, id string) {
+	t.Helper()
+	path := agentPath(root, id)
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove agent file %s: %v", id, err)
+	}
+	if err := os.Mkdir(path, 0755); err != nil {
+		t.Fatalf("replace agent file %s with directory: %v", id, err)
 	}
 }
 
@@ -156,6 +168,17 @@ func TestListMultiple(t *testing.T) {
 	}
 }
 
+func TestListReturnsErrorOnCorruptedAgentFile(t *testing.T) {
+	root := setupRoot(t)
+	if err := os.WriteFile(filepath.Join(root, "agents", "broken.yaml"), []byte(":\n- bad"), 0644); err != nil {
+		t.Fatalf("write corrupt agent: %v", err)
+	}
+
+	if _, err := List(root); err == nil {
+		t.Fatal("expected corrupted agent file to make List fail")
+	}
+}
+
 // --- Deregister ---
 
 func TestDeregister(t *testing.T) {
@@ -235,6 +258,39 @@ func TestNextIDIgnoresOtherRoles(t *testing.T) {
 	}
 }
 
+func TestNextIDConcurrentReservationsAreUnique(t *testing.T) {
+	root := setupRoot(t)
+
+	const n = 8
+	start := make(chan struct{})
+	ids := make(chan string, n)
+
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			ids <- NextID(root, "builder")
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(ids)
+
+	seen := make(map[string]bool, n)
+	for id := range ids {
+		if seen[id] {
+			t.Fatalf("duplicate ID allocated: %s", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != n {
+		t.Fatalf("expected %d unique IDs, got %d", n, len(seen))
+	}
+}
+
 // --- AssignIssue / UnassignIssue ---
 
 func createTestIssue(t *testing.T, root, title string) *issue.Issue {
@@ -269,6 +325,26 @@ func TestAssignIssue(t *testing.T) {
 	}
 	if loadedIss.Status != "assigned" {
 		t.Errorf("issue Status: got %q, want %q", loadedIss.Status, "assigned")
+	}
+}
+
+func TestAssignIssueMissingAgentDoesNotMutateIssue(t *testing.T) {
+	root := setupRoot(t)
+	iss := createTestIssue(t, root, "missing assignee")
+
+	if err := AssignIssue(root, "builder-404", iss.ID); err == nil {
+		t.Fatal("expected missing agent assignment to fail")
+	}
+
+	loadedIss, err := issue.Load(root, iss.ID)
+	if err != nil {
+		t.Fatalf("issue.Load: %v", err)
+	}
+	if loadedIss.Assignee != "" {
+		t.Fatalf("issue assignee mutated on failed assignment: %q", loadedIss.Assignee)
+	}
+	if loadedIss.Status != "open" {
+		t.Fatalf("issue status mutated on failed assignment: %q", loadedIss.Status)
 	}
 }
 
@@ -364,6 +440,31 @@ func TestUnassignInProgressReopens(t *testing.T) {
 	}
 	if loadedIss.Assignee != "" {
 		t.Errorf("issue Assignee: got %q, want empty", loadedIss.Assignee)
+	}
+}
+
+func TestUnassignIssueAgentLoadFailureRollsBackIssue(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "rollback unassign")
+
+	AssignIssue(root, "builder-001", iss.ID)
+	replaceAgentFileWithDirectory(t, root, "builder-001")
+
+	if err := UnassignIssue(root, iss.ID); err == nil {
+		t.Fatal("expected UnassignIssue to fail when agent reconciliation fails")
+	}
+
+	loadedIss, err := issue.Load(root, iss.ID)
+	if err != nil {
+		t.Fatalf("issue.Load: %v", err)
+	}
+	if loadedIss.Status != "assigned" {
+		t.Fatalf("issue status should roll back to assigned, got %q", loadedIss.Status)
+	}
+	if loadedIss.Assignee != "builder-001" {
+		t.Fatalf("issue assignee should roll back to builder-001, got %q", loadedIss.Assignee)
 	}
 }
 
@@ -517,6 +618,55 @@ func TestCancelIssue_CascadesChildren(t *testing.T) {
 	}
 }
 
+func TestCancelIssueAgentSyncFailureRollsBackIssues(t *testing.T) {
+	root := setupRoot(t)
+	a1 := makeAgent("builder-001", "builder")
+	a2 := makeAgent("builder-002", "builder")
+	Register(root, a1)
+	Register(root, a2)
+
+	parent, _ := issue.Create(root, "parent", issue.CreateOpts{})
+	child, _ := issue.Create(root, "child", issue.CreateOpts{Parent: parent.ID})
+	AssignIssue(root, "builder-001", parent.ID)
+	AssignIssue(root, "builder-002", child.ID)
+
+	replaceAgentFileWithDirectory(t, root, "builder-002")
+
+	if _, err := CancelIssue(root, parent.ID); err == nil {
+		t.Fatal("expected CancelIssue to fail when agent reconciliation fails")
+	}
+
+	loadedParent, err := issue.Load(root, parent.ID)
+	if err != nil {
+		t.Fatalf("load parent: %v", err)
+	}
+	if loadedParent.Status != "assigned" {
+		t.Fatalf("parent status should roll back to assigned, got %q", loadedParent.Status)
+	}
+	if loadedParent.Assignee != "builder-001" {
+		t.Fatalf("parent assignee should roll back to builder-001, got %q", loadedParent.Assignee)
+	}
+
+	loadedChild, err := issue.Load(root, child.ID)
+	if err != nil {
+		t.Fatalf("load child: %v", err)
+	}
+	if loadedChild.Status != "assigned" {
+		t.Fatalf("child status should roll back to assigned, got %q", loadedChild.Status)
+	}
+	if loadedChild.Assignee != "builder-002" {
+		t.Fatalf("child assignee should roll back to builder-002, got %q", loadedChild.Assignee)
+	}
+
+	loadedAgent, err := Load(root, "builder-001")
+	if err != nil {
+		t.Fatalf("load builder-001: %v", err)
+	}
+	if len(loadedAgent.AssignedIssues) != 1 || loadedAgent.AssignedIssues[0] != parent.ID {
+		t.Fatalf("builder-001 assignments should roll back, got %v", loadedAgent.AssignedIssues)
+	}
+}
+
 func TestCloseIssue_AssignedClearsAgent(t *testing.T) {
 	root := setupRoot(t)
 	a := makeAgent("builder-001", "builder")
@@ -578,5 +728,34 @@ func TestCloseIssue_BlockedByOpenChildren(t *testing.T) {
 	_, err := CloseIssue(root, parent.ID, "try close")
 	if err == nil {
 		t.Fatal("expected error closing parent with open children")
+	}
+}
+
+func TestCloseIssueAgentLoadFailureRollsBackIssue(t *testing.T) {
+	root := setupRoot(t)
+	a := makeAgent("builder-001", "builder")
+	Register(root, a)
+	iss := createTestIssue(t, root, "close rollback")
+	AssignIssue(root, "builder-001", iss.ID)
+	issue.Update(root, iss.ID, issue.UpdateOpts{Status: "in-progress"})
+
+	replaceAgentFileWithDirectory(t, root, "builder-001")
+
+	if _, err := CloseIssue(root, iss.ID, "completed"); err == nil {
+		t.Fatal("expected CloseIssue to fail when agent reconciliation fails")
+	}
+
+	loadedIss, err := issue.Load(root, iss.ID)
+	if err != nil {
+		t.Fatalf("issue.Load: %v", err)
+	}
+	if loadedIss.Status != "in-progress" {
+		t.Fatalf("issue status should roll back to in-progress, got %q", loadedIss.Status)
+	}
+	if loadedIss.Assignee != "builder-001" {
+		t.Fatalf("issue assignee should roll back to builder-001, got %q", loadedIss.Assignee)
+	}
+	if loadedIss.CloseReason != "" {
+		t.Fatalf("issue close reason should roll back, got %q", loadedIss.CloseReason)
 	}
 }

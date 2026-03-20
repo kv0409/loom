@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -22,13 +23,14 @@ import (
 )
 
 type Daemon struct {
-	LoomRoot   string
-	Config     *config.Config
-	stop       chan struct{}
-	done       chan struct{}
-	mu         sync.Mutex
-	acpClients map[string]*acp.Client
-	apiLn      net.Listener
+	LoomRoot     string
+	Config       *config.Config
+	state        *daemonState
+	stop         chan struct{}
+	done         chan struct{}
+	mu           sync.Mutex
+	acpClients   map[string]*acp.Client
+	apiLn        net.Listener
 	lastSeen     map[string]time.Time // ephemeral: detect heartbeat changes between ticks
 	idleSince    map[string]time.Time // ephemeral: when agent became idle (no active issues)
 	loggedAt     map[string]time.Time // rate-limit: last time a log key was emitted
@@ -39,6 +41,7 @@ func New(loomRoot string, cfg *config.Config) *Daemon {
 	return &Daemon{
 		LoomRoot:     loomRoot,
 		Config:       cfg,
+		state:        newDaemonState(loomRoot),
 		stop:         make(chan struct{}),
 		done:         make(chan struct{}),
 		acpClients:   make(map[string]*acp.Client),
@@ -198,6 +201,7 @@ func (d *Daemon) Reload() error {
 	// Fresh channels.
 	d.stop = make(chan struct{})
 	d.done = make(chan struct{})
+	d.state = newDaemonState(d.LoomRoot)
 	d.lastSeen = make(map[string]time.Time)
 	d.idleSince = make(map[string]time.Time)
 	d.loggedAt = make(map[string]time.Time)
@@ -235,6 +239,16 @@ func (d *Daemon) GetACPOutput(agentID string, n int) []acp.ACPEvent {
 	return c.RecentOutput(n)
 }
 
+func (d *Daemon) drainACPOutput(agentID string) []acp.ACPEvent {
+	d.mu.Lock()
+	c := d.acpClients[agentID]
+	d.mu.Unlock()
+	if c == nil {
+		return nil
+	}
+	return c.DrainOutput()
+}
+
 func (d *Daemon) watchPendingAgents() {
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.PendingAgentsIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
@@ -243,11 +257,11 @@ func (d *Daemon) watchPendingAgents() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			agents, err := agent.List(d.LoomRoot)
-			if err != nil {
-				d.rlog("watchPendingAgents:list", "[pending-agents] agent.List failed: %v", err)
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchPendingAgents:sync", "[pending-agents] sync agents failed: %v", err)
 				continue
 			}
+			agents := d.state.agentsList()
 			for _, a := range agents {
 				if a.Status == "pending-acp" {
 					d.touchActivity()
@@ -265,8 +279,6 @@ func (d *Daemon) watchPendingAgents() {
 func (d *Daemon) watchACPOutput() {
 	ticker := time.NewTicker(time.Duration(d.Config.Polling.ACPOutputIntervalMs) * time.Millisecond)
 	defer ticker.Stop()
-	// Track how many events we've already seen per agent (index-based dedup).
-	lastCount := make(map[string]int)
 	for {
 		select {
 		case <-d.stop:
@@ -279,20 +291,10 @@ func (d *Daemon) watchACPOutput() {
 			}
 			d.mu.Unlock()
 			for _, id := range ids {
-				events := d.GetACPOutput(id, 50)
-				if len(events) == 0 {
+				newEvents := d.drainACPOutput(id)
+				if len(newEvents) == 0 {
 					continue
 				}
-				// Only write events we haven't seen yet.
-				prev := lastCount[id]
-				if len(events) < prev {
-					prev = 0 // client was replaced (new session)
-				}
-				if len(events) <= prev {
-					continue
-				}
-				newEvents := events[prev:]
-				lastCount[id] = len(events)
 
 				p := filepath.Join(d.LoomRoot, "agents", id+".output")
 				f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -447,7 +449,14 @@ func (d *Daemon) watchIssues() {
 	// If an issue is reopened (e.g. after agent death), its UpdatedAt advances
 	// and it becomes eligible for re-notification.
 	notifiedAt := make(map[string]time.Time)
-	existing, _ := issue.List(d.LoomRoot, issue.ListOpts{All: true})
+	if err := d.state.syncIssues(); err != nil {
+		d.rlog("watchIssues:sync:init", "[issues] initial sync failed: %v", err)
+	}
+	existing := d.state.allIssues()
+	readyIDs := make(map[string]bool)
+	for _, iss := range d.state.readyIssues() {
+		readyIDs[iss.ID] = true
+	}
 	for _, iss := range existing {
 		// Already assigned/progressed or terminal — seed with current timestamp.
 		if iss.Status != "open" || iss.Assignee != "" {
@@ -455,7 +464,7 @@ func (d *Daemon) watchIssues() {
 			continue
 		}
 		// Open + unassigned + ready → already eligible, seed to avoid duplicate notify.
-		if iss.IsReady(d.LoomRoot) {
+		if readyIDs[iss.ID] {
 			notifiedAt[iss.ID] = iss.UpdatedAt
 		}
 	}
@@ -466,11 +475,15 @@ func (d *Daemon) watchIssues() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			issues, err := issue.ListReady(d.LoomRoot)
-			if err != nil {
-				d.rlog("watchIssues:list", "[issues] issue.ListReady failed: %v", err)
+			if err := d.state.syncIssues(); err != nil {
+				d.rlog("watchIssues:sync:issues", "[issues] sync issues failed: %v", err)
 				continue
 			}
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchIssues:sync:agents", "[issues] sync agents failed: %v", err)
+				continue
+			}
+			issues := d.state.readyIssues()
 			for _, iss := range issues {
 				if prev, ok := notifiedAt[iss.ID]; ok && !iss.UpdatedAt.After(prev) {
 					continue
@@ -478,9 +491,9 @@ func (d *Daemon) watchIssues() {
 				notifiedAt[iss.ID] = iss.UpdatedAt
 				d.touchActivity()
 				msg := "[LOOM] New issue " + iss.ID + ": " + iss.Title + ". Run: loom issue show " + iss.ID
-				orch, err := agent.Load(d.LoomRoot, "orchestrator")
-				if err != nil {
-					d.rlog("watchIssues:orch", "[issues] load orchestrator: %v", err)
+				orch := d.state.agentByID("orchestrator")
+				if orch == nil {
+					d.rlog("watchIssues:orch", "[issues] orchestrator not found in cached state")
 					continue
 				}
 				d.logNotify(orch, msg)
@@ -531,26 +544,25 @@ func (d *Daemon) watchDoneIssues() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
-			if err != nil {
-				d.rlog("watchDoneIssues:list", "[done-issues] issue.List failed: %v", err)
+			if err := d.state.syncIssues(); err != nil {
+				d.rlog("watchDoneIssues:sync:issues", "[done-issues] sync issues failed: %v", err)
 				continue
 			}
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchDoneIssues:sync:agents", "[done-issues] sync agents failed: %v", err)
+				continue
+			}
+			issues := d.state.allIssues()
 
 			// Build set of resolved issue IDs.
-			resolved := make(map[string]bool)
-			for _, iss := range issues {
-				if iss.Status == "done" || iss.Status == "cancelled" {
-					resolved[iss.ID] = true
-				}
-			}
+			resolved := d.state.resolvedIssueSet()
 
 			// Auto-close parents with all descendants resolved.
 			for _, iss := range issues {
 				if len(iss.Children) == 0 || iss.Status == "done" || iss.Status == "cancelled" {
 					continue
 				}
-				if !allDescendantsResolved(d.LoomRoot, iss.ID) {
+				if !d.state.allDescendantsResolved(iss.ID) {
 					continue
 				}
 				d.touchActivity()
@@ -565,20 +577,16 @@ func (d *Daemon) watchDoneIssues() {
 				if target == "" {
 					target = "orchestrator"
 				}
-				a, err := agent.Load(d.LoomRoot, target)
-				if err != nil {
-					d.rlog("watchDoneIssues:load:"+target, "[done-issues] load agent %s: %v", target, err)
+				a := d.state.agentByID(target)
+				if a == nil {
+					d.rlog("watchDoneIssues:load:"+target, "[done-issues] cached agent %s missing", target)
 					continue
 				}
 				d.logNotify(a, msg)
 			}
 
 			// Notify agents on resolved issues to wrap up; grace-kill after 2 min.
-			agents, err := agent.List(d.LoomRoot)
-			if err != nil {
-				d.rlog("watchDoneIssues:agents", "[done-issues] agent.List failed: %v", err)
-				continue
-			}
+			agents := d.state.agentsList()
 			for _, a := range agents {
 				if a.Status != "active" || a.Role == "orchestrator" {
 					continue
@@ -613,7 +621,7 @@ func (d *Daemon) watchDoneIssues() {
 
 			// Clean up tracking for agents that are gone.
 			for id := range notifiedAgents {
-				if _, err := agent.Load(d.LoomRoot, id); err != nil {
+				if d.state.agentByID(id) == nil {
 					delete(notifiedAgents, id)
 				}
 			}
@@ -631,29 +639,23 @@ func (d *Daemon) watchMail() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
-			entries, err := os.ReadDir(inboxRoot)
-			if err != nil {
-				d.rlog("watchMail:readdir", "[mail] ReadDir inbox: %v", err)
+			if err := d.state.syncMail(); err != nil {
+				d.rlog("watchMail:sync:mail", "[mail] sync mail failed: %v", err)
 				continue
 			}
-			for _, e := range entries {
-				if !e.IsDir() {
-					continue
-				}
-				agentID := e.Name()
-				msgs, err := mail.Read(d.LoomRoot, mail.ReadOpts{Agent: agentID, UnreadOnly: true})
-				if err != nil {
-					d.rlog("watchMail:read:"+agentID, "[mail] Read inbox for %s: %v", agentID, err)
-					continue
-				}
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchMail:sync:agents", "[mail] sync agents failed: %v", err)
+				continue
+			}
+			for _, agentID := range d.state.mailAgentIDs() {
+				msgs := d.state.unreadMessages(agentID)
 				if len(msgs) == 0 {
 					continue
 				}
 				d.touchActivity()
-				a, err := agent.Load(d.LoomRoot, agentID)
-				if err != nil {
-					d.rlog("watchMail:load:"+agentID, "[mail] load agent %s: %v", agentID, err)
+				a := d.state.agentByID(agentID)
+				if a == nil {
+					d.rlog("watchMail:load:"+agentID, "[mail] cached agent %s missing", agentID)
 					continue
 				}
 				for _, m := range msgs {
@@ -685,11 +687,11 @@ func (d *Daemon) watchHeartbeats() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
-			agents, err := agent.List(d.LoomRoot)
-			if err != nil {
-				d.rlog("watchHeartbeats:list", "[heartbeat] agent.List failed: %v", err)
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchHeartbeats:sync:agents", "[heartbeat] sync agents failed: %v", err)
 				continue
 			}
+			agents := d.state.agentsList()
 			for _, a := range agents {
 				if a.Status == "dead" || a.Status == "done" || a.Status == "pending-acp" || a.Status == "activating" {
 					delete(d.lastSeen, a.ID)
@@ -707,10 +709,16 @@ func (d *Daemon) watchHeartbeats() {
 					if a.WorktreeName != "" {
 						wtPath := filepath.Join(d.LoomRoot, "worktrees", a.WorktreeName)
 						if worktree.HasDirtyFiles(wtPath) {
-							worktree.SalvageCommit(wtPath, a.ID)
+							if err := worktree.SalvageCommit(wtPath, a.ID); err != nil {
+								log.Printf("[heartbeat] preserving worktree %s: salvage failed: %v", a.WorktreeName, err)
+							}
 						}
-						if err := worktree.Remove(d.LoomRoot, a.WorktreeName, true); err != nil {
-							worktree.ForceRemove(d.LoomRoot, a.WorktreeName)
+						if err := worktree.Remove(d.LoomRoot, a.WorktreeName, false); err != nil {
+							if errors.Is(err, worktree.ErrUnmergedBranch) {
+								log.Printf("[heartbeat] preserving worktree %s: branch has unmerged commits", a.WorktreeName)
+							} else {
+								log.Printf("[heartbeat] preserving worktree %s: cleanup failed: %v", a.WorktreeName, err)
+							}
 						}
 					}
 					a.Status = "dead"
@@ -718,15 +726,17 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 					}
-					agent.UnassignAllIssues(d.LoomRoot, a)
+					if err := agent.UnassignAllIssues(d.LoomRoot, a); err != nil {
+						log.Printf("[heartbeat] failed to unassign issues for %s: %v", a.ID, err)
+					}
 					delete(d.lastSeen, a.ID)
 					delete(d.idleSince, a.ID)
 					parentID := a.SpawnedBy
 					if parentID == "" {
 						continue
 					}
-					parent, err := agent.Load(d.LoomRoot, parentID)
-					if err != nil {
+					parent := d.state.agentByID(parentID)
+					if parent == nil {
 						continue
 					}
 					d.logNotify(parent, "[LOOM] Agent "+a.ID+" is dead (worktree cleaned up)")
@@ -772,8 +782,8 @@ func (d *Daemon) watchHeartbeats() {
 					}
 					if a.NudgeCount == 2 {
 						if parentID := a.SpawnedBy; parentID != "" {
-							parent, err := agent.Load(d.LoomRoot, parentID)
-							if err == nil {
+							parent := d.state.agentByID(parentID)
+							if parent != nil {
 								d.logNotify(parent, "[LOOM] Agent "+a.ID+" unresponsive after 2 nudges.")
 							}
 						}
@@ -794,11 +804,10 @@ func (d *Daemon) watchHeartbeats() {
 // awaiting dispatch by the orchestrator). Issues already assigned/in-progress/
 // review are being handled by leads/builders, so the orchestrator is idle.
 func (d *Daemon) hasActiveIssues() bool {
-	ready, err := issue.ListReady(d.LoomRoot)
-	if err != nil {
+	if err := d.state.syncIssues(); err != nil {
 		return true // assume active on error to avoid suppressing nudges
 	}
-	return len(ready) > 0
+	return len(d.state.readyIssues()) > 0
 }
 
 // checkIdleAgents kills active non-orchestrator agents that have no active
@@ -812,8 +821,8 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 		// Check whether the agent has any active (non-terminal) assigned issues.
 		hasActive := false
 		for _, issID := range a.AssignedIssues {
-			iss, err := issue.Load(d.LoomRoot, issID)
-			if err != nil {
+			iss := d.state.issueByID(issID)
+			if iss == nil {
 				continue
 			}
 			if iss.Status != "done" && iss.Status != "cancelled" {
@@ -838,8 +847,8 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 		delete(d.idleSince, a.ID)
 		agent.Kill(d.LoomRoot, a.ID, true)
 		if parentID := a.SpawnedBy; parentID != "" {
-			parent, err := agent.Load(d.LoomRoot, parentID)
-			if err == nil {
+			parent := d.state.agentByID(parentID)
+			if parent != nil {
 				d.logNotify(parent, "[LOOM] Agent "+a.ID+" auto-killed: idle with no active issues for "+idleTimeout.String())
 			}
 		}
@@ -854,6 +863,10 @@ func (d *Daemon) watchInboxGC() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+			if err := d.state.syncAgents(); err != nil {
+				d.rlog("watchInboxGC:sync:agents", "[inbox-gc] sync agents failed: %v", err)
+				continue
+			}
 			inboxRoot := filepath.Join(d.LoomRoot, "mail", "inbox")
 			entries, err := os.ReadDir(inboxRoot)
 			if err != nil {
@@ -864,8 +877,10 @@ func (d *Daemon) watchInboxGC() {
 				if !e.IsDir() {
 					continue
 				}
-				if _, err := agent.Load(d.LoomRoot, e.Name()); err != nil {
-					mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name())
+				if d.state.agentByID(e.Name()) == nil {
+					if err := mail.ArchiveAndRemoveInbox(d.LoomRoot, e.Name()); err != nil {
+						d.rlog("watchInboxGC:archive:"+e.Name(), "[inbox-gc] archive stale inbox %s: %v", e.Name(), err)
+					}
 				}
 			}
 		}
@@ -921,7 +936,8 @@ func (d *Daemon) runWorktreeGC() {
 					continue
 				}
 			}
-			// err != nil means issue file missing — safe to remove.
+			// If the issue file is missing or unreadable, fall through to the
+			// branch-state checks below and preserve any unmerged work.
 		}
 
 		// Check for dirty worktree — salvage if stale (>30 min).
@@ -936,15 +952,19 @@ func (d *Daemon) runWorktreeGC() {
 				continue
 			}
 			log.Printf("[gc] salvaging stale dirty worktree %s", name)
-			worktree.SalvageCommit(wtPath, "gc")
-			if err := worktree.ForceRemove(d.LoomRoot, name); err != nil {
-				log.Printf("[gc] failed to force-remove worktree %s: %v", name, err)
+			if err := worktree.SalvageCommit(wtPath, "gc"); err != nil {
+				log.Printf("[gc] preserving dirty worktree %s: salvage failed: %v", name, err)
+				continue
 			}
+		}
+
+		if !worktree.IsMerged(d.LoomRoot, name) {
+			log.Printf("[gc] preserving unmerged worktree %s", name)
 			continue
 		}
 
 		log.Printf("[gc] removing orphan worktree %s", name)
-		if err := worktree.Remove(d.LoomRoot, name, true); err != nil {
+		if err := worktree.Remove(d.LoomRoot, name, false); err != nil {
 			log.Printf("[gc] failed to remove worktree %s: %v", name, err)
 		}
 	}
@@ -996,11 +1016,10 @@ func (d *Daemon) watchIdleShutdown() {
 
 // hasNonTerminalIssues returns true if any issue is not done/cancelled.
 func (d *Daemon) hasNonTerminalIssues() bool {
-	issues, err := issue.List(d.LoomRoot, issue.ListOpts{All: true})
-	if err != nil {
+	if err := d.state.syncIssues(); err != nil {
 		return true // assume active on error
 	}
-	for _, iss := range issues {
+	for _, iss := range d.state.allIssues() {
 		if iss.Status != "done" && iss.Status != "cancelled" {
 			return true
 		}
@@ -1010,11 +1029,10 @@ func (d *Daemon) hasNonTerminalIssues() bool {
 
 // hasActiveAgents returns true if any non-orchestrator agent is active.
 func (d *Daemon) hasActiveAgents() bool {
-	agents, err := agent.List(d.LoomRoot)
-	if err != nil {
+	if err := d.state.syncAgents(); err != nil {
 		return true // assume active on error
 	}
-	for _, a := range agents {
+	for _, a := range d.state.agentsList() {
 		if a.Role == "orchestrator" {
 			continue
 		}

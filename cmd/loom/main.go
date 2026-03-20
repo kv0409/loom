@@ -1910,7 +1910,10 @@ func runGC(cmd *cobra.Command, args []string) error {
 				if dryRun {
 					fmt.Printf("[dry-run] Would remove stale inbox: %s\n", e.Name())
 				} else {
-					mail.ArchiveAndRemoveInbox(root, e.Name())
+					if err := mail.ArchiveAndRemoveInbox(root, e.Name()); err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to archive stale inbox %s: %v\n", e.Name(), err)
+						continue
+					}
 					fmt.Printf("Removed stale inbox: %s\n", e.Name())
 				}
 				total++

@@ -259,7 +259,7 @@ func TestDeadAgentRerouteToDeadParent(t *testing.T) {
 	}
 }
 
-func TestCorruptedYAMLSkipped(t *testing.T) {
+func TestReadReturnsErrorOnCorruptedYAML(t *testing.T) {
 	root := setupRoot(t)
 	registerAgent(t, root, "a", "builder", "active")
 	registerAgent(t, root, "b", "builder", "active")
@@ -271,16 +271,28 @@ func TestCorruptedYAMLSkipped(t *testing.T) {
 	inboxDir := filepath.Join(root, "mail", "inbox", "b")
 	os.WriteFile(filepath.Join(inboxDir, "corrupted.yaml"), []byte("{{{{not yaml"), 0644)
 
-	// Read should skip the corrupted file and return the valid one
-	msgs, err := Read(root, ReadOpts{Agent: "b"})
-	if err != nil {
-		t.Fatalf("Read with corrupted file: %v", err)
+	if _, err := Read(root, ReadOpts{Agent: "b"}); err == nil {
+		t.Fatal("expected Read to fail on corrupted inbox message")
 	}
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 valid message, got %d", len(msgs))
+}
+
+func TestLogReturnsErrorOnCorruptedArchiveMessage(t *testing.T) {
+	root := setupRoot(t)
+	registerAgent(t, root, "a", "builder", "active")
+	registerAgent(t, root, "b", "builder", "active")
+
+	Send(root, SendOpts{From: "a", To: "b", Subject: "valid"})
+	date := time.Now().Format("2006-01-02")
+	archiveDir := filepath.Join(root, "mail", "archive", date)
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		t.Fatalf("MkdirAll archive: %v", err)
 	}
-	if msgs[0].Subject != "valid" {
-		t.Errorf("Subject: want 'valid', got %q", msgs[0].Subject)
+	if err := os.WriteFile(filepath.Join(archiveDir, "corrupted.yaml"), []byte("{{{{not yaml"), 0644); err != nil {
+		t.Fatalf("write corrupt archive message: %v", err)
+	}
+
+	if _, err := Log(root, LogOpts{}); err == nil {
+		t.Fatal("expected Log to fail on corrupted archived message")
 	}
 }
 
@@ -504,5 +516,38 @@ func TestArchiveAndRemoveInboxNonexistent(t *testing.T) {
 	// Should not error on nonexistent inbox
 	if err := ArchiveAndRemoveInbox(root, "nobody"); err != nil {
 		t.Fatalf("ArchiveAndRemoveInbox on nonexistent: %v", err)
+	}
+}
+
+func TestArchiveAndRemoveInboxReturnsErrorWhenArchiveMoveFails(t *testing.T) {
+	root := setupRoot(t)
+	registerAgent(t, root, "a", "builder", "active")
+	registerAgent(t, root, "b", "builder", "active")
+
+	if err := Send(root, SendOpts{From: "a", To: "b", Subject: "msg1"}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	msgs, err := Read(root, ReadOpts{Agent: "b"})
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+
+	date := time.Now().Format("2006-01-02")
+	conflict := filepath.Join(root, "mail", "archive", date, msgs[0].ID+".yaml")
+	if err := os.MkdirAll(conflict, 0755); err != nil {
+		t.Fatalf("MkdirAll conflict: %v", err)
+	}
+
+	if err := ArchiveAndRemoveInbox(root, "b"); err == nil {
+		t.Fatal("expected ArchiveAndRemoveInbox to fail when a move fails")
+	}
+
+	inboxPath := filepath.Join(root, "mail", "inbox", "b", msgs[0].ID+".yaml")
+	if _, err := os.Stat(inboxPath); err != nil {
+		t.Fatalf("expected message to remain in inbox after failure: %v", err)
 	}
 }

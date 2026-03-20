@@ -73,7 +73,9 @@ func TestRedispatch_ReopenedIssueAfterAgentDeath(t *testing.T) {
 	}
 
 	// Simulate agent death: unassign issues (reopens to open).
-	agent.UnassignAllIssues(root, a)
+	if err := agent.UnassignAllIssues(root, a); err != nil {
+		t.Fatalf("UnassignAllIssues: %v", err)
+	}
 
 	// Reload the issue to get the updated state.
 	iss, err = issue.Load(root, iss.ID)
@@ -160,7 +162,9 @@ func TestRedispatch_KillPathReopensIssue(t *testing.T) {
 	}
 
 	// Simulate kill path: unassign issues.
-	agent.UnassignAllIssues(root, a)
+	if err := agent.UnassignAllIssues(root, a); err != nil {
+		t.Fatalf("UnassignAllIssues: %v", err)
+	}
 
 	iss, err = issue.Load(root, iss.ID)
 	if err != nil {

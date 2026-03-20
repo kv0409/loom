@@ -113,7 +113,7 @@ func Read(loomRoot string, opts ReadOpts) ([]*Message, error) {
 	for _, f := range files {
 		var m Message
 		if err := store.ReadYAML(f, &m); err != nil {
-			continue
+			return nil, fmt.Errorf("reading message %s: %w", filepath.Base(f), err)
 		}
 		if opts.UnreadOnly && m.Read {
 			continue
@@ -162,11 +162,28 @@ func ArchiveAndRemoveInbox(loomRoot string, agentID string) error {
 			return err
 		}
 	}
+	type archivedMove struct {
+		src string
+		dst string
+	}
+	var moved []archivedMove
 	for _, f := range files {
 		name := filepath.Base(f)
-		os.Rename(f, filepath.Join(dst, name))
+		target := filepath.Join(dst, name)
+		if err := os.Rename(f, target); err != nil {
+			for i := len(moved) - 1; i >= 0; i-- {
+				if rollbackErr := os.Rename(moved[i].dst, moved[i].src); rollbackErr != nil {
+					return fmt.Errorf("archiving inbox %s: moving %s failed: %w (rollback failed moving %s back: %v)", agentID, name, err, filepath.Base(moved[i].src), rollbackErr)
+				}
+			}
+			return fmt.Errorf("archiving inbox %s: moving %s failed: %w", agentID, name, err)
+		}
+		moved = append(moved, archivedMove{src: f, dst: target})
 	}
-	return os.RemoveAll(dir)
+	if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("removing inbox %s: %w", agentID, err)
+	}
+	return nil
 }
 
 func Log(loomRoot string, opts LogOpts) ([]*Message, error) {
@@ -176,15 +193,15 @@ func Log(loomRoot string, opts LogOpts) ([]*Message, error) {
 		cutoff = time.Now().Add(-opts.Since)
 	}
 
-	collect := func(dir string) {
+	collect := func(dir string) error {
 		files, err := store.ListYAMLFiles(dir)
 		if err != nil {
-			return
+			return fmt.Errorf("listing mail in %s: %w", dir, err)
 		}
 		for _, f := range files {
 			var m Message
 			if err := store.ReadYAML(f, &m); err != nil {
-				continue
+				return fmt.Errorf("reading message %s: %w", filepath.Base(f), err)
 			}
 			if opts.Agent != "" && m.From != opts.Agent && m.To != opts.Agent {
 				continue
@@ -197,6 +214,7 @@ func Log(loomRoot string, opts LogOpts) ([]*Message, error) {
 			}
 			msgs = append(msgs, &m)
 		}
+		return nil
 	}
 
 	// Walk inbox
@@ -204,9 +222,13 @@ func Log(loomRoot string, opts LogOpts) ([]*Message, error) {
 	if entries, err := os.ReadDir(inboxRoot); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
-				collect(filepath.Join(inboxRoot, e.Name()))
+				if err := collect(filepath.Join(inboxRoot, e.Name())); err != nil {
+					return nil, err
+				}
 			}
 		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("reading inbox root: %w", err)
 	}
 
 	// Walk archive
@@ -214,9 +236,13 @@ func Log(loomRoot string, opts LogOpts) ([]*Message, error) {
 	if entries, err := os.ReadDir(archiveRoot); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
-				collect(filepath.Join(archiveRoot, e.Name()))
+				if err := collect(filepath.Join(archiveRoot, e.Name())); err != nil {
+					return nil, err
+				}
 			}
 		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("reading archive root: %w", err)
 	}
 
 	sort.Slice(msgs, func(i, j int) bool { return msgs[i].Timestamp.After(msgs[j].Timestamp) })
