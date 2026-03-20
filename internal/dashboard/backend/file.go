@@ -36,13 +36,22 @@ func (fb *FileBackend) Load() Snapshot {
 	var s Snapshot
 	var errs []string
 	var err error
-	s.Agents, err = agent.List(fb.root)
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("agents: %s", err))
-	}
-	s.Issues, err = issue.List(fb.root, issue.ListOpts{All: true})
-	if err != nil {
-		errs = append(errs, fmt.Sprintf("issues: %s", err))
+	if snap, snapErr := daemon.Snapshot(fb.root); snapErr == nil {
+		s.Agents = snap.Agents
+		s.Issues = snap.Issues
+		s.Unread = snap.Unread
+		s.DaemonOK = true
+	} else {
+		s.Agents, err = agent.List(fb.root)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("agents: %s", err))
+		}
+		s.Issues, err = issue.List(fb.root, issue.ListOpts{All: true})
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("issues: %s", err))
+		}
+		_, sockErr := os.Stat(daemon.SockPath(fb.root))
+		s.DaemonOK = sockErr == nil
 	}
 	s.Worktrees, err = worktree.List(fb.root)
 	if err != nil {
@@ -62,12 +71,12 @@ func (fb *FileBackend) Load() Snapshot {
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("memories: %s", err))
 	}
-	s.Unread = countUnread(fb.root)
+	if !s.DaemonOK {
+		s.Unread = countUnread(fb.root)
+	}
 	s.Agents, s.AgentTree = sortAgentTree(s.Agents)
 	s.Activity = fetchActivity(fb.root, s.Agents)
 	s.Logs = fb.lr.read()
-	_, sockErr := os.Stat(daemon.SockPath(fb.root))
-	s.DaemonOK = sockErr == nil
 	s.Errors = errs
 	if cfg, err := config.Load(fb.root); err == nil {
 		s.HeartbeatTimeoutSec = cfg.Limits.HeartbeatTimeoutSeconds

@@ -1,12 +1,16 @@
 package backend
 
 import (
+	"encoding/json"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/daemon"
+	"github.com/karanagi/loom/internal/issue"
 )
 
 func TestSortAgentTree_BuildsCorrectTree(t *testing.T) {
@@ -298,5 +302,90 @@ func TestDiff_RejectsDashPrefix(t *testing.T) {
 	// Should return a safe error string, not panic.
 	if result == "" {
 		t.Error("expected non-empty result from Diff on non-git dir")
+	}
+}
+
+func TestLoad_UsesDaemonSnapshotForControlPlaneState(t *testing.T) {
+	root, err := os.MkdirTemp("/tmp", "loom-backend-")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(root)
+	for _, dir := range []string{"agents", "issues", "mail/inbox", "mail/log", "logs", "worktrees", "memory"} {
+		if err := os.MkdirAll(filepath.Join(root, dir), 0755); err != nil {
+			t.Fatalf("MkdirAll %s: %v", dir, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "issues", "counter.txt"), []byte("0"), 0644); err != nil {
+		t.Fatalf("write counter: %v", err)
+	}
+
+	a := &agent.Agent{ID: "builder-001", Status: "active", Role: "builder"}
+	if err := agent.Register(root, a); err != nil {
+		t.Fatalf("agent.Register: %v", err)
+	}
+	iss, err := issue.Create(root, "cached issue", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("issue.Create: %v", err)
+	}
+
+	sock := daemon.SockPath(root)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatalf("listen snapshot socket: %v", err)
+	}
+	defer func() {
+		_ = ln.Close()
+		_ = os.Remove(sock)
+	}()
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		var req daemon.Request
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			t.Logf("decode request: %v", err)
+			return
+		}
+		if req.Action != "snapshot" {
+			t.Logf("unexpected action %q", req.Action)
+			return
+		}
+
+		resp := daemon.Response{
+			OK: true,
+			Data: map[string]any{
+				"agents": []*agent.Agent{{ID: a.ID, Status: a.Status, Role: a.Role}},
+				"issues": []*issue.Issue{{ID: iss.ID, Title: iss.Title, Status: iss.Status}},
+				"unread": 0,
+			},
+		}
+		if err := json.NewEncoder(conn).Encode(resp); err != nil {
+			t.Logf("encode response: %v", err)
+		}
+	}()
+
+	if err := os.WriteFile(filepath.Join(root, "agents", "builder-001.yaml"), []byte(":\n"), 0644); err != nil {
+		t.Fatalf("corrupt agent yaml: %v", err)
+	}
+
+	fb := NewFileBackend(root)
+	snap := fb.Load()
+	if !snap.DaemonOK {
+		t.Fatal("expected daemon snapshot path to mark daemon available")
+	}
+	if len(snap.Agents) != 1 || snap.Agents[0].ID != "builder-001" {
+		t.Fatalf("expected daemon snapshot to return cached agent, got %+v", snap.Agents)
+	}
+	if len(snap.Issues) != 1 {
+		t.Fatalf("expected daemon snapshot to return cached issue, got %d issues", len(snap.Issues))
+	}
+	for _, err := range snap.Errors {
+		if strings.HasPrefix(err, "agents:") || strings.HasPrefix(err, "issues:") {
+			t.Fatalf("did not expect control-plane filesystem read error when daemon snapshot is available, got %q", err)
+		}
 	}
 }
