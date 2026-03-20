@@ -69,7 +69,9 @@ func main() {
 	}
 	startCmd.Flags().Bool("resume", false, "Auto-resume without prompting")
 	startCmd.Flags().Bool("fresh", false, "Discard previous state")
-	startCmd.Flags().Bool("no-dashboard", false, "Skip auto-opening the dashboard")
+	startCmd.Flags().Bool("dashboard", false, "Open the dashboard after startup")
+	startCmd.Flags().Bool("no-dashboard", false, "Deprecated: dashboard no longer opens by default")
+	_ = startCmd.Flags().MarkDeprecated("no-dashboard", "dashboard no longer opens by default; use --dashboard to open it explicitly")
 	startCmd.GroupID = "lifecycle"
 
 	stopCmd := &cobra.Command{
@@ -87,7 +89,9 @@ func main() {
 		Short: "Hot-reload daemon without killing agents",
 		RunE:  runRestart,
 	}
-	restartCmd.Flags().Bool("no-dashboard", false, "Skip auto-opening the dashboard")
+	restartCmd.Flags().Bool("dashboard", false, "Open the dashboard after restart")
+	restartCmd.Flags().Bool("no-dashboard", false, "Deprecated: dashboard no longer opens by default")
+	_ = restartCmd.Flags().MarkDeprecated("no-dashboard", "dashboard no longer opens by default; use --dashboard to open it explicitly")
 	restartCmd.GroupID = "lifecycle"
 
 	statusCmd := &cobra.Command{
@@ -527,6 +531,11 @@ func launchDashboard(root string) error {
 		}
 		return nil
 	}
+}
+
+func shouldLaunchDashboard(cmd *cobra.Command) bool {
+	openDashboard, _ := cmd.Flags().GetBool("dashboard")
+	return openDashboard
 }
 
 func runDash(cmd *cobra.Command, args []string) error {
@@ -2225,8 +2234,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Dash:   loom dash\n")
 		fmt.Printf("  Stop:   loom stop\n")
 
-		noDash, _ := cmd.Flags().GetBool("no-dashboard")
-		if !noDash {
+		if shouldLaunchDashboard(cmd) {
 			return launchDashboard(root)
 		}
 		return nil
@@ -2314,8 +2322,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Sent SIGHUP to daemon (pid %d) — reloading\n", pid)
 
-	noDash, _ := cmd.Flags().GetBool("no-dashboard")
-	if !noDash {
+	if shouldLaunchDashboard(cmd) {
 		return launchDashboard(root)
 	}
 	return nil
