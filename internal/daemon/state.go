@@ -31,34 +31,44 @@ const (
 const defaultReconcileEvery = 30 * time.Second
 
 type daemonState struct {
-	loomRoot       string
-	mu             sync.RWMutex
-	now            func() time.Time
-	reconcileEvery time.Duration
-	dirty          stateTarget
-	lastIssuesSync time.Time
-	lastAgentsSync time.Time
-	lastMailSync   time.Time
-	issueStamp     map[string]fileStamp
-	issues         map[string]*issue.Issue
-	agentStamp     map[string]fileStamp
-	agents         map[string]*agent.Agent
-	mailStamp      map[string]fileStamp
-	mailByAgent    map[string]map[string]*mail.Message
+	loomRoot            string
+	mu                  sync.RWMutex
+	now                 func() time.Time
+	reconcileEvery      time.Duration
+	dirty               stateTarget
+	lastIssuesSync      time.Time
+	lastAgentsSync      time.Time
+	lastMailSync        time.Time
+	issueStamp          map[string]fileStamp
+	issues              map[string]*issue.Issue
+	issueOrder          []string
+	readyIssueOrder     []string
+	resolvedIssueIDs    map[string]bool
+	descendantsResolved map[string]bool
+	agentStamp          map[string]fileStamp
+	agents              map[string]*agent.Agent
+	agentOrder          []string
+	mailStamp           map[string]fileStamp
+	mailByAgent         map[string]map[string]*mail.Message
+	mailAgentOrder      []string
+	unreadMailOrder     map[string][]string
 }
 
 func newDaemonState(loomRoot string) *daemonState {
 	return &daemonState{
-		loomRoot:       loomRoot,
-		now:            time.Now,
-		reconcileEvery: defaultReconcileEvery,
-		dirty:          stateTargetIssues | stateTargetAgents | stateTargetMail,
-		issueStamp:     make(map[string]fileStamp),
-		issues:         make(map[string]*issue.Issue),
-		agentStamp:     make(map[string]fileStamp),
-		agents:         make(map[string]*agent.Agent),
-		mailStamp:      make(map[string]fileStamp),
-		mailByAgent:    make(map[string]map[string]*mail.Message),
+		loomRoot:            loomRoot,
+		now:                 time.Now,
+		reconcileEvery:      defaultReconcileEvery,
+		dirty:               stateTargetIssues | stateTargetAgents | stateTargetMail,
+		issueStamp:          make(map[string]fileStamp),
+		issues:              make(map[string]*issue.Issue),
+		resolvedIssueIDs:    make(map[string]bool),
+		descendantsResolved: make(map[string]bool),
+		agentStamp:          make(map[string]fileStamp),
+		agents:              make(map[string]*agent.Agent),
+		mailStamp:           make(map[string]fileStamp),
+		mailByAgent:         make(map[string]map[string]*mail.Message),
+		unreadMailOrder:     make(map[string][]string),
 	}
 }
 
@@ -104,6 +114,7 @@ func (s *daemonState) syncIssues() error {
 		delete(s.issues, id)
 		delete(s.issueStamp, id)
 	}
+	s.rebuildIssueIndexesLocked()
 	s.lastIssuesSync = s.now()
 	s.dirty &^= stateTargetIssues
 	return nil
@@ -151,6 +162,7 @@ func (s *daemonState) syncAgents() error {
 		delete(s.agents, id)
 		delete(s.agentStamp, id)
 	}
+	s.rebuildAgentIndexesLocked()
 	s.lastAgentsSync = s.now()
 	s.dirty &^= stateTargetAgents
 	return nil
@@ -169,6 +181,7 @@ func (s *daemonState) syncMail() error {
 		if os.IsNotExist(err) {
 			s.mailStamp = make(map[string]fileStamp)
 			s.mailByAgent = make(map[string]map[string]*mail.Message)
+			s.rebuildMailIndexesLocked()
 			s.lastMailSync = s.now()
 			s.dirty &^= stateTargetMail
 			return nil
@@ -239,6 +252,7 @@ func (s *daemonState) syncMail() error {
 		}
 		delete(s.mailByAgent, agentID)
 	}
+	s.rebuildMailIndexesLocked()
 	s.lastMailSync = s.now()
 	s.dirty &^= stateTargetMail
 	return nil
@@ -273,13 +287,12 @@ func (s *daemonState) allIssues() []*issue.Issue {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make([]*issue.Issue, 0, len(s.issues))
-	for _, iss := range s.issues {
-		out = append(out, cloneCachedIssue(iss))
+	out := make([]*issue.Issue, 0, len(s.issueOrder))
+	for _, id := range s.issueOrder {
+		if iss := s.issues[id]; iss != nil {
+			out = append(out, cloneCachedIssue(iss))
+		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].UpdatedAt.After(out[j].UpdatedAt)
-	})
 	return out
 }
 
@@ -287,19 +300,12 @@ func (s *daemonState) readyIssues() []*issue.Issue {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var out []*issue.Issue
-	for _, iss := range s.issues {
-		if iss.Status != "open" || iss.Assignee != "" {
-			continue
+	out := make([]*issue.Issue, 0, len(s.readyIssueOrder))
+	for _, id := range s.readyIssueOrder {
+		if iss := s.issues[id]; iss != nil {
+			out = append(out, cloneCachedIssue(iss))
 		}
-		if !issueReadyFromCache(s.issues, iss) {
-			continue
-		}
-		out = append(out, cloneCachedIssue(iss))
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].UpdatedAt.After(out[j].UpdatedAt)
-	})
 	return out
 }
 
@@ -307,11 +313,9 @@ func (s *daemonState) resolvedIssueSet() map[string]bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make(map[string]bool, len(s.issues))
-	for _, iss := range s.issues {
-		if iss.Status == "done" || iss.Status == "cancelled" {
-			out[iss.ID] = true
-		}
+	out := make(map[string]bool, len(s.resolvedIssueIDs))
+	for id := range s.resolvedIssueIDs {
+		out[id] = true
 	}
 	return out
 }
@@ -319,20 +323,19 @@ func (s *daemonState) resolvedIssueSet() map[string]bool {
 func (s *daemonState) allDescendantsResolved(issueID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return descendantsResolvedFromCache(s.issues, issueID, make(map[string]bool))
+	return s.descendantsResolved[issueID]
 }
 
 func (s *daemonState) agentsList() []*agent.Agent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	out := make([]*agent.Agent, 0, len(s.agents))
-	for _, a := range s.agents {
-		out = append(out, cloneCachedAgent(a))
+	out := make([]*agent.Agent, 0, len(s.agentOrder))
+	for _, id := range s.agentOrder {
+		if a := s.agents[id]; a != nil {
+			out = append(out, cloneCachedAgent(a))
+		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].SpawnedAt.After(out[j].SpawnedAt)
-	})
 	return out
 }
 
@@ -357,29 +360,32 @@ func (s *daemonState) issueByID(id string) *issue.Issue {
 func (s *daemonState) mailAgentIDs() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	ids := make([]string, 0, len(s.mailByAgent))
-	for agentID := range s.mailByAgent {
-		ids = append(ids, agentID)
-	}
-	sort.Strings(ids)
-	return ids
+	return append([]string(nil), s.mailAgentOrder...)
 }
 
 func (s *daemonState) unreadMessages(agentID string) []*mail.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	var out []*mail.Message
-	for _, msg := range s.mailByAgent[agentID] {
-		if msg.Read {
-			continue
+	ids := s.unreadMailOrder[agentID]
+	out := make([]*mail.Message, 0, len(ids))
+	for _, id := range ids {
+		if msg := s.mailByAgent[agentID][id]; msg != nil {
+			out = append(out, cloneCachedMessage(msg))
 		}
-		out = append(out, cloneCachedMessage(msg))
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return out[i].Timestamp.After(out[j].Timestamp)
-	})
 	return out
+}
+
+func (s *daemonState) unreadCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var total int
+	for _, ids := range s.unreadMailOrder {
+		total += len(ids)
+	}
+	return total
 }
 
 func (s *daemonState) storeIssue(iss *issue.Issue) error {
@@ -392,6 +398,7 @@ func (s *daemonState) storeIssue(iss *issue.Issue) error {
 	defer s.mu.Unlock()
 	s.issues[iss.ID] = cloneCachedIssue(iss)
 	s.issueStamp[iss.ID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+	s.rebuildIssueIndexesLocked()
 	s.lastIssuesSync = s.now()
 	s.dirty &^= stateTargetIssues
 	return nil
@@ -407,6 +414,7 @@ func (s *daemonState) storeAgent(a *agent.Agent) error {
 	defer s.mu.Unlock()
 	s.agents[a.ID] = cloneCachedAgent(a)
 	s.agentStamp[a.ID] = fileStamp{modTime: info.ModTime(), size: info.Size()}
+	s.rebuildAgentIndexesLocked()
 	s.lastAgentsSync = s.now()
 	s.dirty &^= stateTargetAgents
 	return nil
@@ -421,6 +429,7 @@ func (s *daemonState) refreshIssue(id string) error {
 			defer s.mu.Unlock()
 			delete(s.issues, id)
 			delete(s.issueStamp, id)
+			s.rebuildIssueIndexesLocked()
 			s.lastIssuesSync = s.now()
 			s.dirty &^= stateTargetIssues
 			return nil
@@ -441,6 +450,7 @@ func (s *daemonState) refreshAgent(id string) error {
 			defer s.mu.Unlock()
 			delete(s.agents, id)
 			delete(s.agentStamp, id)
+			s.rebuildAgentIndexesLocked()
 			s.lastAgentsSync = s.now()
 			s.dirty &^= stateTargetAgents
 			return nil
@@ -494,6 +504,7 @@ func (s *daemonState) refreshMailbox(agentID string) error {
 			s.mailStamp[prefix+msgID] = stamp
 		}
 	}
+	s.rebuildMailIndexesLocked()
 	s.lastMailSync = s.now()
 	s.dirty &^= stateTargetMail
 	return nil
@@ -508,6 +519,59 @@ func listYAMLFilesOrEmpty(dir string) ([]string, error) {
 		return nil, err
 	}
 	return files, nil
+}
+
+func (s *daemonState) rebuildIssueIndexesLocked() {
+	s.issueOrder = s.issueOrder[:0]
+	s.readyIssueOrder = s.readyIssueOrder[:0]
+	s.resolvedIssueIDs = make(map[string]bool, len(s.issues))
+	s.descendantsResolved = make(map[string]bool, len(s.issues))
+	for id := range s.issues {
+		s.issueOrder = append(s.issueOrder, id)
+	}
+	sort.Slice(s.issueOrder, func(i, j int) bool {
+		return s.issues[s.issueOrder[i]].UpdatedAt.After(s.issues[s.issueOrder[j]].UpdatedAt)
+	})
+	for _, id := range s.issueOrder {
+		iss := s.issues[id]
+		if iss.Status == "done" || iss.Status == "cancelled" {
+			s.resolvedIssueIDs[id] = true
+		}
+		if iss.Status == "open" && iss.Assignee == "" && issueReadyFromCache(s.issues, iss) {
+			s.readyIssueOrder = append(s.readyIssueOrder, id)
+		}
+		s.descendantsResolved[id] = descendantsResolvedFromCache(s.issues, id, make(map[string]bool))
+	}
+}
+
+func (s *daemonState) rebuildAgentIndexesLocked() {
+	s.agentOrder = s.agentOrder[:0]
+	for id := range s.agents {
+		s.agentOrder = append(s.agentOrder, id)
+	}
+	sort.Slice(s.agentOrder, func(i, j int) bool {
+		return s.agents[s.agentOrder[i]].SpawnedAt.After(s.agents[s.agentOrder[j]].SpawnedAt)
+	})
+}
+
+func (s *daemonState) rebuildMailIndexesLocked() {
+	s.mailAgentOrder = s.mailAgentOrder[:0]
+	s.unreadMailOrder = make(map[string][]string, len(s.mailByAgent))
+	for agentID, bucket := range s.mailByAgent {
+		s.mailAgentOrder = append(s.mailAgentOrder, agentID)
+		var unread []string
+		for msgID, msg := range bucket {
+			if msg.Read {
+				continue
+			}
+			unread = append(unread, msgID)
+		}
+		sort.Slice(unread, func(i, j int) bool {
+			return bucket[unread[i]].Timestamp.After(bucket[unread[j]].Timestamp)
+		})
+		s.unreadMailOrder[agentID] = unread
+	}
+	sort.Strings(s.mailAgentOrder)
 }
 
 func issueReadyFromCache(issues map[string]*issue.Issue, iss *issue.Issue) bool {

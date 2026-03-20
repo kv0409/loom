@@ -101,6 +101,8 @@ func (d *Daemon) handleConn(conn net.Conn) {
 		resp = d.apiInvalidate(req)
 	case "refresh":
 		resp = d.apiRefresh(req)
+	case "snapshot":
+		resp = d.apiSnapshot()
 	default:
 		resp = errResp("unknown action: " + req.Action)
 	}
@@ -143,6 +145,8 @@ func (d *Daemon) apiHeartbeat(req Request) Response {
 	if d.state != nil {
 		if err := d.state.storeAgent(a); err != nil {
 			d.invalidateState(stateTargetAgents)
+		} else {
+			d.signalStateChange(stateTargetAgents)
 		}
 	}
 	if d.state == nil {
@@ -158,10 +162,11 @@ func (d *Daemon) apiKill(req Request) Response {
 	}
 	d.UnregisterACPClient(req.AgentID)
 	_ = a // loaded to verify existence
+	refreshOpts := d.killRefreshOpts(req.AgentID, nil)
 	if err := agent.Kill(d.LoomRoot, req.AgentID, req.Cleanup); err != nil {
 		return errResp("kill failed: " + err.Error())
 	}
-	d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
+	d.refreshCachedState(refreshOpts)
 	return okResp(nil)
 }
 
@@ -229,7 +234,32 @@ func (d *Daemon) apiRefresh(req Request) Response {
 			return errResp("refresh mailbox failed: " + err.Error())
 		}
 	}
+	d.signalStateChange(refreshStateTargets(RefreshOpts{
+		IssueIDs:   req.IssueIDs,
+		AgentIDs:   req.AgentIDs,
+		MailAgents: req.MailAgents,
+	})...)
 	return okResp(nil)
+}
+
+func (d *Daemon) apiSnapshot() Response {
+	if d.state == nil {
+		return errResp("state unavailable")
+	}
+	if err := d.state.syncAgents(); err != nil {
+		return errResp("sync agents failed: " + err.Error())
+	}
+	if err := d.state.syncIssues(); err != nil {
+		return errResp("sync issues failed: " + err.Error())
+	}
+	if err := d.state.syncMail(); err != nil {
+		return errResp("sync mail failed: " + err.Error())
+	}
+	return okResp(ControlSnapshot{
+		Agents: d.state.agentsList(),
+		Issues: d.state.allIssues(),
+		Unread: d.state.unreadCount(),
+	})
 }
 
 func (d *Daemon) invalidateTargets(names ...string) error {

@@ -8,12 +8,19 @@ import (
 
 	"github.com/karanagi/loom/internal/acp"
 	"github.com/karanagi/loom/internal/agent"
+	"github.com/karanagi/loom/internal/issue"
 )
 
 type RefreshOpts struct {
 	IssueIDs   []string
 	AgentIDs   []string
 	MailAgents []string
+}
+
+type ControlSnapshot struct {
+	Agents []*agent.Agent `json:"agents"`
+	Issues []*issue.Issue `json:"issues"`
+	Unread int            `json:"unread"`
 }
 
 // call dials the daemon Unix socket, sends req, and returns the response.
@@ -89,6 +96,22 @@ func Output(loomRoot, agentID string, lines int) ([]acp.ACPEvent, error) {
 	return events, nil
 }
 
+func Snapshot(loomRoot string) (ControlSnapshot, error) {
+	resp, err := call(loomRoot, Request{Action: "snapshot"})
+	if err != nil {
+		return ControlSnapshot{}, err
+	}
+	b, err := json.Marshal(resp.Data)
+	if err != nil {
+		return ControlSnapshot{}, fmt.Errorf("snapshot marshal: %w", err)
+	}
+	var snap ControlSnapshot
+	if err := json.Unmarshal(b, &snap); err != nil {
+		return ControlSnapshot{}, fmt.Errorf("snapshot unmarshal: %w", err)
+	}
+	return snap, nil
+}
+
 // Refresh reloads specific cached control-plane entries from disk without
 // invalidating the entire section.
 func Refresh(loomRoot string, opts RefreshOpts) error {
@@ -110,7 +133,7 @@ func RefreshBestEffort(loomRoot string, opts RefreshOpts) {
 	if err := Refresh(loomRoot, opts); err == nil {
 		return
 	}
-	targets := refreshTargets(opts)
+	targets := refreshTargetNames(opts)
 	if len(targets) > 0 {
 		_ = Invalidate(loomRoot, targets...)
 	}
@@ -122,7 +145,7 @@ func Invalidate(loomRoot string, targets ...string) error {
 	return err
 }
 
-func refreshTargets(opts RefreshOpts) []string {
+func refreshTargetNames(opts RefreshOpts) []string {
 	var targets []string
 	if len(opts.IssueIDs) > 0 {
 		targets = append(targets, "issues")
@@ -132,6 +155,20 @@ func refreshTargets(opts RefreshOpts) []string {
 	}
 	if len(opts.MailAgents) > 0 {
 		targets = append(targets, "mail")
+	}
+	return targets
+}
+
+func refreshStateTargets(opts RefreshOpts) []stateTarget {
+	var targets []stateTarget
+	if len(opts.IssueIDs) > 0 {
+		targets = append(targets, stateTargetIssues)
+	}
+	if len(opts.AgentIDs) > 0 {
+		targets = append(targets, stateTargetAgents)
+	}
+	if len(opts.MailAgents) > 0 {
+		targets = append(targets, stateTargetMail)
 	}
 	return targets
 }

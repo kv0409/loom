@@ -28,6 +28,9 @@ type Daemon struct {
 	state        *daemonState
 	stop         chan struct{}
 	done         chan struct{}
+	issueWake    chan struct{}
+	agentWake    chan struct{}
+	mailWake     chan struct{}
 	mu           sync.Mutex
 	acpClients   map[string]*acp.Client
 	apiLn        net.Listener
@@ -44,6 +47,9 @@ func New(loomRoot string, cfg *config.Config) *Daemon {
 		state:        newDaemonState(loomRoot),
 		stop:         make(chan struct{}),
 		done:         make(chan struct{}),
+		issueWake:    make(chan struct{}, 1),
+		agentWake:    make(chan struct{}, 1),
+		mailWake:     make(chan struct{}, 1),
 		acpClients:   make(map[string]*acp.Client),
 		lastSeen:     make(map[string]time.Time),
 		idleSince:    make(map[string]time.Time),
@@ -75,9 +81,172 @@ func (d *Daemon) touchActivity() {
 
 func (d *Daemon) invalidateState(targets ...stateTarget) {
 	if d.state == nil {
+		d.signalStateChange(targets...)
 		return
 	}
 	d.state.invalidate(targets...)
+	d.signalStateChange(targets...)
+}
+
+func signalWake(ch chan struct{}) {
+	if ch == nil {
+		return
+	}
+	select {
+	case ch <- struct{}{}:
+	default:
+	}
+}
+
+func (d *Daemon) signalStateChange(targets ...stateTarget) {
+	if len(targets) == 0 {
+		signalWake(d.issueWake)
+		signalWake(d.agentWake)
+		signalWake(d.mailWake)
+		return
+	}
+	for _, target := range targets {
+		if target&stateTargetIssues != 0 {
+			signalWake(d.issueWake)
+		}
+		if target&stateTargetAgents != 0 {
+			signalWake(d.agentWake)
+		}
+		if target&stateTargetMail != 0 {
+			signalWake(d.mailWake)
+		}
+	}
+}
+
+func (d *Daemon) storeCachedAgent(a *agent.Agent) {
+	if d.state != nil {
+		if err := d.state.storeAgent(a); err == nil {
+			d.signalStateChange(stateTargetAgents)
+			return
+		}
+	}
+	d.invalidateState(stateTargetAgents)
+}
+
+func (d *Daemon) refreshCachedState(opts RefreshOpts) {
+	targets := refreshStateTargets(opts)
+	if len(targets) == 0 {
+		return
+	}
+	if d.state == nil {
+		d.invalidateState(targets...)
+		return
+	}
+
+	var signaled []stateTarget
+	if len(opts.IssueIDs) > 0 {
+		ok := true
+		for _, id := range opts.IssueIDs {
+			if err := d.state.refreshIssue(id); err != nil {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			signaled = append(signaled, stateTargetIssues)
+		} else {
+			d.invalidateState(stateTargetIssues)
+		}
+	}
+	if len(opts.AgentIDs) > 0 {
+		ok := true
+		for _, id := range opts.AgentIDs {
+			if err := d.state.refreshAgent(id); err != nil {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			signaled = append(signaled, stateTargetAgents)
+		} else {
+			d.invalidateState(stateTargetAgents)
+		}
+	}
+	if len(opts.MailAgents) > 0 {
+		ok := true
+		for _, id := range opts.MailAgents {
+			if err := d.state.refreshMailbox(id); err != nil {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			signaled = append(signaled, stateTargetMail)
+		} else {
+			d.invalidateState(stateTargetMail)
+		}
+	}
+	if len(signaled) > 0 {
+		d.signalStateChange(signaled...)
+	}
+}
+
+func (d *Daemon) killRefreshOpts(rootID string, resolved map[string]bool) RefreshOpts {
+	opts := RefreshOpts{}
+	if rootID == "" || d.state == nil {
+		return opts
+	}
+
+	agents := d.state.agentsList()
+	byID := make(map[string]*agent.Agent, len(agents))
+	childrenByParent := make(map[string][]*agent.Agent)
+	for _, a := range agents {
+		byID[a.ID] = a
+		if a.SpawnedBy != "" {
+			childrenByParent[a.SpawnedBy] = append(childrenByParent[a.SpawnedBy], a)
+		}
+	}
+
+	seenAgents := make(map[string]bool)
+	seenIssues := make(map[string]bool)
+	seenMail := make(map[string]bool)
+	var walk func(string)
+	walk = func(agentID string) {
+		if agentID == "" || seenAgents[agentID] {
+			return
+		}
+		seenAgents[agentID] = true
+		opts.AgentIDs = append(opts.AgentIDs, agentID)
+		if !seenMail[agentID] {
+			seenMail[agentID] = true
+			opts.MailAgents = append(opts.MailAgents, agentID)
+		}
+
+		a := byID[agentID]
+		if a == nil {
+			return
+		}
+		for _, issueID := range a.AssignedIssues {
+			if seenIssues[issueID] {
+				continue
+			}
+			seenIssues[issueID] = true
+			opts.IssueIDs = append(opts.IssueIDs, issueID)
+		}
+		for _, child := range childrenByParent[agentID] {
+			if resolved != nil && !childIssuesResolvedForRefresh(child, resolved) {
+				continue
+			}
+			walk(child.ID)
+		}
+	}
+
+	walk(rootID)
+	return opts
+}
+
+func childIssuesResolvedForRefresh(a *agent.Agent, resolved map[string]bool) bool {
+	for _, issueID := range a.AssignedIssues {
+		if !resolved[issueID] {
+			return false
+		}
+	}
+	return true
 }
 
 // NotifyOutcome describes the result of a notification attempt.
@@ -157,7 +326,7 @@ func (d *Daemon) recoverOrphanedAgents() {
 			log.Printf("[recover] save agent %s: %v", a.ID, err)
 			continue
 		}
-		d.invalidateState(stateTargetAgents)
+		d.storeCachedAgent(a)
 	}
 }
 
@@ -211,6 +380,9 @@ func (d *Daemon) Reload() error {
 	d.stop = make(chan struct{})
 	d.done = make(chan struct{})
 	d.state = newDaemonState(d.LoomRoot)
+	d.issueWake = make(chan struct{}, 1)
+	d.agentWake = make(chan struct{}, 1)
+	d.mailWake = make(chan struct{}, 1)
 	d.lastSeen = make(map[string]time.Time)
 	d.idleSince = make(map[string]time.Time)
 	d.loggedAt = make(map[string]time.Time)
@@ -266,6 +438,7 @@ func (d *Daemon) watchPendingAgents() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.agentWake:
 			if err := d.state.syncAgents(); err != nil {
 				d.rlog("watchPendingAgents:sync", "[pending-agents] sync agents failed: %v", err)
 				continue
@@ -279,7 +452,7 @@ func (d *Daemon) watchPendingAgents() {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 						continue
 					}
-					d.invalidateState(stateTargetAgents)
+					d.storeCachedAgent(a)
 					go d.activateACPAgent(a)
 				}
 			}
@@ -383,7 +556,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
-		d.invalidateState(stateTargetAgents)
+		d.storeCachedAgent(a)
 		return
 	}
 
@@ -401,7 +574,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
-		d.invalidateState(stateTargetAgents)
+		d.storeCachedAgent(a)
 		return
 	}
 
@@ -414,7 +587,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 		if err := agent.Save(d.LoomRoot, a); err != nil {
 			log.Printf("[daemon] save agent %s: %v", a.ID, err)
 		}
-		d.invalidateState(stateTargetAgents)
+		d.storeCachedAgent(a)
 		return
 	}
 	log.Printf("[acp] %s: session=%s, sending initial task", a.ID, sessionID)
@@ -427,7 +600,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 			if err := agent.Save(d.LoomRoot, a); err != nil {
 				log.Printf("[daemon] save agent %s: %v", a.ID, err)
 			}
-			d.invalidateState(stateTargetAgents)
+			d.storeCachedAgent(a)
 			return
 		}
 	}
@@ -446,7 +619,7 @@ func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	if err := agent.Save(d.LoomRoot, a); err != nil {
 		log.Printf("[daemon] save agent %s: %v", a.ID, err)
 	}
-	d.invalidateState(stateTargetAgents)
+	d.storeCachedAgent(a)
 
 	// Set the model after the agent is fully active so a timeout
 	// doesn't block activation or kill the process during startup.
@@ -491,6 +664,8 @@ func (d *Daemon) watchIssues() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.issueWake:
+		case <-d.agentWake:
 			if err := d.state.syncIssues(); err != nil {
 				d.rlog("watchIssues:sync:issues", "[issues] sync issues failed: %v", err)
 				continue
@@ -560,6 +735,8 @@ func (d *Daemon) watchDoneIssues() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.issueWake:
+		case <-d.agentWake:
 			if err := d.state.syncIssues(); err != nil {
 				d.rlog("watchDoneIssues:sync:issues", "[done-issues] sync issues failed: %v", err)
 				continue
@@ -587,7 +764,11 @@ func (d *Daemon) watchDoneIssues() {
 					d.rlog("watchDoneIssues:close:"+iss.ID, "[done-issues] auto-close %s failed: %v", iss.ID, err)
 					continue
 				}
-				d.invalidateState(stateTargetIssues, stateTargetAgents)
+				refreshOpts := RefreshOpts{IssueIDs: []string{iss.ID}}
+				if info.PreviousAssignee != "" {
+					refreshOpts.AgentIDs = []string{info.PreviousAssignee}
+				}
+				d.refreshCachedState(refreshOpts)
 				resolved[iss.ID] = true
 				msg := "[LOOM] Issue " + iss.ID + " auto-closed: all children resolved."
 				target := info.PreviousAssignee
@@ -626,8 +807,9 @@ func (d *Daemon) watchDoneIssues() {
 				if t, ok := notifiedAgents[a.ID]; ok {
 					if time.Since(t) > 2*time.Minute {
 						log.Printf("[daemon] grace-killing %s: still alive 2m after issue resolved", a.ID)
+						refreshOpts := d.killRefreshOpts(a.ID, resolved)
 						agent.KillWithResolved(d.LoomRoot, a.ID, true, resolved)
-						d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
+						d.refreshCachedState(refreshOpts)
 						delete(notifiedAgents, a.ID)
 					}
 					continue
@@ -657,6 +839,8 @@ func (d *Daemon) watchMail() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.mailWake:
+		case <-d.agentWake:
 			if err := d.state.syncMail(); err != nil {
 				d.rlog("watchMail:sync:mail", "[mail] sync mail failed: %v", err)
 				continue
@@ -705,6 +889,7 @@ func (d *Daemon) watchHeartbeats() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.agentWake:
 			if err := d.state.syncAgents(); err != nil {
 				d.rlog("watchHeartbeats:sync:agents", "[heartbeat] sync agents failed: %v", err)
 				continue
@@ -747,7 +932,11 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.UnassignAllIssues(d.LoomRoot, a); err != nil {
 						log.Printf("[heartbeat] failed to unassign issues for %s: %v", a.ID, err)
 					}
-					d.invalidateState(stateTargetIssues, stateTargetAgents)
+					refreshOpts := RefreshOpts{AgentIDs: []string{a.ID}}
+					if len(a.AssignedIssues) > 0 {
+						refreshOpts.IssueIDs = append([]string(nil), a.AssignedIssues...)
+					}
+					d.refreshCachedState(refreshOpts)
 					delete(d.lastSeen, a.ID)
 					delete(d.idleSince, a.ID)
 					parentID := a.SpawnedBy
@@ -778,7 +967,7 @@ func (d *Daemon) watchHeartbeats() {
 						if err := agent.Save(d.LoomRoot, a); err != nil {
 							log.Printf("[daemon] save agent %s: %v", a.ID, err)
 						}
-						d.invalidateState(stateTargetAgents)
+						d.storeCachedAgent(a)
 					}
 					continue
 				}
@@ -800,7 +989,7 @@ func (d *Daemon) watchHeartbeats() {
 					if err := agent.Save(d.LoomRoot, a); err != nil {
 						log.Printf("[daemon] save agent %s: %v", a.ID, err)
 					}
-					d.invalidateState(stateTargetAgents)
+					d.storeCachedAgent(a)
 					if a.NudgeCount == 2 {
 						if parentID := a.SpawnedBy; parentID != "" {
 							parent := d.state.agentByID(parentID)
@@ -866,8 +1055,9 @@ func (d *Daemon) checkIdleAgents(agents []*agent.Agent, idleTimeout time.Duratio
 		// Idle timeout exceeded — kill the agent.
 		log.Printf("[idle-timeout] killing %s: idle for %v with no active issues", a.ID, time.Since(d.idleSince[a.ID]))
 		delete(d.idleSince, a.ID)
+		refreshOpts := d.killRefreshOpts(a.ID, nil)
 		agent.Kill(d.LoomRoot, a.ID, true)
-		d.invalidateState(stateTargetIssues, stateTargetAgents, stateTargetMail)
+		d.refreshCachedState(refreshOpts)
 		if parentID := a.SpawnedBy; parentID != "" {
 			parent := d.state.agentByID(parentID)
 			if parent != nil {
@@ -885,6 +1075,7 @@ func (d *Daemon) watchInboxGC() {
 		case <-d.stop:
 			return
 		case <-ticker.C:
+		case <-d.agentWake:
 			if err := d.state.syncAgents(); err != nil {
 				d.rlog("watchInboxGC:sync:agents", "[inbox-gc] sync agents failed: %v", err)
 				continue
@@ -904,7 +1095,7 @@ func (d *Daemon) watchInboxGC() {
 						d.rlog("watchInboxGC:archive:"+e.Name(), "[inbox-gc] archive stale inbox %s: %v", e.Name(), err)
 						continue
 					}
-					d.invalidateState(stateTargetMail)
+					d.refreshCachedState(RefreshOpts{MailAgents: []string{e.Name()}})
 				}
 			}
 		}

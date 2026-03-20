@@ -239,3 +239,74 @@ func TestDaemonStateReconcilesDirtyIssueAfterInterval(t *testing.T) {
 		t.Fatalf("expected reconcile interval to refresh high priority, got %q", got)
 	}
 }
+
+func TestDaemonStateCachesDerivedIssueIndexes(t *testing.T) {
+	root := setupStateRoot(t)
+	parent, err := issue.Create(root, "parent", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("create parent: %v", err)
+	}
+	child, err := issue.Create(root, "child", issue.CreateOpts{Parent: parent.ID})
+	if err != nil {
+		t.Fatalf("create child: %v", err)
+	}
+	registerStateAgent(t, root, "builder-001", "builder")
+	dep, err := issue.Create(root, "dependency", issue.CreateOpts{})
+	if err != nil {
+		t.Fatalf("create dependency: %v", err)
+	}
+	blocked, err := issue.Create(root, "blocked", issue.CreateOpts{DependsOn: []string{dep.ID}})
+	if err != nil {
+		t.Fatalf("create blocked issue: %v", err)
+	}
+	if err := agent.AssignIssue(root, "builder-001", child.ID); err != nil {
+		t.Fatalf("assign child: %v", err)
+	}
+	if _, err := agent.CloseIssue(root, dep.ID, "done"); err != nil {
+		t.Fatalf("close dependency: %v", err)
+	}
+
+	state := newDaemonState(root)
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues: %v", err)
+	}
+
+	issues := state.allIssues()
+	if len(issues) != 4 {
+		t.Fatalf("expected 4 issues, got %d", len(issues))
+	}
+	if issues[0].ID != dep.ID {
+		t.Fatalf("expected most recently updated issue first, got %s", issues[0].ID)
+	}
+
+	ready := state.readyIssues()
+	if len(ready) != 2 {
+		t.Fatalf("expected 2 ready issues, got %d", len(ready))
+	}
+	if ready[0].ID != blocked.ID || ready[1].ID != parent.ID {
+		t.Fatalf("unexpected ready issue order: got %s then %s", ready[0].ID, ready[1].ID)
+	}
+
+	resolved := state.resolvedIssueSet()
+	if !resolved[dep.ID] {
+		t.Fatalf("expected resolved set to include %s", dep.ID)
+	}
+	if resolved[parent.ID] {
+		t.Fatalf("did not expect resolved set to include %s", parent.ID)
+	}
+
+	if state.allDescendantsResolved(parent.ID) {
+		t.Fatalf("expected unresolved descendants while child %s is assigned", child.ID)
+	}
+
+	if _, err := agent.CloseIssue(root, child.ID, "done"); err != nil {
+		t.Fatalf("close child: %v", err)
+	}
+	state.invalidate(stateTargetIssues)
+	if err := state.syncIssues(); err != nil {
+		t.Fatalf("syncIssues after child close: %v", err)
+	}
+	if !state.allDescendantsResolved(parent.ID) {
+		t.Fatalf("expected parent descendants to be resolved after closing %s", child.ID)
+	}
+}
