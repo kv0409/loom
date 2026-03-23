@@ -2,18 +2,30 @@ package cli
 
 import (
 	"fmt"
+	"image/color"
 	"os"
+	"strings"
+	"text/tabwriter"
+	"time"
 
 	"charm.land/lipgloss/v2"
+	lgtable "charm.land/lipgloss/v2/table"
 )
 
 // Tokyo Night palette (matches dashboard/styles.go)
 var (
-	colGreen  = lipgloss.Color("#9ECE6A")
-	colYellow = lipgloss.Color("#E0AF68")
-	colRed    = lipgloss.Color("#F7768E")
-	colGray   = lipgloss.Color("#565F89")
-	colBlue   = lipgloss.Color("#7AA2F7")
+	colGreen   = lipgloss.Color("#9ECE6A")
+	colYellow  = lipgloss.Color("#E0AF68")
+	colRed     = lipgloss.Color("#F7768E")
+	colGray    = lipgloss.Color("#565F89")
+	colBlue    = lipgloss.Color("#7AA2F7")
+	colCyan    = lipgloss.Color("#7DCFFF")
+	colMagenta = lipgloss.Color("#BB9AF7")
+	colOrange  = lipgloss.Color("#FF9E64")
+	colTeal    = lipgloss.Color("#73DACA")
+	colFg      = lipgloss.Color("#C0CAF5")
+	colSubtle  = lipgloss.Color("#414868")
+	colSelBg   = lipgloss.Color("#292E42")
 )
 
 func noColor() bool {
@@ -57,4 +69,175 @@ func PrintError(msg string, hint ...string) {
 // PrintInfo prints dimmed informational text.
 func PrintInfo(msg string) {
 	fmt.Println(colored(msg, lipgloss.NewStyle().Foreground(colGray)))
+}
+
+// ---------------------------------------------------------------------------
+// CLITable
+// ---------------------------------------------------------------------------
+
+var (
+	cliHeaderStyle = lipgloss.NewStyle().Foreground(colBlue).Bold(true)
+	cliCellStyle   = lipgloss.NewStyle().Foreground(colFg)
+)
+
+// CLITable renders a styled table. Falls back to tabwriter when NO_COLOR is set.
+func CLITable(headers []string, rows [][]string) string {
+	if noColor() {
+		return plainTable(headers, rows)
+	}
+	t := lgtable.New().
+		Headers(headers...).
+		Rows(rows...).
+		Wrap(false).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderHeader(false).
+		BorderColumn(false).
+		BorderRow(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == lgtable.HeaderRow {
+				return cliHeaderStyle
+			}
+			return cliCellStyle
+		})
+	return t.Render()
+}
+
+func plainTable(headers []string, rows [][]string) string {
+	var buf strings.Builder
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	for _, r := range rows {
+		fmt.Fprintln(w, strings.Join(r, "\t"))
+	}
+	w.Flush()
+	return strings.TrimRight(buf.String(), "\n")
+}
+
+// ---------------------------------------------------------------------------
+// DetailView
+// ---------------------------------------------------------------------------
+
+// DetailField is a label-value pair for DetailView.
+type DetailField struct {
+	Label string
+	Value string
+}
+
+var (
+	detailLabelStyle = lipgloss.NewStyle().Foreground(colGray)
+	detailValueStyle = lipgloss.NewStyle().Foreground(colFg)
+)
+
+// DetailView renders aligned key-value fields. Fields with empty values are skipped.
+func DetailView(fields []DetailField) string {
+	// Filter and find max label width.
+	var visible []DetailField
+	maxW := 0
+	for _, f := range fields {
+		if f.Value == "" {
+			continue
+		}
+		visible = append(visible, f)
+		if len(f.Label) > maxW {
+			maxW = len(f.Label)
+		}
+	}
+	var b strings.Builder
+	for i, f := range visible {
+		padded := f.Label + ":" + strings.Repeat(" ", maxW-len(f.Label)+1)
+		if noColor() {
+			b.WriteString(padded + f.Value)
+		} else {
+			b.WriteString(detailLabelStyle.Render(padded) + detailValueStyle.Render(f.Value))
+		}
+		if i < len(visible)-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// Styled pill formatters
+// ---------------------------------------------------------------------------
+
+var statusColorMap = map[string]color.Color{
+	"open":        colFg,
+	"assigned":    colBlue,
+	"in-progress": colTeal,
+	"active":      colGreen,
+	"done":        colGreen,
+	"blocked":     colRed,
+	"review":      colCyan,
+	"error":       colRed,
+	"dead":        colOrange,
+	"cancelled":   colGray,
+}
+
+// StatusText returns color-coded status text.
+func StatusText(status string) string {
+	c, ok := statusColorMap[status]
+	if !ok {
+		c = colFg
+	}
+	return colored(status, lipgloss.NewStyle().Foreground(c))
+}
+
+var priorityColorMap = map[string]color.Color{
+	"critical": colRed,
+	"high":     colOrange,
+	"normal":   colFg,
+	"low":      colGray,
+}
+
+// PriorityText returns color-coded priority text.
+func PriorityText(priority string) string {
+	c, ok := priorityColorMap[priority]
+	if !ok {
+		c = colFg
+	}
+	return colored(priority, lipgloss.NewStyle().Foreground(c))
+}
+
+// AgentText returns agent-colored text based on role prefix.
+func AgentText(id string) string {
+	var c color.Color
+	switch {
+	case strings.HasPrefix(id, "orchestrator"):
+		c = colOrange
+	case strings.HasPrefix(id, "lead-"):
+		c = colMagenta
+	case strings.HasPrefix(id, "builder-"):
+		c = colBlue
+	case strings.HasPrefix(id, "reviewer-"):
+		c = colCyan
+	case strings.HasPrefix(id, "explorer-"):
+		c = colTeal
+	case strings.HasPrefix(id, "researcher-"):
+		c = colGreen
+	default:
+		c = colFg
+	}
+	return colored(id, lipgloss.NewStyle().Foreground(c))
+}
+
+// TimeFmt formats a time as a relative string like "2m ago", "1h ago", "3d ago".
+func TimeFmt(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds ago", max(1, int(d.Seconds())))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
