@@ -70,19 +70,22 @@ func TestHandleNotification_ToolCallTracking(t *testing.T) {
 	}`)
 
 	calls := c.RecentToolCalls()
-	// call_001 creates entry on "pending" (has title), then "completed" adds another snapshot.
-	// call_002 creates entry on "completed" (has title).
-	if len(calls) != 3 {
-		t.Fatalf("expected 3 recent calls, got %d", len(calls))
+	// call_001 creates one entry (tool_call with title), update doesn't add another.
+	// call_002 creates one entry (tool_call with title).
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 recent calls, got %d", len(calls))
 	}
 	if calls[0].Title != "Reading main.go" || calls[0].Kind != "read" {
 		t.Errorf("call[0]: got title=%q kind=%q", calls[0].Title, calls[0].Kind)
 	}
-	if calls[1].Status != "completed" {
-		t.Errorf("call[1]: expected completed, got %q", calls[1].Status)
+	if calls[1].Title != "Writing output.go" || calls[1].Kind != "edit" {
+		t.Errorf("call[1]: got title=%q kind=%q", calls[1].Title, calls[1].Kind)
 	}
-	if calls[2].Title != "Writing output.go" || calls[2].Kind != "edit" {
-		t.Errorf("call[2]: got title=%q kind=%q", calls[2].Title, calls[2].Kind)
+
+	// Verify the update was applied to the tracked call.
+	tc := c.toolCalls["call_001"]
+	if tc.Status != "completed" {
+		t.Errorf("call_001 status: expected completed, got %q", tc.Status)
 	}
 }
 

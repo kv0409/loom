@@ -384,8 +384,8 @@ func (c *Client) trackToolCall(id, title, kind, status string, locs []string) {
 	}
 	tc.Locations = append(tc.Locations, locs...)
 
-	// Append snapshot to recent ring buffer on meaningful updates.
-	if title != "" || status == "completed" || status == "failed" {
+	// Append snapshot to recent ring buffer only on new tool calls (not updates).
+	if !exists && title != "" {
 		snap := *tc
 		snap.Timestamp = ts
 		c.recentCalls = append(c.recentCalls, snap)
