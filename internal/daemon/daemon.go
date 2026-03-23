@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -333,8 +332,6 @@ func (d *Daemon) recoverOrphanedAgents() {
 
 func (d *Daemon) Start() error {
 	d.recoverOrphanedAgents()
-	// Write session start marker for dashboard activity filtering.
-	os.WriteFile(filepath.Join(d.LoomRoot, "session"), []byte(time.Now().Format("2006-01-02T15:04:05")), 0644)
 	if err := d.startAPI(); err != nil {
 		return fmt.Errorf("starting API: %w", err)
 	}
@@ -504,43 +501,9 @@ func (d *Daemon) watchACPOutput() {
 			}
 			d.mu.Unlock()
 			for _, id := range ids {
-				newEvents := d.drainACPOutput(id)
-				if len(newEvents) == 0 {
-					continue
-				}
-
-				p := filepath.Join(d.LoomRoot, "agents", id+".output")
-				f, err := os.OpenFile(p, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					d.rlog("watchACPOutput:open:"+id, "[acp-output] open output file for %s: %v", id, err)
-					continue
-				}
-				ts := time.Now().Format("2006-01-02T15:04:05")
-				enc := json.NewEncoder(f)
-				for i := range newEvents {
-					newEvents[i].Timestamp = ts
-					enc.Encode(newEvents[i])
-				}
-				f.Close()
-
-				// Rotate: keep last 200 non-empty lines (atomic via temp file).
-				// Filter empty lines to avoid displacing real NDJSON events and
-				// to ensure no mid-JSON-line truncation occurs during rotation.
-				if raw, err := os.ReadFile(p); err == nil {
-					split := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
-					var all []string
-					for _, line := range split {
-						if line != "" {
-							all = append(all, line)
-						}
-					}
-					if len(all) > 200 {
-						tmp := p + ".tmp"
-						if err := os.WriteFile(tmp, []byte(strings.Join(all[len(all)-200:], "\n")+"\n"), 0644); err == nil {
-							os.Rename(tmp, p)
-						}
-					}
-				}
+				// Drain keeps the in-memory buffer fresh for agent detail view.
+				// No file I/O — activity is served from ControlSnapshot.
+				d.drainACPOutput(id)
 			}
 		}
 	}
@@ -548,9 +511,6 @@ func (d *Daemon) watchACPOutput() {
 
 func (d *Daemon) activateACPAgent(a *agent.Agent) {
 	log.Printf("[acp] activating agent %s (role=%s)", a.ID, a.Role)
-
-	// Truncate stale .output so the dashboard only shows events from this session.
-	os.Truncate(filepath.Join(d.LoomRoot, "agents", a.ID+".output"), 0)
 
 	projectRoot := filepath.Dir(d.LoomRoot)
 

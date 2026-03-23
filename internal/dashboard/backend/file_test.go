@@ -99,32 +99,22 @@ func TestFetchActivity_ToolsFile(t *testing.T) {
 	}
 }
 
-func TestFetchActivity_NDJSONToolSummary(t *testing.T) {
+func TestFetchActivity_SkipsTimestamplessLines(t *testing.T) {
 	root := t.TempDir()
 	agentsDir := filepath.Join(root, "agents")
 	os.MkdirAll(agentsDir, 0755)
 
-	ndjson := `{"kind":"token_chunk","ts":"12:00:01","content":"thinking..."}
-{"kind":"tool_summary","ts":"12:00:02","content":"Called execute_bash: go build"}
-{"kind":"token_chunk","ts":"12:00:03","content":"more tokens"}
-{"kind":"tool_summary","ts":"12:00:04","content":"Called fs_read: main.go"}
-`
-	os.WriteFile(filepath.Join(agentsDir, "builder-001.output"), []byte(ndjson), 0644)
+	// Mix of valid and invalid lines (multi-line JSON fragments).
+	tools := "2026-03-20T12:00:01 shell: go test\n  { \"path\": \"/some/file\" }\n2026-03-20T12:00:02 write: main.go\n"
+	os.WriteFile(filepath.Join(agentsDir, "builder-001.tools"), []byte(tools), 0644)
 
 	agents := []*agent.Agent{
-		{ID: "builder-001", Status: "active", Config: agent.AgentConfig{KiroMode: "acp"}},
+		{ID: "builder-001", Status: "active"},
 	}
 
 	entries := fetchActivity(root, agents)
-
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 entry, got %d", len(entries))
-	}
-	if entries[0].AgentID != "builder-001" {
-		t.Errorf("expected AgentID %q, got %q", "builder-001", entries[0].AgentID)
-	}
-	if entries[0].Line != "Called fs_read: main.go" {
-		t.Errorf("expected last tool_summary content, got %q", entries[0].Line)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries (skipping timestampless), got %d", len(entries))
 	}
 }
 

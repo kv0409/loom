@@ -279,7 +279,6 @@ The issue type field is a free string. Users can define project-specific types b
 
 ### Hooks Directory
 Loom installs hook scripts during `loom init` from embedded assets (`agents/hooks/`):
-- `loom-tool-logger.sh` — logs tool usage for activity tracking
 - `loom-worktree-guard.sh` — prevents agents from writing outside their worktree
 
 These are copied to `.loom/` and `.kiro/hooks/` during init. Use `loom init --refresh` to update hooks in existing projects.

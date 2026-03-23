@@ -82,13 +82,6 @@
         "timeout_ms": 5000
       }
     ],
-    "postToolUse": [
-      {
-        "matcher": "*",
-        "command": ".kiro/hooks/loom-tool-logger.sh",
-        "description": "Log tool calls to .loom/agents/${LOOM_AGENT_ID}.tools"
-      }
-    ],
     "preToolUse": [
       {
         "matcher": "*",

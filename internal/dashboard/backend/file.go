@@ -257,100 +257,27 @@ func buildEntry(agentID, line, projectRoot string) ActivityEntry {
 	}
 }
 
-// fetchActivity returns all activity entries across agents, sorted chronologically.
+// fetchActivity returns activity entries from .tools files as a fallback
+// when the daemon is unavailable. When the daemon is running, activity is
+// served from the ControlSnapshot (in-memory ACP tool call notifications).
 func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 	var timed []timedEntry
 	projectRoot := filepath.Dir(loomRoot)
 
-	// Read session start marker to filter out old entries.
-	var sessionStart string
-	if raw, err := os.ReadFile(filepath.Join(loomRoot, "session")); err == nil {
-		sessionStart = strings.TrimSpace(string(raw))
-	}
-
-	seen := make(map[string]bool, len(agents))
-	for _, a := range agents {
-		seen[a.ID] = true
-	}
-
-	// Scan for orphaned .tools files.
-	agentsDir := filepath.Join(loomRoot, "agents")
-	if orphans, err := filepath.Glob(filepath.Join(agentsDir, "*.tools")); err == nil {
-		for _, p := range orphans {
-			id := strings.TrimSuffix(filepath.Base(p), ".tools")
-			if seen[id] {
-				continue
-			}
-			if raw, err := os.ReadFile(p); err == nil {
-				for _, line := range strings.Split(string(raw), "\n") {
-					if t := strings.TrimSpace(line); t != "" {
-						ts, _ := ExtractTimestamp(t)
-						timed = append(timed, timedEntry{ts: ts, entry: buildEntry(id, t, projectRoot)})
-					}
-				}
-			}
-		}
-	}
-
 	for _, a := range agents {
 		toolsPath := filepath.Join(loomRoot, "agents", a.ID+".tools")
-		if toolsRaw, err := os.ReadFile(toolsPath); err == nil {
-			added := false
-			for _, line := range strings.Split(string(toolsRaw), "\n") {
-				if t := strings.TrimSpace(line); t != "" {
-					ts, _ := ExtractTimestamp(t)
-					timed = append(timed, timedEntry{ts: ts, entry: buildEntry(a.ID, t, projectRoot)})
-					added = true
-				}
-			}
-			if added {
-				continue
-			}
-		}
-
-		// ACP agents: read from .output files.
-		outPath := filepath.Join(loomRoot, "agents", a.ID+".output")
-		raw, err := os.ReadFile(outPath)
+		toolsRaw, err := os.ReadFile(toolsPath)
 		if err != nil {
 			continue
 		}
-		events := acp.ReadOutputFile(raw)
-		var last *acp.ACPEvent
-		for i := range events {
-			if events[i].Kind == acp.ToolSummary {
-				last = &events[i]
-			}
-		}
-		if last == nil {
-			var sb strings.Builder
-			for i := range events {
-				if events[i].Kind == acp.TokenChunk {
-					sb.WriteString(events[i].Content)
+		for _, line := range strings.Split(string(toolsRaw), "\n") {
+			if t := strings.TrimSpace(line); t != "" {
+				ts, _ := ExtractTimestamp(t)
+				if ts == "" {
+					continue
 				}
+				timed = append(timed, timedEntry{ts: ts, entry: buildEntry(a.ID, t, projectRoot)})
 			}
-			if sb.Len() > 0 {
-				combined := acp.ACPEvent{Kind: acp.TokenChunk, Content: sb.String()}
-				last = &combined
-			}
-		}
-		if last != nil {
-			text := last.Content
-			const maxLen = 200
-			if runes := []rune(text); len(runes) > maxLen {
-				text = "…" + string(runes[len(runes)-(maxLen-1):])
-			}
-			tool, detail := summarizeACPContent(last.Content)
-			if last.Title != "" {
-				detail = last.Title
-			}
-			ts := last.Timestamp
-			timed = append(timed, timedEntry{ts: ts, entry: ActivityEntry{
-				AgentID: a.ID,
-				Line:    text,
-				Time:    RelativeTime(ts),
-				Tool:    tool,
-				Detail:  detail,
-			}})
 		}
 	}
 
@@ -358,12 +285,9 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 		return timed[i].ts > timed[j].ts
 	})
 
-	entries := make([]ActivityEntry, 0, len(timed))
-	for _, te := range timed {
-		if sessionStart != "" && (te.ts == "" || te.ts < sessionStart) {
-			continue
-		}
-		entries = append(entries, te.entry)
+	entries := make([]ActivityEntry, len(timed))
+	for i, te := range timed {
+		entries[i] = te.entry
 	}
 	return entries
 }
