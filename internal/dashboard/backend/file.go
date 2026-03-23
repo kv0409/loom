@@ -349,7 +349,7 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 
 	entries := make([]ActivityEntry, 0, len(timed))
 	for _, te := range timed {
-		if sessionStart != "" && te.ts != "" && te.ts < sessionStart {
+		if sessionStart != "" && (te.ts == "" || te.ts < sessionStart) {
 			continue
 		}
 		entries = append(entries, te.entry)
