@@ -6,6 +6,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/proposal"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -16,6 +17,7 @@ type (
 	Issue       = issue.Issue
 	Message     = mail.Message
 	MemoryEntry = memory.Entry
+	Proposal    = proposal.Proposal
 	Worktree    = worktree.Worktree
 	DiffStats   = worktree.DiffStats
 	ACPEvent    = acp.ACPEvent

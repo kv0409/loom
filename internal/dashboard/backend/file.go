@@ -17,6 +17,7 @@ import (
 	"github.com/karanagi/loom/internal/issue"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/proposal"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -79,6 +80,10 @@ func (fb *FileBackend) Load() Snapshot {
 	s.Memories, err = memory.List(fb.root, memory.ListOpts{})
 	if err != nil {
 		errs = append(errs, fmt.Sprintf("memories: %s", err))
+	}
+	s.Proposals, err = proposal.List(fb.root, "pending")
+	if err != nil {
+		errs = append(errs, fmt.Sprintf("proposals: %s", err))
 	}
 	if !s.DaemonOK {
 		s.Unread = countUnread(fb.root)
@@ -470,4 +475,9 @@ func (fb *FileBackend) MemorySnippet(e *MemoryEntry) string {
 
 func (fb *FileBackend) MemoryByField(e *MemoryEntry) string {
 	return memory.ByField(e)
+}
+
+func (fb *FileBackend) RespondProposal(loomRoot, id, action, feedback string) error {
+	_, err := proposal.Respond(loomRoot, id, action, feedback)
+	return err
 }

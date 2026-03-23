@@ -28,6 +28,7 @@ type Snapshot struct {
 	Agents              []*Agent
 	AgentTree           []AgentTreeNode
 	Issues              []*Issue
+	Proposals           []*Proposal
 	Worktrees           []*Worktree
 	DiffStats           map[string]*DiffStats
 	Messages            []*Message
@@ -46,6 +47,7 @@ type Backend interface {
 	AgentOutput(loomRoot, agentID string) ([]ACPEvent, error)
 	Diff(wtPath string) string
 	SendMail(loomRoot string, from, to, subject, body, typ, priority, ref string) error
+	RespondProposal(loomRoot, id, action, feedback string) error
 	MemorySnippet(e *MemoryEntry) string
 	MemoryByField(e *MemoryEntry) string
 }

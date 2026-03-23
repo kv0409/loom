@@ -45,17 +45,34 @@ func linesToContent(lines []string) string {
 func (m Model) renderOverview() string {
 	fullW := max(panelWidth(m.width), 20)
 	usable := m.height - 1 - lipgloss.Height(m.helpBar())
-	attentionBudget := max(5, usable/3)
-	flightBudget := max(6, usable/3)
-	signalBudget := usable - attentionBudget - flightBudget - 3
+
+	hasProposals := len(m.data.Proposals) > 0
+	var attentionBudget, proposalBudget, flightBudget, signalBudget int
+	if hasProposals {
+		attentionBudget = max(4, usable/4)
+		proposalBudget = max(4, usable/4)
+		flightBudget = max(5, usable/4)
+		signalBudget = usable - attentionBudget - proposalBudget - flightBudget - 4
+	} else {
+		attentionBudget = max(5, usable/3)
+		flightBudget = max(6, usable/3)
+		signalBudget = usable - attentionBudget - flightBudget - 3
+	}
 	if signalBudget < 4 {
 		signalBudget = 4
 	}
 
 	attention := m.renderAttentionOverview(fullW, attentionBudget)
+	var proposals string
+	if hasProposals {
+		proposals = m.renderProposalsOverview(fullW, proposalBudget)
+	}
 	flight := m.renderFlightOverview(fullW, flightBudget)
 	signal := m.renderActivityOverview(fullW, signalBudget)
 
+	if hasProposals {
+		return lipgloss.JoinVertical(lipgloss.Left, attention, proposals, flight, signal)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, attention, flight, signal)
 }
 
@@ -224,6 +241,65 @@ func suffix(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+func (m Model) renderProposalsOverview(fullW, budget int) string {
+	proposals := m.data.Proposals
+	innerW := fullW - 2
+	maxRows := budget - 1
+	if maxRows < 1 {
+		maxRows = 1
+	}
+
+	cursor := m.proposalCursor
+	start, end := listViewport(cursor, len(proposals), maxRows)
+	show := proposals[start:end]
+	localCursor := cursor - start
+
+	rows := make([][]string, len(show))
+	for i, p := range show {
+		sel := " "
+		if i == localCursor {
+			sel = "▸"
+		}
+		cat := p.Category
+		if cat == "" {
+			cat = "misc"
+		}
+		action := truncate(p.ProposedAction, innerW-30)
+		rows[i] = []string{sel, p.ID, cat, truncate(p.Title, 30), action}
+	}
+
+	styler := func(row, col int, _ bool) lipgloss.Style {
+		base := lgTableCellStyle
+		if row == localCursor {
+			base = lgTableSelectedStyle
+		}
+		if row >= len(show) {
+			return base
+		}
+		switch col {
+		case 0: // selector
+			return base.Foreground(colCyan)
+		case 1: // ID
+			return base.Foreground(colCyan).Bold(true)
+		case 2: // category
+			p := show[row]
+			if c, ok := proposalCategoryColors[p.Category]; ok {
+				return base.Foreground(c)
+			}
+			return base.Foreground(colGray)
+		case 3: // title
+			return base.Foreground(colFg)
+		case 4: // action preview
+			return base.Foreground(colGray)
+		}
+		return base
+	}
+
+	t := newLGTableHeaderless(rows, localCursor, innerW, styler, ColWidth{0, 2}, ColWidth{1, 10}, ColWidth{2, 12})
+	title := fmt.Sprintf("PROPOSALS (%d pending)", len(proposals))
+	return panel(title, "\n"+t.Render(), fullW)
 }
 
 // renderActivityOverview builds a compact live activity panel for the overview.

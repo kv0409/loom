@@ -103,6 +103,7 @@ type Model struct {
 	spinner              spinner.Model      // animated spinner for loading states
 	quitConfirmMode      bool               // true when quit confirmation dialog is shown
 	stopRequested        bool               // true when user chose "stop session + quit"
+	proposalCursor       int                // selected proposal in overview proposals panel
 }
 
 type tickMsg time.Time
@@ -125,6 +126,11 @@ type agentOutputMsg struct {
 }
 
 type sendMailResultMsg struct {
+	flash string
+	isErr bool
+}
+
+type proposalResultMsg struct {
 	flash string
 	isErr bool
 }
@@ -465,6 +471,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.heartbeatTimeoutSec = msg.HeartbeatTimeoutSec
 		}
 		m.clampCursor()
+		if len(m.data.Proposals) > 0 && m.proposalCursor >= len(m.data.Proposals) {
+			m.proposalCursor = len(m.data.Proposals) - 1
+		}
 		if m.view != viewAgentDetail && m.view != viewIssueDetail && m.view != viewMemoryDetail && m.view != viewMailDetail {
 			m.detailYOff = 0
 		}
@@ -496,6 +505,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sendMailResultMsg:
 		return m, m.setFlash(msg.flash, msg.isErr)
 	case createIssueResultMsg:
+		return m, m.setFlash(msg.flash, msg.isErr)
+	case proposalResultMsg:
 		return m, m.setFlash(msg.flash, msg.isErr)
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -722,10 +733,21 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.nudgeCursor = 0
 			return m, nil
 		}
-	case keyAgentKill:
+	case keyAgentKill: // also keyProposalDismiss (same key, different view)
+		if m.view == viewOverview && len(m.data.Proposals) > 0 {
+			return m.respondProposal("dismissed")
+		}
 		if m.view == viewAgents && m.cursor < len(m.filteredAgents()) {
 			m.killConfirm = true
 			return m, nil
+		}
+	case keyProposalAccept:
+		if m.view == viewOverview && len(m.data.Proposals) > 0 {
+			return m.respondProposal("accepted")
+		}
+	case keyProposalReject:
+		if m.view == viewOverview && len(m.data.Proposals) > 0 {
+			return m.respondProposal("rejected")
 		}
 	case keyMailCompose: // also keyIssueCreate (same key, different view)
 		if m.view == viewMail || m.view == viewMailDetail {
@@ -770,6 +792,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyDown:
 		switch m.view {
+		case viewOverview:
+			if len(m.data.Proposals) > 0 && m.proposalCursor < len(m.data.Proposals)-1 {
+				m.proposalCursor++
+			}
+			return m, nil
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
 			if m.view == viewAgentDetail {
 				m.detailAutoScroll = false
@@ -785,6 +812,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case keyUp:
 		switch m.view {
+		case viewOverview:
+			if m.proposalCursor > 0 {
+				m.proposalCursor--
+			}
+			return m, nil
 		case viewAgentDetail, viewIssueDetail, viewMemoryDetail, viewMailDetail:
 			if m.view == viewAgentDetail {
 				m.detailAutoScroll = false
@@ -953,6 +985,22 @@ func (m Model) issueComposeSubmit() (tea.Model, tea.Cmd) {
 		}
 		daemon.RefreshBestEffort(lr, daemon.RefreshOpts{IssueIDs: []string{iss.ID}})
 		return createIssueResultMsg{flash: fmt.Sprintf("Created %s", iss.ID), isErr: false}
+	}
+}
+
+func (m Model) respondProposal(action string) (tea.Model, tea.Cmd) {
+	if m.proposalCursor >= len(m.data.Proposals) {
+		return m, nil
+	}
+	p := m.data.Proposals[m.proposalCursor]
+	b := m.backend
+	lr := m.loomRoot
+	id := p.ID
+	return m, func() tea.Msg {
+		if err := b.RespondProposal(lr, id, action, ""); err != nil {
+			return proposalResultMsg{flash: err.Error(), isErr: true}
+		}
+		return proposalResultMsg{flash: fmt.Sprintf("Proposal %s %s", id, action), isErr: false}
 	}
 }
 
@@ -1196,6 +1244,10 @@ func (m Model) helpBar() string {
 
 	var ctx string
 	switch m.view {
+	case viewOverview:
+		if len(m.data.Proposals) > 0 {
+			ctx = "[y]accept [R]eject [x]dismiss [j/k]select"
+		}
 	case viewAgentDetail:
 		ctx = "[n]udge [m]essage [j/k]scroll [G]bottom"
 	case viewAgents:

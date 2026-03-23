@@ -83,6 +83,11 @@ const (
 	// Detail views.
 	keyGoBottom = "G"
 
+	// Overview proposals.
+	keyProposalAccept  = "y"
+	keyProposalReject  = "R"
+	keyProposalDismiss = "x"
+
 	// Quit confirmation dialog.
 	keyQuitConfirmStop   = "s"
 	keyQuitConfirmQuit   = "q"

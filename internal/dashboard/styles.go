@@ -246,6 +246,8 @@ func panelIcon(title string) string {
 		return "▦ "
 	case strings.Contains(t, "CHAT"):
 		return "▸ "
+	case strings.Contains(t, "PROPOSAL"):
+		return "◆ "
 	default:
 		return ""
 	}
@@ -334,6 +336,13 @@ var (
 
 // Overview stats line style — bold foreground so it reads as a glanceable summary.
 var statsLineStyle = lipgloss.NewStyle().Bold(true).Foreground(colFg)
+
+// Proposal category colors for overview panel.
+var proposalCategoryColors = map[string]color.Color{
+	"cleanup":     colCyan,
+	"tracking":    colBlue,
+	"maintenance": colYellow,
+}
 
 // Progress bar styles
 var (
