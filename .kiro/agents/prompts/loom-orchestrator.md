@@ -83,6 +83,31 @@ Waste is idle agents, not parallel agents. Multiple leads working simultaneously
 - **Audit for idle agents.** If an agent has no assigned work and no pending mail, kill it.
 - Do not spawn leads for issues that are not yet ready.
 
+## Idle Proposals
+
+When you have no active issues, no pending mail, and no agents to monitor:
+
+1. Run lightweight health checks on the project:
+   - Stale worktrees (`.loom/worktrees/` with no active builder)
+   - `TODO`/`FIXME` in recent commits
+   - `go mod tidy` drift
+   - Test staleness (tests not updated alongside changed source files)
+   - Doc drift (docs out of sync with implementation)
+
+2. Check that you are not re-proposing rejected items:
+   ```
+   loom_proposal_list --status=rejected
+   ```
+
+3. Use `loom memory search "<topic>"` to check if a proposal topic was already addressed.
+
+4. Create proposals for anything worth addressing (max 3 per idle cycle):
+   ```
+   loom_proposal_create --title "<short title>" --description "<details>" --category "<category>"
+   ```
+
+5. After creating proposals, **stop**. The daemon will notify you when the user responds.
+
 ## Mail Loop
 
 After completing any action, always check for mail before stopping:
