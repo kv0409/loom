@@ -256,9 +256,10 @@ func (d *Daemon) apiSnapshot() Response {
 		return errResp("sync mail failed: " + err.Error())
 	}
 	return okResp(ControlSnapshot{
-		Agents: d.state.agentsList(),
-		Issues: d.state.allIssues(),
-		Unread: d.state.unreadCount(),
+		Agents:   d.state.agentsList(),
+		Issues:   d.state.allIssues(),
+		Unread:   d.state.unreadCount(),
+		Activity: d.collectActivity(),
 	})
 }
 

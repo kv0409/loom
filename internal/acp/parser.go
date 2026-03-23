@@ -19,6 +19,7 @@ var kindNames = [...]string{"token_chunk", "tool_summary", "message"}
 // ToolCall represents a structured tool call from ACP session/update notifications.
 type ToolCall struct {
 	ToolCallID string   `json:"toolCallId"`
+	AgentID    string   `json:"agentId,omitempty"`
 	Title      string   `json:"title"`
 	Kind       string   `json:"kind"`   // read, edit, execute, search, think, etc.
 	Status     string   `json:"status"` // pending, in_progress, completed, failed

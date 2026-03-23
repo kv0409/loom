@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -420,6 +421,32 @@ func (d *Daemon) GetACPOutput(agentID string, n int) []acp.ACPEvent {
 		return nil
 	}
 	return c.RecentOutput(n)
+}
+
+// collectActivity gathers recent tool calls from all ACP clients, sorted newest first.
+func (d *Daemon) collectActivity() []acp.ToolCall {
+	d.mu.Lock()
+	ids := make([]string, 0, len(d.acpClients))
+	for id := range d.acpClients {
+		ids = append(ids, id)
+	}
+	d.mu.Unlock()
+
+	var all []acp.ToolCall
+	for _, id := range ids {
+		d.mu.Lock()
+		c := d.acpClients[id]
+		d.mu.Unlock()
+		if c == nil {
+			continue
+		}
+		for _, tc := range c.RecentToolCalls() {
+			tc.AgentID = id
+			all = append(all, tc)
+		}
+	}
+	sort.Slice(all, func(i, j int) bool { return all[i].Timestamp > all[j].Timestamp })
+	return all
 }
 
 func (d *Daemon) drainACPOutput(agentID string) []acp.ACPEvent {

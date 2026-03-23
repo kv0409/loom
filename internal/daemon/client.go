@@ -18,9 +18,10 @@ type RefreshOpts struct {
 }
 
 type ControlSnapshot struct {
-	Agents []*agent.Agent `json:"agents"`
-	Issues []*issue.Issue `json:"issues"`
-	Unread int            `json:"unread"`
+	Agents   []*agent.Agent    `json:"agents"`
+	Issues   []*issue.Issue    `json:"issues"`
+	Unread   int               `json:"unread"`
+	Activity []acp.ToolCall    `json:"activity,omitempty"`
 }
 
 // call dials the daemon Unix socket, sends req, and returns the response.

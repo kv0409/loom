@@ -41,6 +41,15 @@ func (fb *FileBackend) Load() Snapshot {
 		s.Issues = snap.Issues
 		s.Unread = snap.Unread
 		s.DaemonOK = true
+		// Convert ACP tool calls to dashboard activity entries.
+		for _, tc := range snap.Activity {
+			s.Activity = append(s.Activity, ActivityEntry{
+				AgentID: tc.AgentID,
+				Time:    RelativeTime(tc.Timestamp),
+				Tool:    tc.Kind,
+				Detail:  tc.Title,
+			})
+		}
 	} else {
 		s.Agents, err = agent.List(fb.root)
 		if err != nil {
@@ -75,7 +84,9 @@ func (fb *FileBackend) Load() Snapshot {
 		s.Unread = countUnread(fb.root)
 	}
 	s.Agents, s.AgentTree = sortAgentTree(s.Agents)
-	s.Activity = fetchActivity(fb.root, s.Agents)
+	if len(s.Activity) == 0 {
+		s.Activity = fetchActivity(fb.root, s.Agents)
+	}
 	s.Logs = fb.lr.read()
 	s.Errors = errs
 	if cfg, err := config.Load(fb.root); err == nil {
