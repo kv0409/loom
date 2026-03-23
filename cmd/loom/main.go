@@ -903,16 +903,16 @@ func runIssueList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "ID\tTYPE\tSTATUS\tTITLE\tASSIGNEE\n")
-	for _, iss := range issues {
+	headers := []string{"ID", "TYPE", "STATUS", "TITLE", "ASSIGNEE"}
+	rows := make([][]string, len(issues))
+	for i, iss := range issues {
 		title := iss.Title
 		if len(title) > 40 {
 			title = title[:37] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", iss.ID, iss.Type, iss.Status, title, iss.Assignee)
+		rows[i] = []string{iss.ID, iss.Type, cliout.StatusText(iss.Status), title, cliout.AgentText(iss.Assignee)}
 	}
-	w.Flush()
+	fmt.Println(cliout.CLITable(headers, rows))
 	return nil
 }
 
@@ -1308,9 +1308,12 @@ func runMailLog(cmd *cobra.Command, args []string) error {
 		fmt.Println("No messages")
 		return nil
 	}
-	for _, m := range msgs {
-		fmt.Printf("%s  %s → %s  [%s]  %s\n", m.Timestamp.Format("2006-01-02 15:04:05"), m.From, m.To, m.Type, m.Subject)
+	headers := []string{"TIME", "FROM", "TO", "TYPE", "SUBJECT"}
+	rows := make([][]string, len(msgs))
+	for i, m := range msgs {
+		rows[i] = []string{cliout.TimeFmt(m.Timestamp), cliout.AgentText(m.From), cliout.AgentText(m.To), m.Type, m.Subject}
 	}
+	fmt.Println(cliout.CLITable(headers, rows))
 	return nil
 }
 
@@ -1402,16 +1405,16 @@ func runMemoryList(cmd *cobra.Command, args []string) error {
 		fmt.Println("No memory entries")
 		return nil
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "ID\tTYPE\tTITLE\tBY\tTIMESTAMP\n")
-	for _, e := range entries {
+	headers := []string{"ID", "TYPE", "TITLE", "BY", "TIMESTAMP"}
+	rows := make([][]string, len(entries))
+	for i, e := range entries {
 		title := e.Title
 		if len(title) > 40 {
 			title = title[:37] + "..."
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", e.ID, e.Type, title, memory.ByField(e), e.Timestamp.Format("2006-01-02 15:04"))
+		rows[i] = []string{e.ID, e.Type, title, memory.ByField(e), cliout.TimeFmt(e.Timestamp)}
 	}
-	w.Flush()
+	fmt.Println(cliout.CLITable(headers, rows))
 	return nil
 }
 
@@ -1483,12 +1486,12 @@ func runWorktreeList(cmd *cobra.Command, args []string) error {
 		fmt.Println("No active worktrees")
 		return nil
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "WORKTREE\tAGENT\tISSUE\tBRANCH\n")
-	for _, wt := range wts {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", wt.Name, wt.Agent, wt.Issue, wt.Branch)
+	headers := []string{"WORKTREE", "AGENT", "ISSUE", "BRANCH"}
+	rows := make([][]string, len(wts))
+	for i, wt := range wts {
+		rows[i] = []string{wt.Name, cliout.AgentText(wt.Agent), wt.Issue, wt.Branch}
 	}
-	w.Flush()
+	fmt.Println(cliout.CLITable(headers, rows))
 	return nil
 }
 
@@ -1603,9 +1606,9 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		fmt.Println("No agents")
 		return nil
 	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "ID\tMODEL\tSTATUS\tWORKTREE\tISSUES\tHEARTBEAT\n")
-	for _, a := range agents {
+	headers := []string{"ID", "MODEL", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}
+	rows := make([][]string, len(agents))
+	for i, a := range agents {
 		wt := "—"
 		if a.WorktreeName != "" {
 			wt = a.WorktreeName
@@ -1614,14 +1617,17 @@ func runAgents(cmd *cobra.Command, args []string) error {
 		if len(a.AssignedIssues) > 0 {
 			issues = strings.Join(a.AssignedIssues, ",")
 		}
-		hb := relativeTime(a.Heartbeat)
+		hb := cliout.TimeFmt(a.Heartbeat)
+		if hb == "" {
+			hb = "never"
+		}
 		model := a.Config.Model
 		if model == "" {
 			model = "—"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", a.ID, model, a.Status, wt, issues, hb)
+		rows[i] = []string{cliout.AgentText(a.ID), model, cliout.StatusText(a.Status), wt, issues, hb}
 	}
-	w.Flush()
+	fmt.Println(cliout.CLITable(headers, rows))
 	return nil
 }
 
