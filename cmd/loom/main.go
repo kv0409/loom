@@ -33,6 +33,7 @@ import (
 	"github.com/karanagi/loom/internal/mcp"
 	"github.com/karanagi/loom/internal/memory"
 	"github.com/karanagi/loom/internal/nudge"
+	"github.com/karanagi/loom/internal/proposal"
 	"github.com/karanagi/loom/internal/worktree"
 	"github.com/karanagi/loom/templates"
 	"github.com/spf13/cobra"
@@ -441,6 +442,25 @@ func main() {
 	findingCmd.Flags().String("ref", "", "Related issue ID")
 	findingCmd.Flags().String("class", "", "Finding classification: foundational, tactical, observational")
 
+	proposalCmd := &cobra.Command{Use: "proposal", Short: "Manage agent proposals"}
+
+	proposalListCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List proposals",
+		RunE:  runProposalList,
+	}
+	proposalListCmd.Flags().String("status", "", "Filter by status: pending|accepted|rejected|dismissed")
+
+	proposalRespondCmd := &cobra.Command{
+		Use:   "respond <id> <accept|reject|dismiss>",
+		Short: "Respond to a proposal",
+		Args:  cobra.ExactArgs(2),
+		RunE:  runProposalRespond,
+	}
+	proposalRespondCmd.Flags().String("feedback", "", "Response feedback text")
+
+	proposalCmd.AddCommand(proposalListCmd, proposalRespondCmd)
+
 	updateCmd := &cobra.Command{
 		Use:   "update",
 		Short: "Update loom to the latest version",
@@ -466,6 +486,7 @@ func main() {
 		logCmd, configCmd,
 		gcCmd, exportCmd, mcpServerCmd, mergeCmd, mergesCmd,
 		findingCmd,
+		proposalCmd,
 		updateCmd,
 		doctorCmd,
 	)
@@ -606,6 +627,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		".loom/artifacts/research",
 		".loom/artifacts/patches",
 		".loom/locks",
+		".loom/proposals",
 		".loom/logs",
 		".loom/templates",
 	}
@@ -621,6 +643,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		".loom/memory/decisions/counter.txt",
 		".loom/memory/discoveries/counter.txt",
 		".loom/memory/conventions/counter.txt",
+		".loom/proposals/counter.txt",
 	}
 	for _, c := range counters {
 		if err := os.WriteFile(c, []byte("0"), 0644); err != nil {
@@ -2845,5 +2868,58 @@ func runFinding(cmd *cobra.Command, args []string) error {
 	}
 	refreshDaemonState(root, daemon.RefreshOpts{MailAgents: []string{resolvedTo}})
 	fmt.Printf("Finding sent to %s\n", to)
+	return nil
+}
+
+func runProposalList(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	status, _ := cmd.Flags().GetString("status")
+	proposals, err := proposal.List(root, status)
+	if err != nil {
+		return err
+	}
+	if len(proposals) == 0 {
+		fmt.Println("No proposals")
+		return nil
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "ID\tSTATUS\tCATEGORY\tTITLE\tCREATED\n")
+	for _, p := range proposals {
+		title := p.Title
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", p.ID, p.Status, p.Category, title, p.CreatedAt.Format("2006-01-02 15:04"))
+	}
+	w.Flush()
+	return nil
+}
+
+func runProposalRespond(cmd *cobra.Command, args []string) error {
+	root, err := config.FindLoomRoot()
+	if err != nil {
+		return err
+	}
+	id := args[0]
+	action := args[1]
+	switch action {
+	case "accept":
+		action = "accepted"
+	case "reject":
+		action = "rejected"
+	case "dismiss":
+		action = "dismissed"
+	default:
+		return fmt.Errorf("invalid action %q: use accept, reject, or dismiss", action)
+	}
+	feedback, _ := cmd.Flags().GetString("feedback")
+	p, err := proposal.Respond(root, id, action, feedback)
+	if err != nil {
+		return err
+	}
+	cliout.PrintSuccess(fmt.Sprintf("Proposal %s %s", p.ID, p.Status))
 	return nil
 }
