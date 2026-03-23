@@ -8,7 +8,7 @@ EVENT=$(cat)
 TOOL=$(echo "$EVENT" | jq -r '.tool_name // ""')
 [ -z "$TOOL" ] && exit 0
 
-FIRST_VAL=$(echo "$EVENT" | jq -r '.tool_input | (.summary // to_entries[0].value) // ""' 2>/dev/null | head -c 120)
+FIRST_VAL=$(echo "$EVENT" | jq -r '(.title | select(. != "")) // (.tool_input.summary | select(. != "")) // (.tool_input.__tool_use_purpose | select(. != "")) // (.tool_input | to_entries[0].value | tostring) // ""' 2>/dev/null | tr '\n' ' ' | head -c 120)
 TIMESTAMP=$(date +%Y-%m-%dT%H:%M:%S)
 
 TOOLS_FILE="${LOOM_ROOT}/agents/${LOOM_AGENT_ID}.tools"

@@ -38,6 +38,8 @@ type Client struct {
 	outMu         sync.Mutex
 	lastResponses []ACPEvent
 	pendingOutput []ACPEvent
+	toolCalls     map[string]*ToolCall // keyed by toolCallId
+	recentCalls   []ToolCall           // ring buffer of completed/updated calls
 
 	// AgentID for audit logging.
 	AgentID string
@@ -141,10 +143,11 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 	}
 
 	c := &Client{
-		cmd:     cmd,
-		stdin:   stdin,
-		pending: make(map[int64]chan jsonRPCResponse),
-		done:    make(chan struct{}),
+		cmd:       cmd,
+		stdin:     stdin,
+		pending:   make(map[int64]chan jsonRPCResponse),
+		done:      make(chan struct{}),
+		toolCalls: make(map[string]*ToolCall),
 	}
 
 	// Background reader: dispatches responses and captures notifications.
@@ -317,8 +320,14 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 		var params struct {
 			Update struct {
 				SessionUpdate string `json:"sessionUpdate"`
+				ToolCallID    string `json:"toolCallId"`
 				Title         string `json:"title"`
-				Content       struct {
+				Kind          string `json:"kind"`
+				Status        string `json:"status"`
+				Locations     []struct {
+					Path string `json:"path"`
+				} `json:"locations"`
+				Content struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
 				} `json:"content"`
@@ -327,17 +336,63 @@ func (c *Client) handleNotification(n *jsonRPCNotification) {
 		if err := json.Unmarshal(n.Params, &params); err != nil {
 			return
 		}
-		if params.Update.Content.Text != "" || params.Update.Title != "" {
+		u := params.Update
+
+		// Track structured tool calls.
+		if (u.SessionUpdate == "tool_call" || u.SessionUpdate == "tool_call_update") && u.ToolCallID != "" {
+			var paths []string
+			for _, l := range u.Locations {
+				paths = append(paths, l.Path)
+			}
+			c.trackToolCall(u.ToolCallID, u.Title, u.Kind, u.Status, paths)
+		}
+
+		// Preserve existing event stream for agent detail view.
+		if u.Content.Text != "" || u.Title != "" {
 			c.appendEvent(ACPEvent{
-				Kind:    eventKind(params.Update.SessionUpdate),
-				Content: params.Update.Content.Text,
-				Title:   params.Update.Title,
+				Kind:    eventKind(u.SessionUpdate),
+				Content: u.Content.Text,
+				Title:   u.Title,
 			})
 		}
 	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available", "_kiro.dev/session/update":
 		// Internal kiro events — skip.
 	default:
 		log.Printf("[acp-notif] %s", n.Method)
+	}
+}
+
+// trackToolCall upserts a tool call and appends to the recent calls ring buffer.
+func (c *Client) trackToolCall(id, title, kind, status string, locs []string) {
+	ts := time.Now().Format("2006-01-02T15:04:05")
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+
+	tc, exists := c.toolCalls[id]
+	if !exists {
+		tc = &ToolCall{ToolCallID: id, Timestamp: ts}
+		c.toolCalls[id] = tc
+	}
+	if title != "" {
+		tc.Title = title
+	}
+	if kind != "" {
+		tc.Kind = kind
+	}
+	if status != "" {
+		tc.Status = status
+	}
+	tc.Locations = append(tc.Locations, locs...)
+
+	// Append snapshot to recent ring buffer on meaningful updates.
+	if title != "" || status == "completed" || status == "failed" {
+		snap := *tc
+		snap.Timestamp = ts
+		c.recentCalls = append(c.recentCalls, snap)
+		const maxRecent = 100
+		if len(c.recentCalls) > maxRecent {
+			c.recentCalls = c.recentCalls[len(c.recentCalls)-maxRecent:]
+		}
 	}
 }
 
@@ -552,6 +607,15 @@ func (c *Client) DrainOutput() []ACPEvent {
 	out := make([]ACPEvent, len(c.pendingOutput))
 	copy(out, c.pendingOutput)
 	c.pendingOutput = nil
+	return out
+}
+
+// RecentToolCalls returns a snapshot of the recent tool calls ring buffer.
+func (c *Client) RecentToolCalls() []ToolCall {
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+	out := make([]ToolCall, len(c.recentCalls))
+	copy(out, c.recentCalls)
 	return out
 }
 
