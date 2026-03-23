@@ -118,7 +118,9 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 	lastActivity := map[string]string{}
 	for _, e := range m.data.Activity {
 		if e.Detail != "" {
-			lastActivity[e.AgentID] = e.Detail
+			if _, ok := lastActivity[e.AgentID]; !ok {
+				lastActivity[e.AgentID] = e.Detail
+			}
 		}
 	}
 
