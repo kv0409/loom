@@ -177,8 +177,19 @@ var statusColorMap = map[string]color.Color{
 	"cancelled":   colGray,
 }
 
+// IssueText returns an issue ID colored with colBlue.
+func IssueText(id string) string {
+	if id == "" {
+		return ""
+	}
+	return colored(id, lipgloss.NewStyle().Foreground(colBlue))
+}
+
 // StatusText returns color-coded status text.
 func StatusText(status string) string {
+	if status == "" {
+		return ""
+	}
 	c, ok := statusColorMap[status]
 	if !ok {
 		c = colFg
@@ -195,6 +206,9 @@ var priorityColorMap = map[string]color.Color{
 
 // PriorityText returns color-coded priority text.
 func PriorityText(priority string) string {
+	if priority == "" {
+		return ""
+	}
 	c, ok := priorityColorMap[priority]
 	if !ok {
 		c = colFg
@@ -204,6 +218,9 @@ func PriorityText(priority string) string {
 
 // AgentText returns agent-colored text based on role prefix.
 func AgentText(id string) string {
+	if id == "" {
+		return ""
+	}
 	var c color.Color
 	switch {
 	case strings.HasPrefix(id, "orchestrator"):

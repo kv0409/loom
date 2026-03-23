@@ -1011,46 +1011,39 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	cliout.PrintInfo(fmt.Sprintf("ID:          %s", iss.ID))
-	fmt.Printf("Title:       %s\n", iss.Title)
-	fmt.Printf("Type:        %s\n", iss.Type)
-	fmt.Printf("Status:      %s\n", iss.Status)
-	fmt.Printf("Priority:    %s\n", iss.Priority)
-	if iss.Description != "" {
-		fmt.Printf("Description: %s\n", iss.Description)
-	}
-	if iss.Assignee != "" {
-		fmt.Printf("Assignee:    %s\n", iss.Assignee)
-	}
-	if iss.Parent != "" {
-		fmt.Printf("Parent:      %s\n", iss.Parent)
-	}
-	if len(iss.DependsOn) > 0 {
-		fmt.Printf("Depends On:  %s\n", strings.Join(iss.DependsOn, ", "))
-	}
-	if len(iss.Children) > 0 {
-		fmt.Printf("Children:    %s\n", strings.Join(iss.Children, ", "))
-	}
+	dispatchStr := ""
 	if len(iss.Dispatch) > 0 {
 		pairs := make([]string, 0, len(iss.Dispatch))
 		for k, v := range iss.Dispatch {
 			pairs = append(pairs, k+"="+v)
 		}
 		sort.Strings(pairs)
-		fmt.Printf("Dispatch:    %s\n", strings.Join(pairs, ", "))
+		dispatchStr = strings.Join(pairs, ", ")
 	}
-	if iss.Worktree != "" {
-		fmt.Printf("Worktree:    %s\n", iss.Worktree)
-	}
-	fmt.Printf("Created By:  %s\n", iss.CreatedBy)
-	fmt.Printf("Created At:  %s\n", iss.CreatedAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf("Updated At:  %s\n", iss.UpdatedAt.Format("2006-01-02 15:04:05"))
+	closedAtStr := ""
 	if iss.ClosedAt != nil {
-		fmt.Printf("Closed At:   %s\n", iss.ClosedAt.Format("2006-01-02 15:04:05"))
+		closedAtStr = cliout.TimeFmt(*iss.ClosedAt)
 	}
-	if iss.CloseReason != "" {
-		fmt.Printf("Close Reason: %s\n", iss.CloseReason)
-	}
+
+	fmt.Println(cliout.DetailView([]cliout.DetailField{
+		{Label: "ID", Value: cliout.IssueText(iss.ID)},
+		{Label: "Title", Value: iss.Title},
+		{Label: "Type", Value: iss.Type},
+		{Label: "Status", Value: cliout.StatusText(iss.Status)},
+		{Label: "Priority", Value: cliout.PriorityText(iss.Priority)},
+		{Label: "Description", Value: iss.Description},
+		{Label: "Assignee", Value: cliout.AgentText(iss.Assignee)},
+		{Label: "Parent", Value: iss.Parent},
+		{Label: "Depends On", Value: strings.Join(iss.DependsOn, ", ")},
+		{Label: "Children", Value: strings.Join(iss.Children, ", ")},
+		{Label: "Dispatch", Value: dispatchStr},
+		{Label: "Worktree", Value: iss.Worktree},
+		{Label: "Created By", Value: cliout.AgentText(iss.CreatedBy)},
+		{Label: "Created At", Value: cliout.TimeFmt(iss.CreatedAt)},
+		{Label: "Updated At", Value: cliout.TimeFmt(iss.UpdatedAt)},
+		{Label: "Closed At", Value: closedAtStr},
+		{Label: "Close Reason", Value: iss.CloseReason},
+	}))
 
 	if len(iss.History) > 0 {
 		fmt.Println("\nHistory:")
@@ -1059,7 +1052,7 @@ func runIssueShow(cmd *cobra.Command, args []string) error {
 			if h.Detail != "" {
 				detail = " — " + h.Detail
 			}
-			fmt.Printf("  %s  %s  %s%s\n", h.At.Format("2006-01-02 15:04:05"), h.By, h.Action, detail)
+			fmt.Printf("  %s  %s  %s%s\n", h.At.Format("2006-01-02 15:04:05"), cliout.AgentText(h.By), h.Action, detail)
 		}
 	}
 	return nil
@@ -1268,13 +1261,13 @@ func runMailRead(cmd *cobra.Command, args []string) error {
 	markedRead := false
 	for _, m := range msgs {
 		fmt.Printf("--- %s ---\n", m.ID)
-		fmt.Printf("  Time:     %s\n", m.Timestamp.Format("2006-01-02 15:04:05"))
-		fmt.Printf("  From:     %s\n", m.From)
-		fmt.Printf("  Type:     %s\n", m.Type)
-		fmt.Printf("  Subject:  %s\n", m.Subject)
-		if m.Body != "" {
-			fmt.Printf("  Body:     %s\n", m.Body)
-		}
+		fmt.Println(cliout.DetailView([]cliout.DetailField{
+			{Label: "Time", Value: cliout.TimeFmt(m.Timestamp)},
+			{Label: "From", Value: cliout.AgentText(m.From)},
+			{Label: "Type", Value: m.Type},
+			{Label: "Subject", Value: m.Subject},
+			{Label: "Body", Value: m.Body},
+		}))
 		fmt.Println()
 		if !m.Read {
 			if err := mail.MarkRead(root, agent, m.ID); err != nil {
@@ -1433,40 +1426,34 @@ func runMemoryShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("ID:        %s\n", e.ID)
-	fmt.Printf("Title:     %s\n", e.Title)
-	fmt.Printf("Type:      %s\n", e.Type)
-	fmt.Printf("Timestamp: %s\n", e.Timestamp.Format("2006-01-02 15:04:05"))
-	printIf("Decided By", e.DecidedBy)
-	printIf("Context", e.Context)
-	printIf("Decision", e.Decision)
-	printIf("Rationale", e.Rationale)
-	for _, a := range e.Alternatives {
-		fmt.Printf("Alternative: %s (rejected: %s)\n", a.Option, a.RejectedBecause)
-	}
-	printIf("Discovered By", e.DiscoveredBy)
-	printIf("Location", e.Location)
-	printIf("Finding", e.Finding)
-	printIf("Implications", e.Implications)
-	printIf("Established By", e.EstablishedBy)
-	printIf("Rule", e.Rule)
-	for _, ex := range e.Examples {
-		fmt.Printf("Example:   %s\n", ex)
-	}
-	printIf("Applies To", e.AppliesTo)
-	if len(e.Affects) > 0 {
-		fmt.Printf("Affects:   %s\n", strings.Join(e.Affects, ", "))
-	}
-	if len(e.Tags) > 0 {
-		fmt.Printf("Tags:      %s\n", strings.Join(e.Tags, ", "))
-	}
-	return nil
-}
 
-func printIf(label, value string) {
-	if value != "" {
-		fmt.Printf("%-10s %s\n", label+":", value)
+	altStrs := make([]string, len(e.Alternatives))
+	for i, a := range e.Alternatives {
+		altStrs[i] = a.Option + " (rejected: " + a.RejectedBecause + ")"
 	}
+
+	fmt.Println(cliout.DetailView([]cliout.DetailField{
+		{Label: "ID", Value: e.ID},
+		{Label: "Title", Value: e.Title},
+		{Label: "Type", Value: e.Type},
+		{Label: "Timestamp", Value: cliout.TimeFmt(e.Timestamp)},
+		{Label: "Decided By", Value: cliout.AgentText(e.DecidedBy)},
+		{Label: "Context", Value: e.Context},
+		{Label: "Decision", Value: e.Decision},
+		{Label: "Rationale", Value: e.Rationale},
+		{Label: "Alternatives", Value: strings.Join(altStrs, "; ")},
+		{Label: "Discovered By", Value: cliout.AgentText(e.DiscoveredBy)},
+		{Label: "Location", Value: e.Location},
+		{Label: "Finding", Value: e.Finding},
+		{Label: "Implications", Value: e.Implications},
+		{Label: "Established By", Value: cliout.AgentText(e.EstablishedBy)},
+		{Label: "Rule", Value: e.Rule},
+		{Label: "Examples", Value: strings.Join(e.Examples, ", ")},
+		{Label: "Applies To", Value: e.AppliesTo},
+		{Label: "Affects", Value: strings.Join(e.Affects, ", ")},
+		{Label: "Tags", Value: strings.Join(e.Tags, ", ")},
+	}))
+	return nil
 }
 
 func splitCSV(s string) []string {
@@ -1510,14 +1497,18 @@ func runWorktreeShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Name:    %s\n", wt.Name)
-	fmt.Printf("Path:    %s\n", wt.Path)
-	fmt.Printf("Branch:  %s\n", wt.Branch)
-	fmt.Printf("Agent:   %s\n", wt.Agent)
-	fmt.Printf("Issue:   %s\n", wt.Issue)
+	changes := ""
 	if stats != nil && stats.FilesChanged > 0 {
-		fmt.Printf("Changes: %d files changed (+%d, -%d)\n", stats.FilesChanged, stats.Insertions, stats.Deletions)
+		changes = fmt.Sprintf("%d files changed (+%d, -%d)", stats.FilesChanged, stats.Insertions, stats.Deletions)
 	}
+	fmt.Println(cliout.DetailView([]cliout.DetailField{
+		{Label: "Name", Value: wt.Name},
+		{Label: "Path", Value: wt.Path},
+		{Label: "Branch", Value: wt.Branch},
+		{Label: "Agent", Value: cliout.AgentText(wt.Agent)},
+		{Label: "Issue", Value: wt.Issue},
+		{Label: "Changes", Value: changes},
+	}))
 	return nil
 }
 
@@ -1592,10 +1583,12 @@ func runLockCheck(cmd *cobra.Command, args []string) error {
 		fmt.Printf("%s is not locked\n", args[0])
 		return nil
 	}
-	fmt.Printf("File:     %s\n", l.File)
-	fmt.Printf("Agent:    %s\n", l.Agent)
-	fmt.Printf("Issue:    %s\n", l.Issue)
-	fmt.Printf("Acquired: %s\n", l.AcquiredAt.Format("2006-01-02 15:04:05"))
+	fmt.Println(cliout.DetailView([]cliout.DetailField{
+		{Label: "File", Value: l.File},
+		{Label: "Agent", Value: cliout.AgentText(l.Agent)},
+		{Label: "Issue", Value: l.Issue},
+		{Label: "Acquired", Value: cliout.TimeFmt(l.AcquiredAt)},
+	}))
 	return nil
 }
 
@@ -1646,23 +1639,20 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("ID:          %s\n", a.ID)
-	fmt.Printf("Role:        %s\n", a.Role)
-	fmt.Printf("Status:      %s\n", a.Status)
-	fmt.Printf("PID:         %d\n", a.PID)
-	fmt.Printf("Spawned By:  %s\n", a.SpawnedBy)
-	fmt.Printf("Spawned At:  %s\n", a.SpawnedAt.Format("2006-01-02 15:04:05"))
-	fmt.Printf("Heartbeat:   %s (%s)\n", a.Heartbeat.Format("2006-01-02 15:04:05"), relativeTime(a.Heartbeat))
-	if len(a.AssignedIssues) > 0 {
-		fmt.Printf("Issues:      %s\n", strings.Join(a.AssignedIssues, ", "))
-	}
-	if a.WorktreeName != "" {
-		fmt.Printf("Worktree:    %s\n", a.WorktreeName)
-	}
-	if a.Config.Model != "" {
-		fmt.Printf("Model:       %s\n", a.Config.Model)
-	}
-	fmt.Printf("MCP Enabled: %v\n", a.Config.MCPEnabled)
+	fmt.Println(cliout.DetailView([]cliout.DetailField{
+		{Label: "ID", Value: cliout.AgentText(a.ID)},
+		{Label: "Role", Value: a.Role},
+		{Label: "Status", Value: cliout.StatusText(a.Status)},
+		{Label: "PID", Value: strconv.Itoa(a.PID)},
+		{Label: "Spawned By", Value: cliout.AgentText(a.SpawnedBy)},
+		{Label: "Spawned At", Value: cliout.TimeFmt(a.SpawnedAt)},
+		{Label: "Heartbeat", Value: cliout.TimeFmt(a.Heartbeat)},
+		{Label: "Issues", Value: strings.Join(a.AssignedIssues, ", ")},
+		{Label: "Worktree", Value: a.WorktreeName},
+		{Label: "Scope", Value: strings.Join(a.FileScope, ", ")},
+		{Label: "Model", Value: a.Config.Model},
+		{Label: "MCP Enabled", Value: strconv.FormatBool(a.Config.MCPEnabled)},
+	}))
 	return nil
 }
 
