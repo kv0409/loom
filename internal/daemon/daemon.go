@@ -332,6 +332,8 @@ func (d *Daemon) recoverOrphanedAgents() {
 
 func (d *Daemon) Start() error {
 	d.recoverOrphanedAgents()
+	// Write session start marker for dashboard activity filtering.
+	os.WriteFile(filepath.Join(d.LoomRoot, "session"), []byte(time.Now().Format("2006-01-02T15:04:05")), 0644)
 	if err := d.startAPI(); err != nil {
 		return fmt.Errorf("starting API: %w", err)
 	}

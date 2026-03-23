@@ -91,7 +91,7 @@ func TestFetchActivity_ToolsFile(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries, got %d", len(entries))
 	}
-	wantLines := []string{"12:00:01 read: main.go", "12:00:02 write: output.go", "12:00:03 shell: go test"}
+	wantLines := []string{"12:00:03 shell: go test", "12:00:02 write: output.go", "12:00:01 read: main.go"}
 	for i, want := range wantLines {
 		if entries[i].Line != want {
 			t.Errorf("entry[%d]: want %q, got %q", i, want, entries[i].Line)

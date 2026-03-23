@@ -241,19 +241,17 @@ func (m Model) renderActivityOverview(colW, budget int) string {
 
 	toolLimit := min(budget, len(m.data.Activity))
 	rows := make([][]string, 0, toolLimit)
-	for i := len(m.data.Activity) - toolLimit; i < len(m.data.Activity); i++ {
+	for i := 0; i < toolLimit; i++ {
 		e := m.data.Activity[i]
 		rows = append(rows, []string{e.AgentID, e.Time, resolveToolInfo(e.Tool).icon, e.Detail})
 	}
 
-	activityStart := len(m.data.Activity) - toolLimit
 	styler := func(row, col int, _ bool) lipgloss.Style {
 		base := lgTableCellStyle
-		dataIdx := activityStart + row
-		if dataIdx >= len(m.data.Activity) {
+		if row >= len(m.data.Activity) {
 			return base
 		}
-		e := m.data.Activity[dataIdx]
+		e := m.data.Activity[row]
 		switch col {
 		case 0:
 			return base.Foreground(agentColor(e.AgentID)).Bold(true)

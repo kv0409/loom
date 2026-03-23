@@ -251,6 +251,12 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 	var timed []timedEntry
 	projectRoot := filepath.Dir(loomRoot)
 
+	// Read session start marker to filter out old entries.
+	var sessionStart string
+	if raw, err := os.ReadFile(filepath.Join(loomRoot, "session")); err == nil {
+		sessionStart = strings.TrimSpace(string(raw))
+	}
+
 	seen := make(map[string]bool, len(agents))
 	for _, a := range agents {
 		seen[a.ID] = true
@@ -338,12 +344,15 @@ func fetchActivity(loomRoot string, agents []*agent.Agent) []ActivityEntry {
 	}
 
 	sort.SliceStable(timed, func(i, j int) bool {
-		return timed[i].ts < timed[j].ts
+		return timed[i].ts > timed[j].ts
 	})
 
-	entries := make([]ActivityEntry, len(timed))
-	for i, te := range timed {
-		entries[i] = te.entry
+	entries := make([]ActivityEntry, 0, len(timed))
+	for _, te := range timed {
+		if sessionStart != "" && te.ts != "" && te.ts < sessionStart {
+			continue
+		}
+		entries = append(entries, te.entry)
 	}
 	return entries
 }
