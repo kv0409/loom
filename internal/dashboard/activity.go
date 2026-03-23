@@ -30,6 +30,7 @@ var toolMap = map[string]toolInfo{
 	"fetch":   {"☁", colOrange},
 	"delete":  {"✕", colRed},
 	"move":    {"→", colTeal},
+	"other":   {"·", colGray},
 }
 
 // resolveToolInfo returns the toolInfo for a given tool label.

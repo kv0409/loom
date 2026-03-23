@@ -113,6 +113,23 @@ func Snapshot(loomRoot string) (ControlSnapshot, error) {
 	return snap, nil
 }
 
+// AgentOutput returns recent ACP events for an agent from the daemon's in-memory buffer.
+func AgentOutput(loomRoot, agentID string) ([]acp.ACPEvent, error) {
+	resp, err := call(loomRoot, Request{Action: "output", AgentID: agentID})
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(resp.Data)
+	if err != nil {
+		return nil, fmt.Errorf("output marshal: %w", err)
+	}
+	var events []acp.ACPEvent
+	if err := json.Unmarshal(b, &events); err != nil {
+		return nil, fmt.Errorf("output unmarshal: %w", err)
+	}
+	return events, nil
+}
+
 // Refresh reloads specific cached control-plane entries from disk without
 // invalidating the entire section.
 func Refresh(loomRoot string, opts RefreshOpts) error {

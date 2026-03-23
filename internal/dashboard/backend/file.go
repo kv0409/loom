@@ -414,6 +414,11 @@ func RelativeTime(ts string) string {
 }
 
 func (fb *FileBackend) AgentOutput(loomRoot, agentID string) ([]ACPEvent, error) {
+	// Try daemon API first (in-memory, no file I/O).
+	if events, err := daemon.AgentOutput(loomRoot, agentID); err == nil {
+		return events, nil
+	}
+	// Fallback: read from .output file (daemon down).
 	outPath := filepath.Join(loomRoot, "agents", agentID+".output")
 	raw, err := os.ReadFile(outPath)
 	if err != nil {
