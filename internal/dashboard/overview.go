@@ -170,8 +170,7 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 		if a.Status == "active" || a.Status == "in-progress" {
 			glyph = heartbeatGlyph(time.Since(a.Heartbeat), timeout)
 		}
-		// HB
-		hb := fmtTime(a.Heartbeat, true)
+		// HB — donut glyph is sufficient, skip text.
 		// Issues
 		issues := "—"
 		if len(a.AssignedIssues) > 0 {
@@ -184,7 +183,7 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 		} else if len(a.AssignedIssues) > 0 {
 			focus = strings.Join(a.AssignedIssues, ", ")
 		}
-		rows[i] = []string{glyph, truncate(a.ID, 16), hb, issues, focus}
+		rows[i] = []string{glyph, truncate(a.ID, 16), issues, focus}
 	}
 
 	styler := func(row, col int, _ bool) lipgloss.Style {
@@ -203,17 +202,9 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 			}
 		case 1: // agent ID
 			return base.Foreground(agentColor(a.ID)).Bold(true)
-		case 2: // HB
-			if a.Status == "active" || a.Status == "in-progress" {
-				elapsed := time.Since(a.Heartbeat)
-				if timeout > 0 && float64(elapsed)/float64(timeout) >= 0.8 {
-					return base.Foreground(colRed)
-				}
-			}
-			return base.Foreground(colGray)
-		case 3: // issues
+		case 2: // issues
 			return base.Foreground(colFg)
-		case 4: // focus
+		case 3: // focus
 			if agents[row].hasActivity {
 				return base.Foreground(colGreen)
 			}
@@ -223,7 +214,7 @@ func (m Model) renderFlightOverview(fullW, budget int) string {
 	}
 
 	innerW := fullW - 2
-	t := newLGTableHeaderless(rows, -1, innerW, styler, ColWidth{0, 3}, ColWidth{1, 18}, ColWidth{2, 5}, ColWidth{3, 14})
+	t := newLGTableHeaderless(rows, -1, innerW, styler, ColWidth{0, 3}, ColWidth{1, 18}, ColWidth{2, 14})
 	content := header + "\n" + t.Render()
 	return panel("IN FLIGHT", content, fullW)
 }
