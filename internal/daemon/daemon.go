@@ -300,6 +300,17 @@ func (d *Daemon) isAlive(a *agent.Agent) bool {
 }
 
 // recoverOrphanedAgents scans for agents in active/activating status that have
+// cleanActivityFiles removes stale .tools and .output files from previous sessions.
+func cleanActivityFiles(agentsDir string) {
+	for _, pat := range []string{"*.tools", "*.output"} {
+		if matches, _ := filepath.Glob(filepath.Join(agentsDir, pat)); len(matches) > 0 {
+			for _, p := range matches {
+				os.Remove(p)
+			}
+		}
+	}
+}
+
 // no registered ACP client (i.e. orphaned from a previous daemon process). It
 // kills their stale OS processes and resets them to pending-acp so
 // watchPendingAgents re-activates them with fresh pipes.
@@ -332,6 +343,8 @@ func (d *Daemon) recoverOrphanedAgents() {
 
 func (d *Daemon) Start() error {
 	d.recoverOrphanedAgents()
+	// Clean stale activity files from previous sessions.
+	cleanActivityFiles(filepath.Join(d.LoomRoot, "agents"))
 	if err := d.startAPI(); err != nil {
 		return fmt.Errorf("starting API: %w", err)
 	}
