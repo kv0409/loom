@@ -241,3 +241,23 @@ func TimeFmt(t time.Time) string {
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Exported color accessors for use in cmd/loom/main.go
+// ---------------------------------------------------------------------------
+
+// Colored applies a lipgloss style to a string, respecting NO_COLOR.
+func Colored(s string, style lipgloss.Style) string {
+	return colored(s, style)
+}
+
+// Style constructors for specific colors.
+func StyleSubtle() lipgloss.Style  { return lipgloss.NewStyle().Foreground(colSubtle) }
+func StyleBlue() lipgloss.Style    { return lipgloss.NewStyle().Foreground(colBlue) }
+func StyleGreen() lipgloss.Style   { return lipgloss.NewStyle().Foreground(colGreen) }
+func StyleRed() lipgloss.Style     { return lipgloss.NewStyle().Foreground(colRed) }
+func StyleGray() lipgloss.Style    { return lipgloss.NewStyle().Foreground(colGray) }
+func StyleOrange() lipgloss.Style  { return lipgloss.NewStyle().Foreground(colOrange) }
+func StyleTeal() lipgloss.Style    { return lipgloss.NewStyle().Foreground(colTeal) }
+func StyleFg() lipgloss.Style      { return lipgloss.NewStyle().Foreground(colFg) }
+func StyleYellow() lipgloss.Style  { return lipgloss.NewStyle().Foreground(colYellow) }

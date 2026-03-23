@@ -938,17 +938,20 @@ func printTree(issues []*issue.Issue) {
 func printNode(iss *issue.Issue, byID map[string]*issue.Issue, prefix string) {
 	assignee := ""
 	if iss.Assignee != "" {
-		assignee = " (" + iss.Assignee + ")"
+		assignee = " (" + cliout.AgentText(iss.Assignee) + ")"
 	}
-	fmt.Printf("%s%s [%s] [%s] %s%s\n", prefix, iss.ID, iss.Type, iss.Status, iss.Title, assignee)
+	id := cliout.Colored(iss.ID, cliout.StyleBlue())
+	status := "[" + cliout.StatusText(iss.Status) + "]"
+	fmt.Printf("%s%s [%s] %s %s%s\n", prefix, id, iss.Type, status, iss.Title, assignee)
 
 	// Print dependency info
+	subtle := cliout.StyleSubtle()
 	for _, dep := range iss.DependsOn {
-		connector := "    └── "
+		connector := "    " + cliout.Colored("└── ", subtle)
 		if prefix != "" {
-			connector = prefix + "    └── "
+			connector = prefix + "    " + cliout.Colored("└── ", subtle)
 		}
-		fmt.Printf("%sdepends on: %s\n", connector, dep)
+		fmt.Printf("%sdepends on: %s\n", connector, cliout.Colored(dep, cliout.StyleBlue()))
 	}
 
 	// Print children
@@ -964,19 +967,22 @@ func printNode(iss *issue.Issue, byID map[string]*issue.Issue, prefix string) {
 			connector = "└── "
 			childPrefix = "    "
 		}
-		printNodeChild(child, byID, prefix+connector, prefix+childPrefix)
+		printNodeChild(child, byID, prefix+cliout.Colored(connector, subtle), prefix+cliout.Colored(childPrefix, subtle))
 	}
 }
 
 func printNodeChild(iss *issue.Issue, byID map[string]*issue.Issue, linePrefix, childPrefix string) {
 	assignee := ""
 	if iss.Assignee != "" {
-		assignee = " (" + iss.Assignee + ")"
+		assignee = " (" + cliout.AgentText(iss.Assignee) + ")"
 	}
-	fmt.Printf("%s%s [%s] [%s] %s%s\n", linePrefix, iss.ID, iss.Type, iss.Status, iss.Title, assignee)
+	id := cliout.Colored(iss.ID, cliout.StyleBlue())
+	status := "[" + cliout.StatusText(iss.Status) + "]"
+	fmt.Printf("%s%s [%s] %s %s%s\n", linePrefix, id, iss.Type, status, iss.Title, assignee)
 
+	subtle := cliout.StyleSubtle()
 	for _, dep := range iss.DependsOn {
-		fmt.Printf("%s└── depends on: %s\n", childPrefix, dep)
+		fmt.Printf("%s%s depends on: %s\n", childPrefix, cliout.Colored("└──", subtle), cliout.Colored(dep, cliout.StyleBlue()))
 	}
 
 	for i, childID := range iss.Children {
@@ -991,7 +997,7 @@ func printNodeChild(iss *issue.Issue, byID map[string]*issue.Issue, linePrefix, 
 			connector = "└── "
 			nextPrefix = "    "
 		}
-		printNodeChild(child, byID, childPrefix+connector, childPrefix+nextPrefix)
+		printNodeChild(child, byID, childPrefix+cliout.Colored(connector, subtle), childPrefix+cliout.Colored(nextPrefix, subtle))
 	}
 }
 
@@ -1947,14 +1953,19 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	for _, msg := range report.Messages {
-		fmt.Println(msg)
+		if strings.HasPrefix(msg, "[dry-run]") {
+			cliout.PrintWarning(strings.TrimPrefix(msg, "[dry-run] "))
+		} else {
+			cliout.PrintSuccess(msg)
+		}
 	}
 	if len(report.Messages) == 0 {
-		fmt.Println("No issues found")
+		cliout.PrintSuccess("No issues found")
 	} else if dryRun {
-		fmt.Printf("\nDry run: %d issue(s) found\n", report.StaleProcesses+boolInt(report.StaleLock)+boolInt(report.StaleSocket))
+		count := report.StaleProcesses + boolInt(report.StaleLock) + boolInt(report.StaleSocket)
+		cliout.PrintWarning(fmt.Sprintf("Dry run: %d issue(s) found", count))
 	} else {
-		fmt.Printf("\nFixed %d issue(s)\n", report.Fixed)
+		cliout.PrintSuccess(fmt.Sprintf("Fixed %d issue(s)", report.Fixed))
 	}
 	return nil
 }
@@ -2615,45 +2626,54 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	pid, alive := daemon.CheckLock(root)
 	if !alive {
-		fmt.Println("Loom is not running")
+		cliout.PrintError("Loom is not running")
 		return nil
 	}
 
-	fmt.Printf("Loom: running (pid %d)\n", pid)
+	fmt.Printf("%s %s\n",
+		cliout.Colored("Loom: running", cliout.StyleGreen()),
+		cliout.Colored(fmt.Sprintf("(pid %d)", pid), cliout.StyleGray()))
 
 	// Agent counts
 	agents, _ := agent.List(root)
-	var active, idle, dead int
+	var activeN, idleN, deadN int
 	for _, a := range agents {
 		switch a.Status {
 		case "active":
-			active++
+			activeN++
 		case "idle":
-			idle++
+			idleN++
 		case "dead":
-			dead++
+			deadN++
 		}
 	}
-	fmt.Printf("Agents: %d active, %d idle, %d dead\n", active, idle, dead)
+	fmt.Printf("Agents: %s active, %s idle, %s dead\n",
+		cliout.Colored(strconv.Itoa(activeN), cliout.StyleGreen()),
+		cliout.Colored(strconv.Itoa(idleN), cliout.StyleGray()),
+		cliout.Colored(strconv.Itoa(deadN), cliout.StyleOrange()))
 
 	// Issue counts
 	allIssues, _ := issue.List(root, issue.ListOpts{All: true})
-	var open, inProgress, done int
+	var openN, inProgressN, doneN int
 	for _, iss := range allIssues {
 		switch iss.Status {
 		case "open", "assigned":
-			open++
+			openN++
 		case "in-progress", "review", "blocked":
-			inProgress++
+			inProgressN++
 		case "done":
-			done++
+			doneN++
 		}
 	}
-	fmt.Printf("Issues: %d open, %d in-progress, %d done\n", open, inProgress, done)
+	fmt.Printf("Issues: %s open, %s in-progress, %s done\n",
+		cliout.Colored(strconv.Itoa(openN), cliout.StyleFg()),
+		cliout.Colored(strconv.Itoa(inProgressN), cliout.StyleTeal()),
+		cliout.Colored(strconv.Itoa(doneN), cliout.StyleGreen()))
 
 	// Worktree count
 	wts, _ := worktree.List(root)
-	fmt.Printf("Worktrees: %d active\n", len(wts))
+	fmt.Printf("Worktrees: %s active\n",
+		cliout.Colored(strconv.Itoa(len(wts)), cliout.StyleBlue()))
 
 	// Undelivered mail count
 	var undelivered int
@@ -2669,7 +2689,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			}
 		}
 	}
-	fmt.Printf("Mail: %d undelivered\n", undelivered)
+	fmt.Printf("Mail: %s undelivered\n",
+		cliout.Colored(strconv.Itoa(undelivered), cliout.StyleYellow()))
 	return nil
 }
 
