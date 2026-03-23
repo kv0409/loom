@@ -15,6 +15,7 @@ import (
 	"github.com/karanagi/loom/internal/lock"
 	"github.com/karanagi/loom/internal/mail"
 	"github.com/karanagi/loom/internal/memory"
+	"github.com/karanagi/loom/internal/proposal"
 	"github.com/karanagi/loom/internal/worktree"
 )
 
@@ -467,6 +468,44 @@ func (s *Server) callTool(name string, args map[string]interface{}) (string, err
 		}
 		return fmt.Sprintf("Removed worktree %s", name), nil
 
+	case "loom_proposal_create":
+		title, err := required(args, "title")
+		if err != nil {
+			return "", err
+		}
+		p, err := proposal.Create(s.LoomRoot, title, str(args, "description"), str(args, "proposed_action"), str(args, "category"), str(args, "session_id"))
+		if err != nil {
+			return "", err
+		}
+		out, _ := json.MarshalIndent(p, "", "  ")
+		return string(out), nil
+
+	case "loom_proposal_list":
+		proposals, err := proposal.List(s.LoomRoot, str(args, "status"))
+		if err != nil {
+			return "", err
+		}
+		if len(proposals) == 0 {
+			return "No proposals", nil
+		}
+		out, _ := json.MarshalIndent(proposals, "", "  ")
+		return string(out), nil
+
+	case "loom_proposal_respond":
+		id, err := required(args, "id")
+		if err != nil {
+			return "", err
+		}
+		action, err := required(args, "action")
+		if err != nil {
+			return "", err
+		}
+		p, err := proposal.Respond(s.LoomRoot, id, action, str(args, "feedback"))
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("Proposal %s %s", p.ID, p.Status), nil
+
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
@@ -564,6 +603,15 @@ func toolDefs() []toolDef {
 		{Name: "loom_worktree_remove", Description: "Remove a worktree directory and delete its branch", InputSchema: obj(
 			props{"name": propStr("Worktree name (e.g. LOOM-001-01-login-form)"), "force": propBool("Force removal even if branch is unmerged")},
 			"name")},
+		{Name: "loom_proposal_create", Description: "Create a proposal for human review", InputSchema: obj(
+			props{"title": propStr("Proposal title"), "description": propStr("Detailed description"), "proposed_action": propStr("What action is being proposed"),
+				"category": propStr("Proposal category"), "session_id": propStr("Session ID for tracking")},
+			"title")},
+		{Name: "loom_proposal_list", Description: "List proposals with optional status filter", InputSchema: obj(
+			props{"status": propEnum("Filter by status", "pending", "accepted", "rejected", "dismissed")})},
+		{Name: "loom_proposal_respond", Description: "Respond to a proposal (accept, reject, or dismiss)", InputSchema: obj(
+			props{"id": propStr("Proposal ID"), "action": propEnum("Response action", "accepted", "rejected", "dismissed"), "feedback": propStr("Optional feedback")},
+			"id", "action")},
 	}
 }
 
