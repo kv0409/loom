@@ -1155,7 +1155,17 @@ func (m Model) View() tea.View {
 	// Daemon unavailability banner (shown after first refresh, between title and content)
 	daemonBanner := ""
 	if m.refreshed && !m.data.DaemonOK {
-		daemonBanner = flashErrStyle.Render(" ⚠ daemon restarting — reconnecting...")
+		reason := m.data.ShutdownReason
+		var bannerText string
+		switch reason {
+		case backend.ShutdownIdle:
+			bannerText = " ⚠ Daemon stopped: idle timeout (press r to restart)"
+		case backend.ShutdownSignal:
+			bannerText = " ⚠ Daemon stopped: received SIGTERM (press r to restart)"
+		default:
+			bannerText = " ⚠ Daemon stopped: unexpected exit (press r to restart)"
+		}
+		daemonBanner = flashErrStyle.Render(bannerText)
 	}
 
 	// Build top section (title + optional banner + content)

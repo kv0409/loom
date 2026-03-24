@@ -125,6 +125,19 @@ func (m Model) renderAttentionOverview(fullW, budget int) string {
 	if m.data.Unread > 0 {
 		lines = append(lines, barLabel.Render(fmt.Sprintf("  %d unread message%s waiting in inboxes", m.data.Unread, suffix(m.data.Unread))))
 	}
+	if !m.data.DaemonOK {
+		reason := m.data.ShutdownReason
+		var label string
+		switch reason {
+		case backend.ShutdownIdle:
+			label = "Daemon stopped (idle)"
+		case backend.ShutdownSignal:
+			label = "Daemon stopped (manual)"
+		default:
+			label = "Daemon stopped (unexpected)"
+		}
+		lines = append(lines, deadStyle.Render("  "+label))
+	}
 	if len(lines) == 0 {
 		return panel("NEEDS ATTENTION", renderEmpty("No active blockers, dead agents, or unread messages", fullW-2), fullW)
 	}

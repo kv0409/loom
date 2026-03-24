@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -93,6 +94,9 @@ func (fb *FileBackend) Load() Snapshot {
 		s.Activity = fetchActivity(fb.root, s.Agents)
 	}
 	s.Logs = fb.lr.read()
+	if !s.DaemonOK {
+		s.ShutdownReason = detectShutdownReason(fb.root)
+	}
 	s.Errors = errs
 	if cfg, err := config.Load(fb.root); err == nil {
 		s.HeartbeatTimeoutSec = cfg.Limits.HeartbeatTimeoutSeconds
@@ -480,4 +484,37 @@ func (fb *FileBackend) MemoryByField(e *MemoryEntry) string {
 func (fb *FileBackend) RespondProposal(loomRoot, id, action, feedback string) error {
 	_, err := proposal.Respond(loomRoot, id, action, feedback)
 	return err
+}
+
+// detectShutdownReason reads the tail of daemon.log to determine why the daemon stopped.
+func detectShutdownReason(loomRoot string) ShutdownReason {
+	f, err := os.Open(filepath.Join(loomRoot, "logs", "daemon.log"))
+	if err != nil {
+		return ShutdownUnexpected
+	}
+	defer f.Close()
+	// Read only the last ~2KB to avoid loading the entire log.
+	if _, err := f.Seek(-2048, io.SeekEnd); err != nil {
+		// File smaller than 2KB — read from start.
+		f.Seek(0, io.SeekStart)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return ShutdownUnexpected
+	}
+	// Scan the last ~20 lines for shutdown markers.
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	start := len(lines) - 20
+	if start < 0 {
+		start = 0
+	}
+	for i := len(lines) - 1; i >= start; i-- {
+		switch {
+		case strings.Contains(lines[i], "[idle-shutdown]"):
+			return ShutdownIdle
+		case strings.Contains(lines[i], "[signal-shutdown]"):
+			return ShutdownSignal
+		}
+	}
+	return ShutdownUnexpected
 }

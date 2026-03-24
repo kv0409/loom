@@ -23,6 +23,30 @@ type LogLine struct {
 	Text     string // full line
 }
 
+// ShutdownReason describes why the daemon stopped.
+type ShutdownReason int
+
+const (
+	ShutdownNone       ShutdownReason = iota // daemon is running or never started
+	ShutdownIdle                             // idle timeout
+	ShutdownSignal                           // manual stop (SIGTERM/SIGINT)
+	ShutdownUnexpected                       // unknown / crash
+)
+
+// String returns a human-readable label for the shutdown reason.
+func (r ShutdownReason) String() string {
+	switch r {
+	case ShutdownIdle:
+		return "idle timeout"
+	case ShutdownSignal:
+		return "received SIGTERM"
+	case ShutdownUnexpected:
+		return "unexpected exit"
+	default:
+		return ""
+	}
+}
+
 // Snapshot holds all dashboard state loaded in a single refresh cycle.
 type Snapshot struct {
 	Agents              []*Agent
@@ -37,6 +61,7 @@ type Snapshot struct {
 	Activity            []ActivityEntry
 	Logs                []LogLine
 	DaemonOK            bool
+	ShutdownReason      ShutdownReason
 	Errors              []string
 	HeartbeatTimeoutSec int
 }

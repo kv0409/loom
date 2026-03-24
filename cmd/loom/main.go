@@ -2336,6 +2336,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 			}
 			continue
 		}
+		log.Printf("[signal-shutdown] received %s, shutting down", s)
 		break
 	}
 
