@@ -3,6 +3,8 @@ package dashboard
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -248,6 +250,31 @@ func daemonCmd(loomRoot string, fn func() error, successFlash string) tea.Cmd {
 		}
 		return daemonResultMsg{flash: successFlash, isErr: false}
 	}
+}
+
+func (m Model) restartDaemon() (tea.Model, tea.Cmd) {
+	lr := m.loomRoot
+	return m, daemonCmd(lr, func() error {
+		self, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("finding executable: %w", err)
+		}
+		logPath := filepath.Join(lr, "logs", "daemon.log")
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("opening daemon log: %w", err)
+		}
+		child := exec.Command(self, "start", "--resume")
+		child.Env = append(os.Environ(), "LOOM_DAEMON=1")
+		child.Stdout = logFile
+		child.Stderr = logFile
+		if err := child.Start(); err != nil {
+			logFile.Close()
+			return fmt.Errorf("starting daemon: %w", err)
+		}
+		logFile.Close()
+		return nil
+	}, "Daemon starting...")
 }
 
 func diffCmd(b backend.Backend, wtPath string) tea.Cmd {
@@ -756,7 +783,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.view == viewIssues {
 			return m.openIssueCompose()
 		}
-	case keyMailReply:
+	case keyRestart: // also keyMailReply (same key "r")
+		if m.refreshed && !m.data.DaemonOK {
+			return m.restartDaemon()
+		}
 		if m.view == viewMailDetail {
 			messages := m.sortedMessages()
 			if m.cursor < len(messages) {

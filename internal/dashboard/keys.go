@@ -75,7 +75,9 @@ const (
 
 	// Mail view.
 	keyMailCompose = "c"
-	keyMailReply   = "r"
+
+	// Daemon restart (when disconnected) / mail reply (same key "r").
+	keyRestart = "r"
 
 	// Issues view.
 	keyIssueCreate = "c"
