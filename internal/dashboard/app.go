@@ -1160,14 +1160,7 @@ func (m Model) View() tea.View {
 		}
 		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s  [Enter]send [Esc]cancel", agentName, m.messageTI.View()))
 	}
-	if m.killConfirm {
-		agentName := ""
-		agents := m.filteredAgents()
-		if m.cursor < len(agents) {
-			agentName = agents[m.cursor].ID
-		}
-		help = helpStyle.Render(fmt.Sprintf(" Kill agent %s? [y/N]", agentName))
-	}
+
 	if m.chatMode {
 		help = helpStyle.Render(" Chat: [Enter]send [Esc]close")
 	}
@@ -1257,6 +1250,20 @@ func (m Model) View() tea.View {
 	// Quit confirmation overlay replaces normal output.
 	if m.quitConfirmMode {
 		output := renderQuitConfirmOverlay(m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
+	}
+
+	// Kill confirmation overlay replaces normal output.
+	if m.killConfirm {
+		agentName := ""
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
+		}
+		output := renderKillConfirmOverlay(agentName, m.width, m.height)
 		lines = splitLines(output)
 		for len(lines) < m.height {
 			lines = append(lines, "")

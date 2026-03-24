@@ -254,3 +254,21 @@ func renderQuitConfirmOverlay(width, height int) string {
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
 }
+
+// renderKillConfirmOverlay renders the kill confirmation dialog as a centered overlay.
+func renderKillConfirmOverlay(agentName string, width, height int) string {
+	formW := min(48, width-4)
+
+	title := composeTitleStyle.Render("⚠ KILL AGENT")
+
+	body := quitBodyStyle.Render("Kill agent " + agentName + "?")
+
+	options := "\n" +
+		composeKeyStyle.Render("[y]") + composeHintStyle.Render(" kill") + "\n" +
+		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
+	box := overlayStyle.Width(formW).Render(content)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}
