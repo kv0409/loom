@@ -1142,7 +1142,7 @@ func (m Model) View() tea.View {
 
 	// Flash messages on their own line above help bar
 	flashLine := ""
-	if m.flashMsg != "" && !m.messageMode && !m.killConfirm {
+	if m.flashMsg != "" && !m.nudgeMode && !m.messageMode && !m.killConfirm {
 		style := flashOkStyle
 		if m.flashIsErr {
 			style = flashErrStyle
