@@ -1136,22 +1136,7 @@ func (m Model) View() tea.View {
 		searchBox := searchBoxStyle
 		help = searchBox.Render("/ "+m.searchTI.View()) + helpStyle.Render("  [Enter]filter [Esc]cancel")
 	}
-	if m.nudgeMode {
-		agentName := ""
-		agents := m.filteredAgents()
-		if m.cursor < len(agents) {
-			agentName = agents[m.cursor].ID
-		}
-		var items []string
-		for i, nt := range nudge.Types {
-			prefix := "  "
-			if i == m.nudgeCursor {
-				prefix = "▸ "
-			}
-			items = append(items, prefix+nt.Label)
-		}
-		help = helpStyle.Render(fmt.Sprintf(" Nudge %s: %s  [j/k]select [Enter]send [Esc]cancel", agentName, strings.Join(items, " | ")))
-	}
+
 	if m.messageMode {
 		agentName := ""
 		agents := m.filteredAgents()
@@ -1167,7 +1152,7 @@ func (m Model) View() tea.View {
 
 	// Flash messages on their own line above help bar
 	flashLine := ""
-	if m.flashMsg != "" && !m.nudgeMode && !m.messageMode && !m.killConfirm {
+	if m.flashMsg != "" && !m.messageMode && !m.killConfirm {
 		style := flashOkStyle
 		if m.flashIsErr {
 			style = flashErrStyle
@@ -1241,6 +1226,24 @@ func (m Model) View() tea.View {
 	// Issue compose modal overlay replaces normal output.
 	if m.issueComposeMode && m.issueComposeForm != nil {
 		output := renderIssueComposeOverlay(m.issueComposeForm, m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
+	}
+
+	// Nudge overlay replaces normal output.
+	if m.nudgeMode {
+		agentName := ""
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
+		}
+		var labels []string
+		for _, nt := range nudge.Types {
+			labels = append(labels, nt.Label)
+		}
+		output := renderNudgeOverlay(agentName, labels, m.nudgeCursor, m.width, m.height)
 		lines = splitLines(output)
 		for len(lines) < m.height {
 			lines = append(lines, "")

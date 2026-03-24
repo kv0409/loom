@@ -272,3 +272,29 @@ func renderKillConfirmOverlay(agentName string, width, height int) string {
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
 }
+
+// renderNudgeOverlay renders the nudge type selector as a centered overlay modal.
+func renderNudgeOverlay(agentName string, types []string, cursor int, width, height int) string {
+	formW := min(48, width-4)
+
+	title := composeTitleStyle.Render("⚡ NUDGE " + agentName)
+
+	var items string
+	for i, label := range types {
+		prefix := "  "
+		if i == cursor {
+			prefix = "▸ "
+		}
+		items += prefix + label + "\n"
+	}
+
+	hint := "\n" +
+		composeKeyStyle.Render("[↑/↓]") + composeHintStyle.Render(" select  ") +
+		composeKeyStyle.Render("[enter]") + composeHintStyle.Render(" send  ") +
+		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, items+hint)
+	box := overlayStyle.Width(formW).Render(content)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}
