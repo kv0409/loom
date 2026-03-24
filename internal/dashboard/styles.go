@@ -394,11 +394,21 @@ var (
 // Tree connector style — subtle foreground for enumerator/indenter glyphs.
 var treeConnectorStyle = lipgloss.NewStyle().Foreground(colSubtle)
 
+// Table styles used by newStyledTable and newStyledTableHeaderless in render_helpers.go
+var (
+	tableHeaderStyle             = lipgloss.NewStyle().Bold(true).Background(colSubtle).Foreground(colFg).Padding(0, 1)
+	tableCellStyle               = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+	tableSelectedStyle           = lipgloss.NewStyle().Bold(true).Background(colSelBg).Padding(0, 1)
+	tableHeaderlessHeaderStyle   = lipgloss.NewStyle()
+	tableHeaderlessSelectedStyle = lipgloss.NewStyle().Foreground(colFg).Padding(0, 1)
+)
+
 // Compose overlay styles
 var (
 	composeTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(colBlue).MarginBottom(1)
 	composeHintStyle  = lipgloss.NewStyle().Foreground(colGray)
 	composeKeyStyle   = lipgloss.NewStyle().Foreground(colFg).Bold(true)
+	overlayInputStyle = lipgloss.NewStyle().Foreground(colFg).Background(colSelBg).Padding(0, 1)
 )
 
 // Quit confirmation dialog body style

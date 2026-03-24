@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -236,41 +237,22 @@ func renderIssueComposeOverlay(form *huh.Form, width, height int) string {
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
 
-// renderQuitConfirmOverlay renders the quit confirmation dialog as a centered overlay.
-func renderQuitConfirmOverlay(width, height int) string {
-	formW := min(48, width-4)
+// renderMessageOverlay renders the quick-message modal as a centered overlay.
+func renderMessageOverlay(agentName string, ti textinput.Model, width, height int) string {
+	formW := min(50, width-4)
 
-	title := composeTitleStyle.Render("⏻ QUIT DASHBOARD")
+	title := composeTitleStyle.Render("✉ MESSAGE " + agentName)
 
-	body := quitBodyStyle.Render("The loom session is still running.\nWhat would you like to do?")
+	input := overlayInputStyle.Width(formW - 6).Render(ti.View())
 
-	options := "\n" +
-		composeKeyStyle.Render("[s]") + composeHintStyle.Render(" Stop session + quit") + "\n" +
-		composeKeyStyle.Render("[q]") + composeHintStyle.Render(" Quit dashboard only") + "\n" +
-		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" Cancel")
+	hint := composeKeyStyle.Render("enter") + composeHintStyle.Render(" send · ") +
+		composeKeyStyle.Render("esc") + composeHintStyle.Render(" cancel")
 
-	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
+	content := lipgloss.JoinVertical(lipgloss.Left, title, input)
 	box := overlayStyle.Width(formW).Render(content)
 
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
-}
-
-// renderKillConfirmOverlay renders the kill confirmation dialog as a centered overlay.
-func renderKillConfirmOverlay(agentName string, width, height int) string {
-	formW := min(48, width-4)
-
-	title := composeTitleStyle.Render("⚠ KILL AGENT")
-
-	body := quitBodyStyle.Render("Kill agent " + agentName + "?")
-
-	options := "\n" +
-		composeKeyStyle.Render("[y]") + composeHintStyle.Render(" kill") + "\n" +
-		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" cancel")
-
-	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
-	box := overlayStyle.Width(formW).Render(content)
-
-	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+	overlay := lipgloss.JoinVertical(lipgloss.Center, box, hint)
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, overlay)
 }
 
 // renderNudgeOverlay renders the nudge type selector as a centered overlay modal.
@@ -298,3 +280,41 @@ func renderNudgeOverlay(agentName string, types []string, cursor int, width, hei
 
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
 }
+
+// renderKillConfirmOverlay renders the kill confirmation dialog as a centered overlay.
+func renderKillConfirmOverlay(agentName string, width, height int) string {
+	formW := min(48, width-4)
+
+	title := composeTitleStyle.Render("⚠ KILL AGENT")
+
+	body := quitBodyStyle.Render("Kill agent " + agentName + "?")
+
+	options := "\n" +
+		composeKeyStyle.Render("[y]") + composeHintStyle.Render(" kill") + "\n" +
+		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
+	box := overlayStyle.Width(formW).Render(content)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}
+
+// renderQuitConfirmOverlay renders the quit confirmation dialog as a centered overlay.
+func renderQuitConfirmOverlay(width, height int) string {
+	formW := min(48, width-4)
+
+	title := composeTitleStyle.Render("⏻ QUIT DASHBOARD")
+
+	body := quitBodyStyle.Render("The loom session is still running.\nWhat would you like to do?")
+
+	options := "\n" +
+		composeKeyStyle.Render("[s]") + composeHintStyle.Render(" Stop session + quit") + "\n" +
+		composeKeyStyle.Render("[q]") + composeHintStyle.Render(" Quit dashboard only") + "\n" +
+		composeKeyStyle.Render("[esc]") + composeHintStyle.Render(" Cancel")
+
+	content := lipgloss.JoinVertical(lipgloss.Left, title, body, options)
+	box := overlayStyle.Width(formW).Render(content)
+
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, box)
+}
+

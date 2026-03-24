@@ -1136,16 +1136,6 @@ func (m Model) View() tea.View {
 		searchBox := searchBoxStyle
 		help = searchBox.Render("/ "+m.searchTI.View()) + helpStyle.Render("  [Enter]filter [Esc]cancel")
 	}
-
-	if m.messageMode {
-		agentName := ""
-		agents := m.filteredAgents()
-		if m.cursor < len(agents) {
-			agentName = agents[m.cursor].ID
-		}
-		help = helpStyle.Render(fmt.Sprintf(" Message %s: %s  [Enter]send [Esc]cancel", agentName, m.messageTI.View()))
-	}
-
 	if m.chatMode {
 		help = helpStyle.Render(" Chat: [Enter]send [Esc]close")
 	}
@@ -1226,6 +1216,20 @@ func (m Model) View() tea.View {
 	// Issue compose modal overlay replaces normal output.
 	if m.issueComposeMode && m.issueComposeForm != nil {
 		output := renderIssueComposeOverlay(m.issueComposeForm, m.width, m.height)
+		lines = splitLines(output)
+		for len(lines) < m.height {
+			lines = append(lines, "")
+		}
+	}
+
+	// Message overlay replaces normal output.
+	if m.messageMode {
+		agentName := ""
+		agents := m.filteredAgents()
+		if m.cursor < len(agents) {
+			agentName = agents[m.cursor].ID
+		}
+		output := renderMessageOverlay(agentName, m.messageTI, m.width, m.height)
 		lines = splitLines(output)
 		for len(lines) < m.height {
 			lines = append(lines, "")
