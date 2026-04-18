@@ -2105,6 +2105,12 @@ func cleanOldFiles(dir string, cutoff time.Time, dryRun bool, label string) int 
 		if e.IsDir() {
 			continue
 		}
+		// Never delete the live daemon log — the daemon owns its fd and
+		// log rotation is handled by watchLogGC. loom gc prunes rotated
+		// files only.
+		if e.Name() == "daemon.log" {
+			continue
+		}
 		info, err := e.Info()
 		if err != nil {
 			continue
@@ -2128,7 +2134,9 @@ func runLogsDaemon(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	logPath := filepath.Join(root, "logs", "daemon.log")
-	tail := exec.Command("tail", "-f", logPath)
+	// -F (capital) follows by name and reopens across rotation. Supported on
+	// both GNU and BSD tail.
+	tail := exec.Command("tail", "-F", logPath)
 	tail.Stdout = os.Stdout
 	tail.Stderr = os.Stderr
 	return tail.Run()
@@ -2320,6 +2328,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Start daemon goroutines
 	d := daemon.New(root, cfg)
+	// Install log rotator (owns fds 1/2 + log package output).
+	rotator := daemon.NewRotator(root, cfg.Limits.LogMaxSizeMB, cfg.Limits.LogMaxRotations, cfg.Limits.LogRetentionDays)
+	if err := rotator.Install(); err != nil {
+		daemon.ReleaseLock(root)
+		return fmt.Errorf("installing log rotator: %w", err)
+	}
+	d.SetLogRotator(rotator)
 	if err := d.Start(); err != nil {
 		daemon.ReleaseLock(root)
 		return fmt.Errorf("starting daemon: %w", err)

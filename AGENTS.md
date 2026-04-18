@@ -47,6 +47,7 @@ Run periodically after a batch of changes lands on main to cut a new patch relea
 - Corrupted YAML files silently vanish from `List()` calls (error → `continue`). Daemon watchers also swallow all errors.
 - The daemon uses a Unix socket (`.loom/daemon.sock`) for its API despite the "no sockets" design principle — this is the one exception.
 - Config changes require daemon restart (`loom restart`).
+- The daemon owns `logs/daemon.log` — `logrotate.Install` redirects fds 1/2 via `syscall.Dup2` and points `log.SetOutput` at the file, so rotation (close/rename/reopen/dup2) catches stdout, stderr, `log.Printf`, and panic traces. `watchLogGC` rotates when size exceeds `limits.log_max_size_mb` (default 10) and sweeps rotated files past `limits.log_retention_days` (14) or `limits.log_max_rotations` (10) on a `polling.log_gc_interval_ms` (24h) tick.
 - Deregistering an agent triggers immediate inbox GC — all its unread mail is deleted.
 - `store.WriteYAML()` uses temp-file-then-rename for crash safety, but there's no protection against concurrent writes to the same file.
 

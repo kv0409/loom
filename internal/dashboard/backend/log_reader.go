@@ -138,14 +138,43 @@ func ExtractAgent(line string) string {
 	return m[2]
 }
 
-// ReadDaemonLog reads the daemon log file and returns all classified lines.
+// maxReadDaemonLogBytes caps how much of daemon.log we load into memory. The
+// daemon rotates the file at Config.Limits.LogMaxSizeMB, but old large logs
+// or racy growth between rotations can push past that — tail a bounded window
+// so UI reads stay cheap.
+const maxReadDaemonLogBytes = 2 * 1024 * 1024
+
+// ReadDaemonLog reads the tail of the daemon log file and returns all
+// classified lines. For files larger than maxReadDaemonLogBytes only the
+// trailing window is parsed (the first partial line is dropped).
 func ReadDaemonLog(loomRoot string) []LogLine {
-	data, err := os.ReadFile(filepath.Join(loomRoot, "logs", "daemon.log"))
+	f, err := os.Open(filepath.Join(loomRoot, "logs", "daemon.log"))
 	if err != nil {
 		return nil
 	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	size := info.Size()
+	partial := false
+	if size > maxReadDaemonLogBytes {
+		if _, err := f.Seek(size-maxReadDaemonLogBytes, io.SeekStart); err != nil {
+			return nil
+		}
+		partial = true
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil
+	}
+	raws := strings.Split(string(data), "\n")
+	if partial && len(raws) > 0 {
+		raws = raws[1:] // drop likely-truncated first line
+	}
 	var lines []LogLine
-	for _, raw := range strings.Split(string(data), "\n") {
+	for _, raw := range raws {
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" {
 			continue

@@ -98,6 +98,9 @@ type LimitsConfig struct {
 	MaxAgentsPerLead        int `yaml:"max_agents_per_lead"`
 	HeartbeatTimeoutSeconds int `yaml:"heartbeat_timeout_seconds"`
 	IdleTimeoutSeconds      int `yaml:"idle_timeout_seconds"`
+	LogMaxSizeMB            int `yaml:"log_max_size_mb"`
+	LogMaxRotations         int `yaml:"log_max_rotations"`
+	LogRetentionDays        int `yaml:"log_retention_days"`
 }
 
 type MergeConfig struct {
@@ -113,6 +116,7 @@ type PollingConfig struct {
 	PendingAgentsIntervalMs  int `yaml:"pending_agents_interval_ms"`
 	ACPOutputIntervalMs      int `yaml:"acp_output_interval_ms"`
 	WorktreeGCIntervalMs     int `yaml:"worktree_gc_interval_ms"`
+	LogGCIntervalMs          int `yaml:"log_gc_interval_ms"`
 	IdleShutdownSeconds      int `yaml:"idle_shutdown_seconds"`
 }
 
@@ -135,6 +139,9 @@ func DefaultConfig() *Config {
 			MaxAgentsPerLead:        3,
 			HeartbeatTimeoutSeconds: 300,
 			IdleTimeoutSeconds:      600,
+			LogMaxSizeMB:            10,
+			LogMaxRotations:         10,
+			LogRetentionDays:        14,
 		},
 		Merge: MergeConfig{
 			Strategy:         "squash",
@@ -148,6 +155,7 @@ func DefaultConfig() *Config {
 			PendingAgentsIntervalMs: 2000,
 			ACPOutputIntervalMs:     1000,
 			WorktreeGCIntervalMs:    300000,
+			LogGCIntervalMs:         86400000,
 			IdleShutdownSeconds:     300,
 		},
 		Kiro: KiroConfig{
@@ -218,6 +226,18 @@ func Load(loomRoot string) (*Config, error) {
 	}
 	if cfg.Polling.WorktreeGCIntervalMs == 0 {
 		cfg.Polling.WorktreeGCIntervalMs = defaults.Polling.WorktreeGCIntervalMs
+	}
+	if cfg.Polling.LogGCIntervalMs == 0 {
+		cfg.Polling.LogGCIntervalMs = defaults.Polling.LogGCIntervalMs
+	}
+	if cfg.Limits.LogMaxSizeMB == 0 {
+		cfg.Limits.LogMaxSizeMB = defaults.Limits.LogMaxSizeMB
+	}
+	if cfg.Limits.LogMaxRotations == 0 {
+		cfg.Limits.LogMaxRotations = defaults.Limits.LogMaxRotations
+	}
+	if cfg.Limits.LogRetentionDays == 0 {
+		cfg.Limits.LogRetentionDays = defaults.Limits.LogRetentionDays
 	}
 	return cfg, nil
 }

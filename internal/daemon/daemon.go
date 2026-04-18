@@ -38,6 +38,7 @@ type Daemon struct {
 	idleSince    map[string]time.Time // ephemeral: when agent became idle (no active issues)
 	loggedAt     map[string]time.Time // rate-limit: last time a log key was emitted
 	lastActivity time.Time            // ephemeral: last time any watcher observed activity
+	logRotator   *Rotator             // set by runStart after Install; nil in tests
 }
 
 func New(loomRoot string, cfg *config.Config) *Daemon {
@@ -349,7 +350,7 @@ func (d *Daemon) Start() error {
 		return fmt.Errorf("starting API: %w", err)
 	}
 	var wg sync.WaitGroup
-	wg.Add(9)
+	wg.Add(10)
 	go func() { defer wg.Done(); d.watchIssues() }()
 	go func() { defer wg.Done(); d.watchMail() }()
 	go func() { defer wg.Done(); d.watchHeartbeats() }()
@@ -359,6 +360,7 @@ func (d *Daemon) Start() error {
 	go func() { defer wg.Done(); d.watchDoneIssues() }()
 	go func() { defer wg.Done(); d.watchWorktreeGC() }()
 	go func() { defer wg.Done(); d.watchIdleShutdown() }()
+	go func() { defer wg.Done(); d.watchLogGC() }()
 	go func() { wg.Wait(); close(d.done) }()
 	return nil
 }
@@ -388,6 +390,12 @@ func (d *Daemon) Reload() error {
 		return fmt.Errorf("reload config: %w", err)
 	}
 	d.Config = cfg
+
+	// Propagate config changes into the log rotator so reloads pick up new
+	// size/retention/rotation limits without requiring a full restart.
+	if d.logRotator != nil {
+		d.logRotator.UpdateThresholds(cfg.Limits.LogMaxSizeMB, cfg.Limits.LogMaxRotations, cfg.Limits.LogRetentionDays)
+	}
 
 	// Fresh channels.
 	d.stop = make(chan struct{})
@@ -1104,6 +1112,7 @@ func (d *Daemon) watchInboxGC() {
 	}
 }
 
+
 func (d *Daemon) watchWorktreeGC() {
 	// Initial delay: let agents settle after startup.
 	select {
@@ -1183,6 +1192,49 @@ func (d *Daemon) runWorktreeGC() {
 		log.Printf("[gc] removing orphan worktree %s", name)
 		if err := worktree.Remove(d.LoomRoot, name, false); err != nil {
 			log.Printf("[gc] failed to remove worktree %s: %v", name, err)
+		}
+	}
+}
+
+// SetLogRotator attaches a log rotator to the daemon. The watchLogGC
+// goroutine will use it to periodically rotate + sweep the daemon log.
+// Nil-safe: if no rotator is set, the goroutine is a no-op.
+func (d *Daemon) SetLogRotator(r *Rotator) {
+	d.logRotator = r
+}
+
+// watchLogGC periodically rotates the daemon log if it has exceeded the
+// configured max size and sweeps rotated files past retention.
+func (d *Daemon) watchLogGC() {
+	if d.logRotator == nil {
+		<-d.stop
+		return
+	}
+	interval := time.Duration(d.Config.Polling.LogGCIntervalMs) * time.Millisecond
+	if interval <= 0 {
+		<-d.stop
+		return
+	}
+	// One-shot on startup to normalize an existing oversized log.
+	if err := d.logRotator.MaybeRotate(); err != nil {
+		log.Printf("[log-gc] rotate failed: %v", err)
+	}
+	if _, err := d.logRotator.Sweep(); err != nil {
+		log.Printf("[log-gc] sweep failed: %v", err)
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-ticker.C:
+			if err := d.logRotator.MaybeRotate(); err != nil {
+				log.Printf("[log-gc] rotate failed: %v", err)
+			}
+			if _, err := d.logRotator.Sweep(); err != nil {
+				log.Printf("[log-gc] sweep failed: %v", err)
+			}
 		}
 	}
 }
