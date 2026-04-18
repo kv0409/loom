@@ -222,7 +222,7 @@ func resolveModelAlias(model string) string {
 	case "sonnet":
 		return "claude-sonnet-4.6"
 	case "opus":
-		return "claude-opus-4.6"
+		return "claude-opus-4.7"
 	case "haiku":
 		return "claude-haiku-4.5"
 	}
