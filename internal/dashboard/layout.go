@@ -41,7 +41,7 @@ func proportionalWidth(avail, pct, minW int) int {
 
 // visibleRows returns the number of scrollable rows for a list view given the
 // terminal height and the number of fixed header rows consumed above the list.
-// headerRows is typically 9 for tab-based views; enforces a minimum of 1.
+// headerRows is typically 10 for tab-based views; enforces a minimum of 1.
 func visibleRows(h, headerRows int) int {
 	v := h - headerRows
 	if v < 1 {
@@ -52,7 +52,7 @@ func visibleRows(h, headerRows int) int {
 
 // scrollViewport returns the number of scrollable rows for a detail/panel view
 // (h - 6), enforcing a minimum of 1.
-func scrollViewport(h int) int { return visibleRows(h, 6) }
+func scrollViewport(h int) int { return visibleRows(h, 7) }
 
 // detailContentWidth returns the usable text-wrap width for detail/body fields
 // inside a panel (w - 8).
@@ -100,9 +100,9 @@ func chatPaneHeight(h int) int {
 // section in agent detail, subtracting the fixed header lines, footer lines,
 // panel border (2), output section header (1), and blank separators (2).
 func agentDetailVPHeight(termH, headerLines, footerLines int) int {
-	// panel border top/bottom = 2, title bar = 1, blank before output = 1,
+	// panel border top/bottom = 2, title bar + spacing = 2, blank before output = 1,
 	// output header line = 1, blank before footer = 1, help bar = 1
-	fixed := headerLines + footerLines + 7
+	fixed := headerLines + footerLines + 8
 	v := termH - fixed
 	if v < 1 {
 		return 1

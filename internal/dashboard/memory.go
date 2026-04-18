@@ -9,7 +9,7 @@ func (m Model) renderMemory() string {
 	memories := m.filteredMemories()
 	avail := availableWidth(m.width)
 
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := listViewport(m.cursor, len(memories), vRows)
 
 	rows := make([][]string, 0, end-start)

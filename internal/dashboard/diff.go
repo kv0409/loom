@@ -11,7 +11,7 @@ func (m Model) renderWorktrees() string {
 	worktrees := m.filteredWorktrees()
 
 	avail := availableWidth(m.width)
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := listViewport(m.cursor, len(worktrees), vRows)
 
 	headers := []string{"NAME", "BRANCH", "AGENT", "ISSUE", "FILES", "ADD", "DEL"}

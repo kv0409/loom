@@ -11,7 +11,7 @@ import (
 
 // agentsBandBudget returns the row budget for the full-width AGENTS band (~40% of usable height).
 func (m Model) agentsBandBudget() int {
-	usable := m.height - 1 - lipgloss.Height(m.helpBar()) // title bar (1) + help bar
+	usable := m.height - 2 - lipgloss.Height(m.helpBar()) // title bar (1) + spacing (1) + help bar
 	budget := (usable * 40 / 100) - 3
 	if budget < 1 {
 		budget = 1
@@ -44,7 +44,7 @@ func linesToContent(lines []string) string {
 
 func (m Model) renderOverview() string {
 	fullW := max(panelWidth(m.width), 20)
-	usable := m.height - 1 - lipgloss.Height(m.helpBar())
+	usable := m.height - 2 - lipgloss.Height(m.helpBar())
 
 	hasProposals := len(m.data.Proposals) > 0
 	var attentionBudget, proposalBudget, flightBudget, signalBudget int

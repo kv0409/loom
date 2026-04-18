@@ -12,7 +12,7 @@ func (m Model) renderAgents() string {
 	agents := m.filteredAgents()
 
 	avail := availableWidth(m.width)
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := listViewport(m.cursor, len(agents), vRows)
 
 	headers := []string{"ID", "MODEL", "STATUS", "WORKTREE", "ISSUES", "HEARTBEAT"}

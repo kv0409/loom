@@ -1167,7 +1167,7 @@ func (m Model) View() tea.View {
 	}
 
 	// Build top section (title + optional banner + content)
-	top := titleBar + "\n"
+	top := titleBar + "\n\n"
 	if daemonBanner != "" {
 		top += daemonBanner + "\n"
 	}
@@ -1448,7 +1448,7 @@ func (m Model) mouseToListIndex(y int) int {
 	if m.view == viewIssues {
 		return m.adjustIssuesIndex(idx)
 	}
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, _ := listViewport(m.cursor, m.listLen(), vRows)
 	return start + idx
 }
@@ -1465,7 +1465,7 @@ func (m Model) adjustIssuesIndex(idx int) int {
 			activeCount++
 		}
 	}
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
 
 	// If the separator is visible in the current viewport, adjust for it.

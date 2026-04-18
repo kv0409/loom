@@ -41,7 +41,7 @@ func (m Model) renderIssues() string {
 	}
 
 	avail := availableWidth(m.width)
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := issuesViewport(m.cursor, len(display), vRows, activeCount)
 
 	// Split visible rows into active and done segments to insert separator.

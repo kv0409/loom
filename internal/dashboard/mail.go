@@ -32,7 +32,7 @@ func (m Model) renderMail() string {
 	messages := m.sortedMessages()
 
 	avail := availableWidth(m.width)
-	vRows := visibleRows(m.height, 9)
+	vRows := visibleRows(m.height, 10)
 	start, end := listViewport(m.cursor, len(messages), vRows)
 
 	headers := []string{"PRIO", "FROM", "TO", "TYPE", "TIME", "SUBJECT"}
