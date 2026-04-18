@@ -1,12 +1,13 @@
-// Package acp provides a JSON-RPC 2.0 client for communicating with kiro-cli
-// running in ACP (Agent Client Protocol) mode over stdio.
+// Package acp provides an ACP (Agent Client Protocol) client for
+// communicating with kiro-cli over stdio. JSON-RPC transport is delegated
+// to github.com/coder/acp-go-sdk; this package owns the subprocess
+// lifecycle and captures streamed output for the dashboard.
 package acp
 
 import (
 	"bufio"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"log"
 	"os/exec"
 	"strings"
@@ -14,147 +15,76 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	acpsdk "github.com/coder/acp-go-sdk"
 )
 
 // PermissionHandler decides whether to approve a server→client request.
-// It receives the tool name and command string extracted from the request.
-// Return true to approve, false to deny.
 type PermissionHandler func(tool, command string) bool
 
-// Client manages a kiro-cli ACP subprocess and its JSON-RPC lifecycle.
+// InitializeResult is the subset of the ACP initialize response exposed to callers.
+type InitializeResult struct {
+	ServerInfo struct {
+		Name    string
+		Version string
+	}
+}
+
+// Client manages a kiro-cli ACP subprocess and its JSON-RPC session.
 type Client struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	mu     sync.Mutex // serialises writes
-	nextID atomic.Int64
-	exited atomic.Bool
-
-	// Background reader delivers responses to waiting callers.
-	pending   map[int64]chan jsonRPCResponse
-	pendingMu sync.Mutex
-	done      chan struct{} // closed when process exits, before pending channels
-
-	// Output buffer for dashboard.
-	outMu         sync.Mutex
-	lastResponses []ACPEvent
-	pendingOutput []ACPEvent
-	toolCalls     map[string]*ToolCall // keyed by toolCallId
-	recentCalls   []ToolCall           // ring buffer of completed/updated calls
-
-	// AgentID for audit logging.
-	AgentID string
-
-	// OnPermission is called for server→client permission requests.
+	AgentID      string
 	OnPermission PermissionHandler
+
+	cmd    *exec.Cmd
+	conn   *acpsdk.ClientSideConnection
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
+	exited atomic.Bool
 
 	waitOnce sync.Once
 	waitErr  error
-}
 
-// jsonRPCRequest is a JSON-RPC 2.0 request.
-type jsonRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      int64       `json:"id"`
-	Method  string      `json:"method"`
-	Params  interface{} `json:"params,omitempty"`
-}
-
-// jsonRPCResponse is a JSON-RPC 2.0 response.
-type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   *rpcError       `json:"error,omitempty"`
-}
-
-// jsonRPCNotification is a server-initiated notification (no ID).
-type jsonRPCNotification struct {
-	JSONRPC string          `json:"jsonrpc"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-// serverRequest is a JSON-RPC 2.0 request sent from server to client.
-// ID is json.RawMessage because kiro-cli sends string UUIDs for permission
-// request IDs, not integers.
-type serverRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      json.RawMessage `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e *rpcError) Error() string { return fmt.Sprintf("rpc %d: %s", e.Code, e.Message) }
-
-// InitializeResult holds the response from the initialize call.
-type InitializeResult struct {
-	ServerInfo struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	} `json:"serverInfo"`
-}
-
-// SessionResult holds the response from session/new.
-type SessionResult struct {
-	SessionID string `json:"sessionId"`
-}
-
-// PromptResult holds the response from session/prompt.
-type PromptResult struct {
-	Content []ContentBlock `json:"content"`
-}
-
-// ContentBlock is a single content element in a prompt response.
-type ContentBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	outMu         sync.Mutex
+	lastResponses []ACPEvent
+	pendingOutput []ACPEvent
+	toolCalls     map[string]*ToolCall
+	recentCalls   []ToolCall
 }
 
 // NewClient spawns kiro-cli in ACP mode and returns a connected Client.
 func NewClient(command string, workDir string, env []string, extraArgs ...string) (*Client, error) {
-	args := append([]string{"acp"}, extraArgs...)
-	cmd := exec.Command(command, args...)
+	cmd := exec.Command(command, append([]string{"acp"}, extraArgs...)...)
 	cmd.Dir = workDir
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if len(env) > 0 {
 		cmd.Env = env
 	}
-
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("acp: stdin pipe: %w", err)
 	}
-	stdoutPipe, err := cmd.StdoutPipe()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("acp: stdout pipe: %w", err)
 	}
-	stderrPipe, err := cmd.StderrPipe()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, fmt.Errorf("acp: stderr pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("acp: start %s: %w", command, err)
 	}
-
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		cmd:       cmd,
-		stdin:     stdin,
-		pending:   make(map[int64]chan jsonRPCResponse),
+		cmd: cmd, ctx: ctx, cancel: cancel,
 		done:      make(chan struct{}),
 		toolCalls: make(map[string]*ToolCall),
 	}
+	c.conn = acpsdk.NewClientSideConnection(c, stdin, stdout)
 
-	// Background reader: dispatches responses and captures notifications.
-	go c.readLoop(bufio.NewReader(stdoutPipe))
-	// Capture stderr for debugging.
 	go func() {
-		scanner := bufio.NewScanner(stderrPipe)
+		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			log.Printf("[acp-stderr] %s", scanner.Text())
 		}
@@ -164,424 +94,169 @@ func NewClient(command string, workDir string, env []string, extraArgs ...string
 		log.Printf("[acp] process exited: pid=%d err=%v", cmd.Process.Pid, c.waitErr)
 		c.exited.Store(true)
 		close(c.done)
-		c.pendingMu.Lock()
-		for id, ch := range c.pending {
-			close(ch)
-			delete(c.pending, id)
-		}
-		c.pendingMu.Unlock()
+		c.cancel()
 	}()
-
 	return c, nil
 }
 
-// readLoop continuously reads stdout and dispatches lines.
-func (c *Client) readLoop(r *bufio.Reader) {
-	for {
-		line, err := r.ReadBytes('\n')
-		if err != nil {
-			return // pipe closed
-		}
-		if len(line) == 0 {
-			continue
-		}
+// callTimeout is the bound applied to synchronous RPCs. Prompt is excluded
+// because turns may legitimately run for minutes.
+const callTimeout = 30 * time.Second
 
-		// Probe the raw JSON to determine message type.
-		// Server requests have a "method" field; responses do not.
-		var probe struct {
-			ID     json.RawMessage `json:"id"`
-			Method string          `json:"method"`
-		}
-		if err := json.Unmarshal(line, &probe); err != nil {
-			continue
-		}
-
-		hasID := len(probe.ID) > 0 && string(probe.ID) != "null"
-
-		if hasID && probe.Method != "" {
-			// Server→client request (e.g. permission prompt). ID may be string UUID.
-			var req serverRequest
-			if err := json.Unmarshal(line, &req); err != nil {
-				continue
-			}
-			c.handleServerRequest(&req)
-			continue
-		}
-
-		if hasID {
-			// Response to one of our requests (integer ID).
-			var resp jsonRPCResponse
-			if err := json.Unmarshal(line, &resp); err != nil {
-				continue
-			}
-			c.pendingMu.Lock()
-			ch, ok := c.pending[resp.ID]
-			c.pendingMu.Unlock()
-			if ok {
-				select {
-				case <-c.done:
-				default:
-					ch <- resp
-				}
-			}
-			continue
-		}
-
-		// Notification (no ID).
-		var notif jsonRPCNotification
-		if err := json.Unmarshal(line, &notif); err != nil {
-			continue
-		}
-		c.handleNotification(&notif)
-	}
-}
-
-// handleServerRequest processes a server→client JSON-RPC request (e.g. permission prompts).
-// It extracts tool/command info, checks the deny list via OnPermission, sends an
-// approve or deny response back, and logs the decision for audit.
-func (c *Client) handleServerRequest(req *serverRequest) {
-	// Extract tool and command from params for deny-list checking.
-	var params struct {
-		Tool    string `json:"tool"`
-		Command string `json:"command"`
-		Name    string `json:"name"`
-		Action  struct {
-			Tool    string `json:"tool"`
-			Command string `json:"command"`
-			Name    string `json:"name"`
-		} `json:"action"`
-	}
-	_ = json.Unmarshal(req.Params, &params)
-
-	tool := params.Tool
-	if tool == "" {
-		tool = params.Action.Tool
-	}
-	if tool == "" {
-		tool = params.Name
-	}
-	if tool == "" {
-		tool = params.Action.Name
-	}
-	command := params.Command
-	if command == "" {
-		command = params.Action.Command
-	}
-
-	approved := true
-	if c.OnPermission != nil {
-		approved = c.OnPermission(tool, command)
-	}
-
-	action := "approved"
-	if !approved {
-		action = "denied"
-	}
-	log.Printf("[acp-permission] agent=%s method=%s tool=%q command=%q decision=%s", c.AgentID, req.Method, tool, command, action)
-
-	// Send JSON-RPC response back to kiro-cli.
-	// kiro-cli expects: {"outcome": {"outcome": "selected", "optionId": "allow_once"|"deny"}}
-	optionID := "allow_once"
-	if !approved {
-		optionID = "deny"
-	}
-	result := map[string]interface{}{
-		"outcome": map[string]string{
-			"outcome":  "selected",
-			"optionId": optionID,
-		},
-	}
-	resp := struct {
-		JSONRPC string          `json:"jsonrpc"`
-		ID      json.RawMessage `json:"id"`
-		Result  interface{}     `json:"result"`
-	}{
-		JSONRPC: "2.0",
-		ID:      req.ID,
-		Result:  result,
-	}
-	data, err := json.Marshal(resp)
-	if err != nil {
-		log.Printf("[acp-permission] marshal error: %v", err)
-		return
-	}
-	c.mu.Lock()
-	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
-	c.mu.Unlock()
-	if err != nil {
-		log.Printf("[acp-permission] write error: %v", err)
-	}
-}
-
-// handleNotification processes server notifications and captures output.
-func (c *Client) handleNotification(n *jsonRPCNotification) {
-	switch n.Method {
-	case "session/update":
-		var params struct {
-			Update struct {
-				SessionUpdate string `json:"sessionUpdate"`
-				ToolCallID    string `json:"toolCallId"`
-				Title         string `json:"title"`
-				Kind          string `json:"kind"`
-				Status        string `json:"status"`
-				Locations     []struct {
-					Path string `json:"path"`
-				} `json:"locations"`
-				Content struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"content"`
-			} `json:"update"`
-		}
-		if err := json.Unmarshal(n.Params, &params); err != nil {
-			return
-		}
-		u := params.Update
-
-		// Track structured tool calls.
-		if (u.SessionUpdate == "tool_call" || u.SessionUpdate == "tool_call_update") && u.ToolCallID != "" {
-			var paths []string
-			for _, l := range u.Locations {
-				paths = append(paths, l.Path)
-			}
-			c.trackToolCall(u.ToolCallID, u.Title, u.Kind, u.Status, paths)
-		}
-
-		// Preserve existing event stream for agent detail view.
-		if u.Content.Text != "" || u.Title != "" {
-			c.appendEvent(ACPEvent{
-				Kind:    eventKind(u.SessionUpdate),
-				Content: u.Content.Text,
-				Title:   u.Title,
-			})
-		}
-	case "_kiro.dev/metadata", "_kiro.dev/mcp/server_initialized", "_kiro.dev/commands/available", "_kiro.dev/session/update":
-		// Internal kiro events — skip.
-	default:
-		log.Printf("[acp-notif] %s", n.Method)
-	}
-}
-
-// trackToolCall upserts a tool call and appends to the recent calls ring buffer.
-func (c *Client) trackToolCall(id, title, kind, status string, locs []string) {
-	ts := time.Now().Format("2006-01-02T15:04:05")
-	c.outMu.Lock()
-	defer c.outMu.Unlock()
-
-	tc, exists := c.toolCalls[id]
-	if !exists {
-		tc = &ToolCall{ToolCallID: id, Timestamp: ts}
-		c.toolCalls[id] = tc
-	}
-	if title != "" {
-		tc.Title = title
-	}
-	if kind != "" {
-		tc.Kind = kind
-	}
-	if status != "" {
-		tc.Status = status
-	}
-	tc.Locations = append(tc.Locations, locs...)
-
-	// Append snapshot to recent ring buffer only on new tool calls (not updates).
-	if !exists && title != "" {
-		snap := *tc
-		snap.Timestamp = ts
-		c.recentCalls = append(c.recentCalls, snap)
-		const maxRecent = 100
-		if len(c.recentCalls) > maxRecent {
-			c.recentCalls = c.recentCalls[len(c.recentCalls)-maxRecent:]
-		}
-	}
-}
-
-func (c *Client) appendEvent(ev ACPEvent) {
-	c.outMu.Lock()
-	c.lastResponses = append(c.lastResponses, ev)
-	if len(c.lastResponses) > 50 {
-		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
-	}
-	c.pendingOutput = append(c.pendingOutput, ev)
-	c.outMu.Unlock()
-}
-
-// call sends a JSON-RPC request and waits for the matching response.
-func (c *Client) call(method string, params interface{}, result interface{}) error {
-	id := c.nextID.Add(1)
-	req := jsonRPCRequest{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	}
-
-	data, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("acp: marshal %s: %w", method, err)
-	}
-
-	// Register a channel for the response before sending.
-	ch := make(chan jsonRPCResponse, 1)
-	c.pendingMu.Lock()
-	c.pending[id] = ch
-	c.pendingMu.Unlock()
-
-	defer func() {
-		c.pendingMu.Lock()
-		delete(c.pending, id)
-		c.pendingMu.Unlock()
-	}()
-
-	c.mu.Lock()
-	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
-	c.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("acp: write %s: %w", method, err)
-	}
-
-	// Wait for the background reader to deliver our response.
-	var resp jsonRPCResponse
-	var ok bool
-	select {
-	case resp, ok = <-ch:
-	case <-c.done:
-		return fmt.Errorf("acp: %s: process exited", method)
-	case <-time.After(30 * time.Second):
-		return fmt.Errorf("acp: %s: timed out after 30s", method)
-	}
-	if !ok {
-		return fmt.Errorf("acp: %s: connection closed", method)
-	}
-	if resp.Error != nil {
-		return resp.Error
-	}
-	if result != nil {
-		return json.Unmarshal(resp.Result, result)
-	}
-	return nil
-}
-
-// send fires a JSON-RPC request without waiting for a response.
-func (c *Client) send(method string, params interface{}) error {
-	id := c.nextID.Add(1)
-	req := jsonRPCRequest{
-		JSONRPC: "2.0",
-		ID:      id,
-		Method:  method,
-		Params:  params,
-	}
-	data, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("acp: marshal %s: %w", method, err)
-	}
-	c.mu.Lock()
-	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
-	c.mu.Unlock()
-	if err != nil {
-		return fmt.Errorf("acp: write %s: %w", method, err)
-	}
-	return nil
+// callCtx derives a bounded context from the client's root context so calls
+// fail over promptly instead of hanging the daemon spawn path.
+func (c *Client) callCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(c.ctx, callTimeout)
 }
 
 // Initialize performs the ACP initialize handshake.
 func (c *Client) Initialize() (*InitializeResult, error) {
-	params := map[string]interface{}{
-		"protocolVersion": 1,
-		"clientCapabilities": map[string]interface{}{
-			"fs": map[string]bool{
-				"readTextFile":  true,
-				"writeTextFile": true,
-			},
-			"terminal": true,
-		},
-		"clientInfo": map[string]string{
-			"name":    "loom",
-			"version": "0.1.0",
-		},
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	resp, err := c.conn.Initialize(ctx, acpsdk.InitializeRequest{
+		ProtocolVersion: acpsdk.ProtocolVersionNumber,
+		ClientInfo:      &acpsdk.Implementation{Name: "loom", Version: "0.1.0"},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("acp: initialize: %w", err)
 	}
-	var res InitializeResult
-	if err := c.call("initialize", params, &res); err != nil {
-		return nil, err
+	var out InitializeResult
+	if resp.AgentInfo != nil {
+		out.ServerInfo.Name = resp.AgentInfo.Name
+		out.ServerInfo.Version = resp.AgentInfo.Version
 	}
-	return &res, nil
+	return &out, nil
 }
 
 // NewSession creates a new ACP session and returns the session ID.
 func (c *Client) NewSession() (string, error) {
-	params := map[string]interface{}{
-		"cwd":        c.cmd.Dir,
-		"mcpServers": []interface{}{},
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	resp, err := c.conn.NewSession(ctx, acpsdk.NewSessionRequest{
+		Cwd:        c.cmd.Dir,
+		McpServers: []acpsdk.McpServer{},
+	})
+	if err != nil {
+		return "", fmt.Errorf("acp: session/new: %w", err)
 	}
-	var res SessionResult
-	if err := c.call("session/new", params, &res); err != nil {
-		return "", err
-	}
-	return res.SessionID, nil
+	return string(resp.SessionId), nil
 }
 
-// SendPrompt sends a text prompt to an existing session.
-// Fire-and-forget: the agent works asynchronously, output captured via notifications.
+// SendPrompt sends a text prompt to an existing session. Fire-and-forget:
+// the SDK's Prompt blocks until the turn ends, so we dispatch it in a
+// goroutine and return immediately to match the existing daemon contract.
 func (c *Client) SendPrompt(sessionID string, text string) error {
-	params := map[string]interface{}{
-		"sessionId": sessionID,
-		"prompt": []map[string]string{
-			{"type": "text", "text": text},
-		},
+	if c.exited.Load() {
+		return fmt.Errorf("acp: process exited")
 	}
-	return c.send("session/prompt", params)
+	req := acpsdk.PromptRequest{
+		SessionId: acpsdk.SessionId(sessionID),
+		Prompt:    []acpsdk.ContentBlock{acpsdk.TextBlock(text)},
+	}
+	go func() {
+		if _, err := c.conn.Prompt(c.ctx, req); err != nil {
+			log.Printf("[acp] prompt: %v", err)
+		}
+	}()
+	return nil
 }
 
 // CancelSession cancels an in-progress prompt on the given session.
 func (c *Client) CancelSession(sessionID string) error {
-	params := map[string]interface{}{
-		"sessionId": sessionID,
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	if err := c.conn.Cancel(ctx, acpsdk.CancelNotification{SessionId: acpsdk.SessionId(sessionID)}); err != nil {
+		return fmt.Errorf("acp: session/cancel: %w", err)
 	}
-	return c.call("session/cancel", params, nil)
+	return nil
 }
 
-// LoadSession resumes an existing session by ID (e.g. after daemon restart).
+// LoadSession resumes an existing session by ID.
 func (c *Client) LoadSession(sessionID string) error {
-	params := map[string]interface{}{
-		"sessionId": sessionID,
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	_, err := c.conn.LoadSession(ctx, acpsdk.LoadSessionRequest{
+		Cwd:        c.cmd.Dir,
+		McpServers: []acpsdk.McpServer{},
+		SessionId:  acpsdk.SessionId(sessionID),
+	})
+	if err != nil {
+		return fmt.Errorf("acp: session/load: %w", err)
 	}
-	return c.call("session/load", params, nil)
+	return nil
 }
 
 // SetMode switches the agent mode for an existing session.
 func (c *Client) SetMode(sessionID string, mode string) error {
-	params := map[string]interface{}{
-		"sessionId": sessionID,
-		"mode":      mode,
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	_, err := c.conn.SetSessionMode(ctx, acpsdk.SetSessionModeRequest{
+		SessionId: acpsdk.SessionId(sessionID),
+		ModeId:    acpsdk.SessionModeId(mode),
+	})
+	if err != nil {
+		return fmt.Errorf("acp: session/set_mode: %w", err)
 	}
-	return c.call("session/set_mode", params, nil)
+	return nil
+}
+
+// SetModel changes the model for an existing session.
+func (c *Client) SetModel(sessionID string, model string) error {
+	ctx, cancel := c.callCtx()
+	defer cancel()
+	_, err := c.conn.UnstableSetSessionModel(ctx, acpsdk.UnstableSetSessionModelRequest{
+		SessionId: acpsdk.SessionId(sessionID),
+		ModelId:   acpsdk.UnstableModelId(resolveModelAlias(model)),
+	})
+	if err != nil {
+		return fmt.Errorf("acp: session/set_model: %w", err)
+	}
+	return nil
 }
 
 func resolveModelAlias(model string) string {
 	if strings.Contains(model, "claude-") {
 		return model
 	}
-	aliases := map[string]string{
-		"sonnet": "claude-sonnet-4.6",
-		"opus":   "claude-opus-4.6",
-		"haiku":  "claude-haiku-4.5",
-	}
-	if full, ok := aliases[model]; ok {
-		return full
+	switch model {
+	case "sonnet":
+		return "claude-sonnet-4.6"
+	case "opus":
+		return "claude-opus-4.6"
+	case "haiku":
+		return "claude-haiku-4.5"
 	}
 	return model
 }
 
-// SetModel changes the model for an existing session.
-func (c *Client) SetModel(sessionID string, model string) error {
-	params := map[string]interface{}{
-		"sessionId": sessionID,
-		"modelId":   resolveModelAlias(model),
+// Close shuts down the subprocess by killing its process group.
+func (c *Client) Close() error {
+	c.cancel()
+	if c.cmd.Process != nil {
+		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGTERM)
 	}
-	return c.call("session/set_model", params, nil)
+	done := make(chan struct{})
+	go func() {
+		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		if c.cmd.Process != nil {
+			syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+		}
+		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+	}
+	return c.waitErr
 }
 
-// RecentOutput returns the last n captured output lines.
+// PID returns the OS process ID of the kiro-cli subprocess.
+func (c *Client) PID() int { return c.cmd.Process.Pid }
+
+// Exited reports whether the subprocess has exited.
+func (c *Client) Exited() bool { return c.exited.Load() }
+
 // RecentOutput returns the last n captured output events.
 func (c *Client) RecentOutput(n int) []ACPEvent {
 	c.outMu.Lock()
@@ -619,36 +294,200 @@ func (c *Client) RecentToolCalls() []ToolCall {
 	return out
 }
 
-// Close shuts down the subprocess by killing the process group.
-func (c *Client) Close() error {
-	c.stdin.Close()
-	// Send SIGTERM to the process group so child processes (aim sandbox, etc.) also exit.
-	if c.cmd.Process != nil {
-		syscall.Kill(-c.cmd.Process.Pid, syscall.SIGTERM)
-	}
-	// Give it a moment to exit gracefully.
-	done := make(chan struct{})
-	go func() {
-		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		if c.cmd.Process != nil {
-			syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
+// --- acpsdk.Client interface -----------------------------------------------
+
+// SessionUpdate captures streamed notifications into the output buffer.
+func (c *Client) SessionUpdate(_ context.Context, n acpsdk.SessionNotification) error {
+	u := n.Update
+	switch {
+	case u.AgentMessageChunk != nil:
+		if t := textOf(u.AgentMessageChunk.Content); t != "" {
+			c.appendEvent(ACPEvent{Kind: TokenChunk, Content: t})
 		}
-		c.waitOnce.Do(func() { c.waitErr = c.cmd.Wait() })
+	case u.ToolCall != nil:
+		tc := u.ToolCall
+		c.trackToolCall(string(tc.ToolCallId), tc.Title, string(tc.Kind), string(tc.Status), locationPaths(tc.Locations), true)
+		c.appendEvent(ACPEvent{Kind: ToolSummary, Title: tc.Title})
+	case u.ToolCallUpdate != nil:
+		tu := u.ToolCallUpdate
+		title, kind, status := deref(tu.Title), derefKind(tu.Kind), derefStatus(tu.Status)
+		c.trackToolCall(string(tu.ToolCallId), title, kind, status, locationPaths(tu.Locations), false)
+		if title != "" {
+			c.appendEvent(ACPEvent{Kind: ToolSummary, Title: title})
+		}
 	}
-	return c.waitErr
+	return nil
 }
 
-// PID returns the OS process ID of the kiro-cli subprocess.
-func (c *Client) PID() int {
-	return c.cmd.Process.Pid
+// RequestPermission consults the configured PermissionHandler and selects an option.
+func (c *Client) RequestPermission(_ context.Context, req acpsdk.RequestPermissionRequest) (acpsdk.RequestPermissionResponse, error) {
+	tool := deref(req.ToolCall.Title)
+	if tool == "" {
+		tool = derefKind(req.ToolCall.Kind)
+	}
+	command := extractCommand(req.ToolCall.RawInput)
+
+	approved := true
+	if c.OnPermission != nil {
+		approved = c.OnPermission(tool, command)
+	}
+	decision := "approved"
+	if !approved {
+		decision = "denied"
+	}
+	log.Printf("[acp-permission] agent=%s method=%s tool=%q command=%q decision=%s",
+		c.AgentID, "session/request_permission", tool, command, decision)
+
+	return acpsdk.RequestPermissionResponse{
+		Outcome: acpsdk.NewRequestPermissionOutcomeSelected(pickOptionID(req.Options, approved)),
+	}, nil
 }
 
-// Exited reports whether the subprocess has exited.
-func (c *Client) Exited() bool {
-	return c.exited.Load()
+// The remaining Client interface methods are not advertised by our
+// InitializeRequest (fs={false,false}, terminal=false); a well-behaved agent
+// will not invoke them. Return MethodNotFound for safety.
+func (c *Client) ReadTextFile(context.Context, acpsdk.ReadTextFileRequest) (r acpsdk.ReadTextFileResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("fs/read_text_file")
 }
+func (c *Client) WriteTextFile(context.Context, acpsdk.WriteTextFileRequest) (r acpsdk.WriteTextFileResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("fs/write_text_file")
+}
+func (c *Client) CreateTerminal(context.Context, acpsdk.CreateTerminalRequest) (r acpsdk.CreateTerminalResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("terminal/create")
+}
+func (c *Client) KillTerminal(context.Context, acpsdk.KillTerminalRequest) (r acpsdk.KillTerminalResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("terminal/kill")
+}
+func (c *Client) TerminalOutput(context.Context, acpsdk.TerminalOutputRequest) (r acpsdk.TerminalOutputResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("terminal/output")
+}
+func (c *Client) ReleaseTerminal(context.Context, acpsdk.ReleaseTerminalRequest) (r acpsdk.ReleaseTerminalResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("terminal/release")
+}
+func (c *Client) WaitForTerminalExit(context.Context, acpsdk.WaitForTerminalExitRequest) (r acpsdk.WaitForTerminalExitResponse, _ error) {
+	return r, acpsdk.NewMethodNotFound("terminal/wait_for_exit")
+}
+
+// --- internal helpers ------------------------------------------------------
+
+// trackToolCall upserts a tool call; isNew=true with a fresh id+title adds
+// a snapshot to the recent ring buffer.
+func (c *Client) trackToolCall(id, title, kind, status string, locs []string, isNew bool) {
+	if id == "" {
+		return
+	}
+	ts := time.Now().Format("2006-01-02T15:04:05")
+	c.outMu.Lock()
+	defer c.outMu.Unlock()
+
+	tc, exists := c.toolCalls[id]
+	if !exists {
+		tc = &ToolCall{ToolCallID: id, Timestamp: ts}
+		c.toolCalls[id] = tc
+	}
+	if title != "" {
+		tc.Title = title
+	}
+	if kind != "" {
+		tc.Kind = kind
+	}
+	if status != "" {
+		tc.Status = status
+	}
+	tc.Locations = append(tc.Locations, locs...)
+
+	if isNew && !exists && title != "" {
+		snap := *tc
+		snap.Timestamp = ts
+		c.recentCalls = append(c.recentCalls, snap)
+		const maxRecent = 100
+		if len(c.recentCalls) > maxRecent {
+			c.recentCalls = c.recentCalls[len(c.recentCalls)-maxRecent:]
+		}
+	}
+}
+
+func (c *Client) appendEvent(ev ACPEvent) {
+	c.outMu.Lock()
+	c.lastResponses = append(c.lastResponses, ev)
+	if len(c.lastResponses) > 50 {
+		c.lastResponses = c.lastResponses[len(c.lastResponses)-50:]
+	}
+	c.pendingOutput = append(c.pendingOutput, ev)
+	c.outMu.Unlock()
+}
+
+func textOf(b acpsdk.ContentBlock) string {
+	if b.Text != nil {
+		return b.Text.Text
+	}
+	return ""
+}
+
+func locationPaths(locs []acpsdk.ToolCallLocation) []string {
+	if len(locs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(locs))
+	for _, l := range locs {
+		out = append(out, l.Path)
+	}
+	return out
+}
+
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+func derefKind(p *acpsdk.ToolKind) string {
+	if p == nil {
+		return ""
+	}
+	return string(*p)
+}
+func derefStatus(p *acpsdk.ToolCallStatus) string {
+	if p == nil {
+		return ""
+	}
+	return string(*p)
+}
+
+// extractCommand pulls a shell command from a tool call's RawInput if present.
+func extractCommand(raw any) string {
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	for _, k := range []string{"command", "cmd"} {
+		if v, ok := m[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// pickOptionID selects the permission option matching the decision, falling
+// back to the first option on approve and the last on deny.
+func pickOptionID(opts []acpsdk.PermissionOption, approved bool) acpsdk.PermissionOptionId {
+	if len(opts) == 0 {
+		return ""
+	}
+	if approved {
+		for _, o := range opts {
+			if o.Kind == acpsdk.PermissionOptionKindAllowOnce {
+				return o.OptionId
+			}
+		}
+		return opts[0].OptionId
+	}
+	for _, o := range opts {
+		if o.Kind == acpsdk.PermissionOptionKindRejectOnce || o.Kind == acpsdk.PermissionOptionKindRejectAlways {
+			return o.OptionId
+		}
+	}
+	return opts[len(opts)-1].OptionId
+}
+
+var _ acpsdk.Client = (*Client)(nil)

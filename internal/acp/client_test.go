@@ -1,9 +1,11 @@
 package acp
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"testing"
+
+	acpsdk "github.com/coder/acp-go-sdk"
 )
 
 func TestDrainOutputReturnsAllEventsWhileRecentOutputStaysBounded(t *testing.T) {
@@ -36,38 +38,43 @@ func TestDrainOutputReturnsAllEventsWhileRecentOutputStaysBounded(t *testing.T) 
 
 func TestHandleNotification_ToolCallTracking(t *testing.T) {
 	c := &Client{toolCalls: make(map[string]*ToolCall)}
+	ctx := context.Background()
 
 	// Simulate tool_call creation.
-	send(t, c, `{
-		"update": {
-			"sessionUpdate": "tool_call",
-			"toolCallId": "call_001",
-			"title": "Reading main.go",
-			"kind": "read",
-			"status": "pending",
-			"locations": [{"path": "/src/main.go"}]
-		}
-	}`)
+	if err := c.SessionUpdate(ctx, acpsdk.SessionNotification{
+		Update: acpsdk.SessionUpdate{ToolCall: &acpsdk.SessionUpdateToolCall{
+			ToolCallId: "call_001",
+			Title:      "Reading main.go",
+			Kind:       acpsdk.ToolKindRead,
+			Status:     acpsdk.ToolCallStatusPending,
+			Locations:  []acpsdk.ToolCallLocation{{Path: "/src/main.go"}},
+		}},
+	}); err != nil {
+		t.Fatalf("SessionUpdate tool_call: %v", err)
+	}
 
 	// Simulate tool_call_update with status change.
-	send(t, c, `{
-		"update": {
-			"sessionUpdate": "tool_call_update",
-			"toolCallId": "call_001",
-			"status": "completed"
-		}
-	}`)
+	completed := acpsdk.ToolCallStatusCompleted
+	if err := c.SessionUpdate(ctx, acpsdk.SessionNotification{
+		Update: acpsdk.SessionUpdate{ToolCallUpdate: &acpsdk.SessionToolCallUpdate{
+			ToolCallId: "call_001",
+			Status:     &completed,
+		}},
+	}); err != nil {
+		t.Fatalf("SessionUpdate tool_call_update: %v", err)
+	}
 
 	// Simulate a second tool call.
-	send(t, c, `{
-		"update": {
-			"sessionUpdate": "tool_call",
-			"toolCallId": "call_002",
-			"title": "Writing output.go",
-			"kind": "edit",
-			"status": "completed"
-		}
-	}`)
+	if err := c.SessionUpdate(ctx, acpsdk.SessionNotification{
+		Update: acpsdk.SessionUpdate{ToolCall: &acpsdk.SessionUpdateToolCall{
+			ToolCallId: "call_002",
+			Title:      "Writing output.go",
+			Kind:       acpsdk.ToolKindEdit,
+			Status:     acpsdk.ToolCallStatusCompleted,
+		}},
+	}); err != nil {
+		t.Fatalf("SessionUpdate tool_call 2: %v", err)
+	}
 
 	calls := c.RecentToolCalls()
 	// call_001 creates one entry (tool_call with title), update doesn't add another.
@@ -87,12 +94,4 @@ func TestHandleNotification_ToolCallTracking(t *testing.T) {
 	if tc.Status != "completed" {
 		t.Errorf("call_001 status: expected completed, got %q", tc.Status)
 	}
-}
-
-func send(t *testing.T, c *Client, params string) {
-	t.Helper()
-	c.handleNotification(&jsonRPCNotification{
-		Method: "session/update",
-		Params: json.RawMessage(params),
-	})
 }

@@ -8,6 +8,7 @@ require (
 	charm.land/huh/v2 v2.0.3
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/charmbracelet/x/ansi v0.11.6
+	github.com/coder/acp-go-sdk v0.11.7
 	github.com/spf13/cobra v1.10.2
 	gopkg.in/yaml.v3 v3.0.1
 )
